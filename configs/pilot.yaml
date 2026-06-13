@@ -1,0 +1,14 @@
+# Pre-campaign pilot (~45-90 min on 64 workers): real throughput under contention,
+# per-worker RSS, two-bunch structure-survival fraction across the ranges, and
+# baseline seed scatter (closes the Phase-0 single-realization caveat).
+name: pilot
+n_samples: 128
+n_baseline_repeats: 8
+num_macro_particles: 100000
+n_workers: 64
+seed: 20260611
+csrTF: true
+transverseWakes: true  # gate benchmark 2026-06-10: +11% cost, drive sigma_x +81%; coefficients pending validation (see defaults audit)
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/pilot
+save_beams_at: [PENT]

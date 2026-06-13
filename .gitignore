@@ -1,0 +1,23 @@
+# Campaign data (large; lives here but is not version-controlled)
+data/
+
+# Transient per-worker beam files written under any output/data dir
+**/scratch/
+
+# Regenerated analysis artifacts (dataset cache, figures)
+artifacts/
+
+# Future ML stages
+processed/
+trained/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# OS
+.DS_Store

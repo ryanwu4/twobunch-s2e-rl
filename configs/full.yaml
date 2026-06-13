@@ -1,0 +1,15 @@
+# Production campaign: ~14-24 h on 120 workers (1242 s/sample single-thread ideal with
+# wakes on; pilot measures the real contention factor). ~30 GB output. Launch only
+# after reviewing the pilot.
+name: full
+n_samples: 5000
+n_baseline_repeats: 0   # pilot covers seed scatter
+num_macro_particles: 100000
+n_workers: 100
+seed: 20260612
+csrTF: true
+transverseWakes: true  # gate benchmark 2026-06-10: +11% cost, drive sigma_x +81%; coefficients pending validation (see defaults audit)
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/full
+save_beams_at: [PENT]
+

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "twobunch-s2e-rl"
+version = "0.1.0"
+description = "FACET-II two-bunch S2E pipeline: LHS data campaign (L0AFEND->PENT, Bmad/Tao) -> conditional-NF surrogate -> RL"
+requires-python = ">=3.11"
+# Base deps cover the datagen driver only. FACET2_S2E (Bmad/Tao via pytao) is intentionally
+# NOT listed: it is provided by the `bmad-qpad-dev` conda env as an editable install and is
+# not pip-installable in isolation (needs the Bmad lattice/beam files). See README.
+dependencies = [
+    "numpy",
+    "scipy",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+# Analysis of the campaign output (consolidation + summary plots).
+analysis = [
+    "pandas",
+    "matplotlib",
+    "h5py",
+]
+# Future stages (not implemented yet — see docs/surrogate_roadmap.md):
+# surrogate = ["torch>=2.0", "lightning>=2.0", "normflows", "pmd-beamphysics", "h5py", "matplotlib"]
+# rl        = ["torch>=2.0", "gymnasium>=1.0", "stable-baselines3>=2.3", "tensorboard"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

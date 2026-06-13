@@ -1,0 +1,12 @@
+# End-to-end harness validation: ~5 min (16 x ~120 s 1-thread tracks / 8 workers)
+name: smoke
+n_samples: 16
+n_baseline_repeats: 1   # one pinned-baseline sample to cross-check Phase-0 specs
+num_macro_particles: 10000
+n_workers: 8
+seed: 20260610
+csrTF: true
+transverseWakes: false
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/smoke
+save_beams_at: [PENT]

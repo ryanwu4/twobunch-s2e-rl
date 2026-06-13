@@ -1,0 +1,15 @@
+# Pre-campaign gate: one baseline sample with transverse linac wakes ON (the
+# drive->witness coupling mechanism, off in the 2024-10-14 baseline). Compare cost and
+# witness emittance/offset against the Phase-0 wakes-off 100k reference before deciding
+# the full-campaign flag.
+name: wakes_gate
+n_samples: 0
+n_baseline_repeats: 1
+num_macro_particles: 100000
+n_workers: 1
+seed: 20260613
+csrTF: true
+transverseWakes: true
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/wakes_gate
+save_beams_at: [PENT]
