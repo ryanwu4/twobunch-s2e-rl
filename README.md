@@ -60,11 +60,12 @@ PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis.twobunch_q
 ```
 src/twobunch_s2e_rl/
   datagen/    sweep_params.py (authoritative 8-knob table), run_sweep.py, paths.py
+    phase0/   run_baseline.py, run_convergence.py, bench_threads.py (pre-campaign study)
   analysis/   build_dataset.py, summary_plots.py, twobunch_quality_plots.py
   surrogate/  stub  (see docs/surrogate_roadmap.md)
   rl/         stub
 configs/      smoke|pilot|full|wakes_gate.yaml   (output_dir -> data/<name>)
-data/         campaign output (gitignored)
+data/         campaign output + data/phase0/ baseline study output (gitignored)
 artifacts/    regenerated dataset cache + figures (gitignored)
 docs/         surrogate_roadmap.md
 tests/        test_sweep_params.py
