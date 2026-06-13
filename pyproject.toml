@@ -23,9 +23,18 @@ analysis = [
     "matplotlib",
     "h5py",
 ]
-# Future stages (not implemented yet — see docs/surrogate_roadmap.md):
-# surrogate = ["torch>=2.0", "lightning>=2.0", "normflows", "pmd-beamphysics", "h5py", "matplotlib"]
-# rl        = ["torch>=2.0", "gymnasium>=1.0", "stable-baselines3>=2.3", "tensorboard"]
+# Conditional-NF surrogate (run in the slac-rl env, which already provides these).
+# RealNVP coupling is hand-rolled (reused from the photoinjector flow), so no flow library.
+surrogate = [
+    "torch>=2.0",
+    "lightning>=2.0",
+    "pmd-beamphysics",
+    "h5py",
+    "scikit-learn",
+    "matplotlib",
+]
+# Future RL stage:
+# rl = ["torch>=2.0", "gymnasium>=1.0", "stable-baselines3>=2.3", "tensorboard"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

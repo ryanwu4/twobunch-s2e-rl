@@ -11,7 +11,7 @@ S2E analog of `photoinjector-rl-clean` (which targets the PR10241 photoinjector)
 |---|---|
 | `datagen` — LHS sweep (Bmad/Tao) | **working** (5000-sample campaign complete) |
 | `analysis` — consolidation + summary plots | **working** |
-| `surrogate` — conditional NF | stub + roadmap (`docs/surrogate_roadmap.md`) |
+| `surrogate` — conditional NF | **working** — RealNVP + per-bunch whitening + feasibility heads; viability AUC 0.999, inter-bunch R²>0.97 (witness emittance R²~0.5–0.7 is the v2 target) |
 | `rl` — PPO/SHAC/BPTT on the surrogate | stub |
 
 ## Two environments
@@ -54,6 +54,21 @@ PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.analysis.build_dataset           #
 PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis.summary_plots
 PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis.twobunch_quality_plots
 ```
+
+**Surrogate** (`slac-rl` torch env): conditional RealNVP over the 8 knobs → drive+witness 6D
+beam at PENT + per-bunch feasibility. Reparameterized sampling, so `model.observables(knobs)`
+is differentiable w.r.t. the knobs (for later MBRL). See `docs/surrogate_roadmap.md`.
+```bash
+PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.preprocess --subdir full   # -> processed/twobunch_flow.h5
+PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.train --epochs 150         # -> trained/twobunch_flow/
+PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.eval  --ckpt "trained/twobunch_flow/checkpoints/best-*.ckpt"
+PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.diagnostics --ckpt "trained/twobunch_flow/checkpoints/best-*.ckpt"
+PYTHONPATH=$PWD/src pytest tests/                                                  # 21 tests (data tests auto-skip if absent)
+```
+`eval` writes parity / phase-space / metrics to `artifacts/surrogate/`; `diagnostics` adds
+`artifacts/surrogate/diagnostics/` (full 6D corner plots per bunch, phase-space slices +
+correlation matrices for representative samples, the knob→observable response surface,
+feasibility calibration, and per-coordinate dispersion ratios).
 
 ## Layout
 
