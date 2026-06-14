@@ -27,6 +27,10 @@ def build_model(norm: dict, **overrides) -> TwoBunchFlow:
         knob_low=norm["knob_low"], knob_high=norm["knob_high"],
     )
     kw.update(overrides)
+    print(f"[build_model] scaler={norm.get('scaler', 'pooled(v1)')}, coupling={kw.get('coupling','affine')}, "
+          f"n_bins={kw.get('n_bins')}, tail_bound={kw.get('tail_bound')}, "
+          f"w_emit={kw.get('w_emit')}, w_emit_z={kw.get('w_emit_z')}, w_emit_4d={kw.get('w_emit_4d')}, "
+          f"w_emit_6d={kw.get('w_emit_6d')}, w_cov={kw.get('w_cov')}")
     return TwoBunchFlow(**kw)
 
 
@@ -39,7 +43,16 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--n-layers", type=int, default=16)
     ap.add_argument("--hidden-dim", type=int, default=128)
-    ap.add_argument("--w-emit", type=float, default=0.5)
+    ap.add_argument("--coupling", choices=["affine", "rqs"], default="rqs")
+    ap.add_argument("--n-bins", type=int, default=16)
+    ap.add_argument("--tail-bound", type=float, default=8.0)
+    ap.add_argument("--w-emit", type=float, default=0.25)        # transverse 2D (x-px, y-py)
+    ap.add_argument("--w-emit-z", type=float, default=0.5)       # longitudinal 2D (z-pz / LPS)
+    ap.add_argument("--w-emit-4d", type=float, default=0.125)    # transverse 4D
+    ap.add_argument("--w-emit-6d", type=float, default=0.025)    # full 6D
+    ap.add_argument("--w-cov", type=float, default=0.5)
+    ap.add_argument("--bunches", choices=["both", "drive", "witness"], default="both",
+                    help="which bunch density paths to train (witness = witness-only ablation)")
     ap.add_argument("--patience", type=int, default=25)
     ap.add_argument("--num-workers", type=int, default=4)
     ap.add_argument("--limit-train-batches", type=float, default=1.0)
@@ -51,8 +64,12 @@ def main():
     dm = TwoBunchFlowDataModule(processed_h5=args.processed, batch_size=args.batch_size,
                                 num_workers=args.num_workers)
     dm.setup()
+    bunches = {"both": (0, 1), "drive": (0,), "witness": (1,)}[args.bunches]
     model = build_model(dm.norm, lr=args.lr, n_layers=args.n_layers,
-                        hidden_dim=args.hidden_dim, w_emit=args.w_emit)
+                        hidden_dim=args.hidden_dim, coupling=args.coupling,
+                        n_bins=args.n_bins, tail_bound=args.tail_bound,
+                        w_emit=args.w_emit, w_emit_z=args.w_emit_z, w_emit_4d=args.w_emit_4d,
+                        w_emit_6d=args.w_emit_6d, w_cov=args.w_cov, bunches=bunches)
 
     ckpt = ModelCheckpoint(dirpath=f"{args.out}/checkpoints", monitor="val_loss",
                            mode="min", save_top_k=1,

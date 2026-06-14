@@ -64,7 +64,7 @@ def test_gradient_flows_to_knobs():
 def test_whitening_lower_triangular_positive_diag():
     m = _model()
     h = torch.randn(7, m.hparams.hidden_dim)
-    mu, Lm = m._whiten(h)
+    mu, Lm = m._whiten(h, 0)
     assert mu.shape == (7, 6) and Lm.shape == (7, 6, 6)
     diag = torch.diagonal(Lm, dim1=-2, dim2=-1)
     assert (diag > 0).all(), "Cholesky diagonal must be positive"
@@ -154,6 +154,48 @@ def test_slopes_match_pxpz():
     assert torch.allclose(xp, (parts[..., 3] / parts[..., 5]).mean(1), atol=1e-9)
 
 
+def test_bunches_modeled_distinctly():
+    """Guards the drive/witness mix-up class: k=0 and k=1 must route to their own scaler +
+    whitening head (a bug that modeled both as the drive would pass every other test)."""
+    m = TwoBunchFlow(condition_dim=8, n_layers=4, hidden_dim=32,
+                     drive_mean=[10., 0, 0, 0, 0, 0], drive_std=[1.] * 6,
+                     witness_mean=[-10., 0, 0, 0, 0, 0], witness_std=[1.] * 6).eval()
+    knobs = torch.rand(4, 8)
+    with torch.no_grad():
+        d = m.sample_bunch(knobs, 0, 512).mean(dim=1)[:, 0]
+        w = m.sample_bunch(knobs, 1, 512).mean(dim=1)[:, 0]
+    assert d.mean() > 3 and w.mean() < -3, "bunches not routed to distinct per-bunch scalers"
+    h = torch.randn(3, m.hparams.hidden_dim)
+    assert not torch.allclose(m._whiten(h, 0)[0], m._whiten(h, 1)[0]), "whitening heads not distinct"
+
+
+def test_witness_nll_decreases_on_overfit():
+    """The witness density path (k=1) must actually learn, not just be finite."""
+    import math
+    torch.manual_seed(0)
+    m = _model(n_layers=6, hidden=64)
+    knobs = torch.rand(1, 8)
+    parts = torch.randn(1, 512, 6) @ (torch.randn(6, 6) * 0.3).T + torch.tensor([0.4, -0.2, 0.3, 0.1, 0.0, -0.1])
+    opt = torch.optim.Adam(m.parameters(), lr=1e-3)
+    init = m.bunch_nll(parts, knobs, 1).item()
+    for _ in range(200):
+        opt.zero_grad(); m.bunch_nll(parts, knobs, 1).backward(); opt.step()
+    final = m.bunch_nll(parts, knobs, 1).item()
+    assert math.isfinite(final) and final < init - 0.5, (init, final)
+
+
+def test_inter_bunch_spacing_and_energy_signs():
+    """Pin the inter-bunch convention: bunch_spacing = drive_z - witness_z; drive is hotter."""
+    from twobunch_s2e_rl.surrogate.properties import inter_bunch
+    drive = torch.randn(1, 400, 6) * 0.01
+    witness = torch.randn(1, 400, 6) * 0.01
+    drive[..., 2] += 5.0; witness[..., 2] += -3.0       # z centroids
+    drive[..., 5] += 1e10; witness[..., 5] += 0.9e10    # pz: drive higher energy
+    ib = inter_bunch(drive, witness)
+    assert torch.isclose(ib["bunch_spacing"][0], torch.tensor(8.0), atol=0.1)
+    assert ib["energy_difference"][0] > 0
+
+
 def test_subsample_no_replacement_at_boundary():
     import numpy as np
     from twobunch_s2e_rl.surrogate.preprocess import _subsample
@@ -161,3 +203,82 @@ def test_subsample_no_replacement_at_boundary():
     out = _subsample(coords, 20, np.random.default_rng(0))
     assert out.shape == (20, 6)
     assert len(np.unique(out[:, 0])) == 20  # a permutation, no repeats
+
+
+# ---- RQS spline correctness (the hand-rolled kernel) ------------------------
+def _rqs_params(n, K, seed=0):
+    torch.manual_seed(seed)
+    return torch.randn(n, K), torch.randn(n, K), torch.randn(n, K - 1)
+
+
+def test_rqs_invertible_and_logdet_cancels():
+    from twobunch_s2e_rl.surrogate.model import _rqs_1d
+    B, K, n = 5.0, 10, 400
+    x = torch.rand(n) * 2 * B - B           # inside [-B, B)
+    uw, uh, ud = _rqs_params(n, K, 1)
+    y, ldf = _rqs_1d(x, uw, uh, ud, False, B)
+    xr, ldi = _rqs_1d(y, uw, uh, ud, True, B)
+    # atol 1e-3 (not 1e-4): the discriminant gradient-safety floor (clamp_min 1e-10 in the
+    # inverse) perturbs the ~0.15% of points landing on a knot by up to ~5e-4. Median ~1e-7.
+    assert torch.allclose(x, xr, atol=1e-3), (x - xr).abs().max()
+    assert torch.allclose(ldf + ldi, torch.zeros_like(ldf), atol=1e-3)
+
+
+def test_rqs_logdet_matches_autograd():
+    from twobunch_s2e_rl.surrogate.model import _rqs_1d
+    B, K, n = 5.0, 8, 300
+    x = (torch.rand(n) * 2 * B - B).clamp(-B + 0.02, B - 0.02).requires_grad_(True)
+    uw, uh, ud = _rqs_params(n, K, 2)
+    y, ld = _rqs_1d(x, uw, uh, ud, False, B)
+    (g,) = torch.autograd.grad(y.sum(), x)      # elementwise -> do_i/dx_i
+    assert torch.allclose(torch.log(g.abs()), ld, atol=1e-4), (torch.log(g.abs()) - ld).abs().max()
+
+
+def test_rqs_tails_identity():
+    from twobunch_s2e_rl.surrogate.model import _rqs_1d
+    B, K = 5.0, 8
+    x = torch.cat([torch.full((40,), -B - 1.0), torch.full((40,), B + 3.0)])
+    uw, uh, ud = _rqs_params(80, K, 3)
+    y, ld = _rqs_1d(x, uw, uh, ud, False, B)
+    assert torch.allclose(y, x) and torch.allclose(ld, torch.zeros_like(ld))
+
+
+def test_rqs_monotonic_and_continuous_at_boundary():
+    from twobunch_s2e_rl.surrogate.model import _rqs_1d
+    B, K, n = 5.0, 8, 600
+    x = torch.linspace(-B + 1e-3, B - 1e-3, n)
+    uw, uh, ud = (t.expand(n, -1).contiguous() for t in _rqs_params(1, K, 4))
+    y, _ = _rqs_1d(x, uw, uh, ud, False, B)
+    assert (y[1:] - y[:-1] > 0).all()                       # strictly increasing
+    # C0 continuity with the identity tail: spline endpoints map to +/-B
+    edge = torch.tensor([-B + 1e-6, B - 1e-6])
+    uw2, uh2, ud2 = (t[:1].expand(2, -1).contiguous() for t in _rqs_params(1, K, 4))
+    ye, _ = _rqs_1d(edge, uw2, uh2, ud2, False, B)
+    assert torch.allclose(ye, torch.tensor([-B, B]), atol=1e-3)
+
+
+def test_rqs_model_nll_grad_and_sampling():
+    torch.manual_seed(0)
+    m = TwoBunchFlow(condition_dim=8, n_layers=4, hidden_dim=32, coupling="rqs",
+                     n_bins=8, n_aux_particles=128).eval()
+    # invertibility of the stacked flow (base<->w)
+    w = torch.randn(16, 6)
+    h = torch.randn(16, 32)
+    z, _ = m._inverse_enc(w, h)
+    w2, _ = m._forward_enc(z, h)
+    assert torch.allclose(w, w2, atol=1e-3)
+    # NLL finite + differentiable; gradient reaches the knobs
+    knobs = torch.rand(4, 8, requires_grad=True)
+    nll = m.bunch_nll(torch.randn(4, 256, 6), knobs, 1)
+    assert torch.isfinite(nll)
+    obs = m.observables(knobs, n=128)
+    (obs["witness_norm_emit_x"].sum() + obs["transverse_offset"].sum()).backward()
+    assert knobs.grad is not None and torch.isfinite(knobs.grad).all() and knobs.grad.abs().sum() > 0
+
+
+def test_step_cov_term_and_rqs():
+    m = TwoBunchFlow(condition_dim=8, n_layers=4, hidden_dim=32, coupling="rqs",
+                     n_bins=8, w_cov=0.5, n_aux_particles=128)
+    m.log_dict = lambda *a, **k: None
+    loss = m._step(_batch(), "train")
+    assert torch.isfinite(loss) and loss.requires_grad

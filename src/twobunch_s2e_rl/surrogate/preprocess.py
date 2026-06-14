@@ -117,18 +117,36 @@ def parse_one(json_path: str, p: int, rng: np.random.Generator) -> dict | None:
     return rec
 
 
-def _scaler(records, key_parts, key_density):
-    """Per-dim mean/std over pooled density-trainable bunches of one species."""
-    pooled = [r[key_parts] for r in records if r[key_density]]
-    if not pooled:
+def _scaler(records, key_parts, key_density, mode="intrabunch"):
+    """Per-dim mean/std over density-trainable bunches of one species.
+
+    mode='pooled'     : std of pooled raw particles (v1) -- for the witness this is dominated
+                        by inter-sample centroid spread (~25x the intra-bunch size), so the
+                        standardized intra-bunch shape becomes tiny and the whitening Sigma_k
+                        target is badly conditioned.
+    mode='intrabunch' : std of pooled PER-SAMPLE-CENTERED particles (v2 default) -> std reflects
+                        the typical intra-bunch size, so standardized intra-bunch shape is ~O(1)
+                        and the whitening regresses a well-scaled (mu_k, Sigma_k). Mean is the
+                        pooled raw mean either way (the placement frame).
+    """
+    # float64 accumulation: pz ~1e10 eV/c summed over millions of float32 particles loses
+    # ~340 MeV of precision in the mean (= ~21 sigma of the *witness* pz spread, but only
+    # ~2 sigma for the fatter drive) -- which corrupts the witness LPS frame. Cast first.
+    parts = [r[key_parts].astype(np.float64) for r in records if r[key_density]]
+    if not parts:
         return np.zeros(6, np.float32), np.ones(6, np.float32)
-    pooled = np.concatenate(pooled, axis=0)
+    pooled = np.concatenate(parts, axis=0)
     mean = pooled.mean(axis=0)
-    std = np.maximum(pooled.std(axis=0), 1e-12)
-    return mean.astype(np.float32), std.astype(np.float32)
+    if mode == "pooled":
+        std = pooled.std(axis=0)
+    else:
+        centered = np.concatenate([p - p.mean(axis=0, keepdims=True) for p in parts], axis=0)
+        std = centered.std(axis=0)
+    return mean.astype(np.float32), np.maximum(std, 1e-12).astype(np.float32)
 
 
-def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None, verbose=True):
+def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
+               scaler="intrabunch", verbose=True):
     data_dir = repo_root() / "data" / subdir
     files = sorted(glob.glob(str(data_dir / "sample_*.json")))
     if max_samples:
@@ -150,8 +168,8 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None, v
             print(f"  {i+1}/{len(files)}: kept {len(records)} (drive-dens {nd}, witness-dens {nw})")
 
     n = len(records)
-    drive_mean, drive_std = _scaler(records, "drive_parts", "drive_density")
-    witness_mean, witness_std = _scaler(records, "witness_parts", "witness_density")
+    drive_mean, drive_std = _scaler(records, "drive_parts", "drive_density", scaler)
+    witness_mean, witness_std = _scaler(records, "witness_parts", "witness_density", scaler)
     drive_full = max((r["drive_charge"] for r in records), default=1.0) or 1.0
     witness_full = max((r["witness_charge"] for r in records), default=1.0) or 1.0
 
@@ -185,7 +203,7 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None, v
         "witness_mean": witness_mean.tolist(), "witness_std": witness_std.tolist(),
         "drive_full_charge_nC": drive_full, "witness_full_charge_nC": witness_full,
         "coord_keys": list(COORD_KEYS), "electron_mc2_ev": ELECTRON_MC2_EV,
-        "P": int(p), "n_records": n,
+        "P": int(p), "n_records": n, "scaler": scaler,
     }
     with open(out.replace(".h5", "_norm.json"), "w") as f:
         json.dump(norm, f, indent=2)
@@ -206,9 +224,11 @@ def main():
     ap.add_argument("--max-samples", type=int, default=None)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--scaler", choices=["pooled", "intrabunch"], default="intrabunch",
+                    help="per-bunch std basis (v2 default 'intrabunch'; v1 used 'pooled')")
     args = ap.parse_args()
     preprocess(subdir=args.subdir, p=args.P, max_samples=args.max_samples,
-               seed=args.seed, out=args.out)
+               seed=args.seed, out=args.out, scaler=args.scaler)
 
 
 if __name__ == "__main__":
