@@ -104,27 +104,45 @@ def corner(true, flow, title, path):
 
 
 # ---- important slices for a couple samples ----------------------------------
-def slices(items, path):
-    nr = len(items)
-    fig, ax = plt.subplots(nr, 4, figsize=(16, 3.6 * nr))
-    ax = np.atleast_2d(ax)
-    for r, (true, flow, lab) in enumerate(items):
-        pz = true[:, 5].mean(); T, F = _disp(true, pz), _disp(flow, pz)
-        ti, fi = _sub(len(T), 1200, 0), _sub(len(F), 1200, 1)
-        for c, (i, j, nm) in enumerate(PAIRS):
-            a = ax[r, c]
-            a.scatter(T[ti, i], T[ti, j], s=3, alpha=0.25, color=C_T, edgecolors="none")
-            a.scatter(F[fi, i], F[fi, j], s=3, alpha=0.25, color=C_F, edgecolors="none")
-            a.set_xlabel(LABELS[i], fontsize=8); a.tick_params(labelsize=7)
-            a.set_ylabel((lab + "\n" if c == 0 else "") + LABELS[j], fontsize=8)
-            if r == 0:
-                a.set_title(nm, fontsize=11)
-    fig.legend(handles=[plt.Line2D([], [], color=C_T, label="true"),
-                        plt.Line2D([], [], color=C_F, label="flow")],
-               loc="upper right", fontsize=11)
-    fig.suptitle("Phase-space slices — true vs flow (rows: sample × bunch)", fontsize=13)
-    fig.tight_layout(rect=(0, 0, 1, 0.98))
-    fig.savefig(path, dpi=120, bbox_inches="tight"); plt.close(fig)
+def slices(items, path, dark=False):
+    """x–y, x–px, y–py, z–pz scatter rows. ``dark=True`` renders a black-background,
+    large-font variant for slides (brighter true/flow colors, bigger markers)."""
+    import contextlib
+
+    c_t = "#4ea1ff" if dark else C_T            # true (bright blue on black)
+    c_f = "#ff6b6b" if dark else C_F            # flow (bright red on black)
+    if dark:
+        fs = dict(title=19, lab=15, tick=12, sup=22, leg=17, s=9, alpha=0.40)
+    else:
+        fs = dict(title=11, lab=8, tick=7, sup=13, leg=11, s=3, alpha=0.25)
+    ctx = plt.style.context("dark_background") if dark else contextlib.nullcontext()
+    with ctx:
+        nr = len(items)
+        fig, ax = plt.subplots(nr, 4, figsize=(16, 3.6 * nr))
+        ax = np.atleast_2d(ax)
+        for r, (true, flow, lab) in enumerate(items):
+            pz = true[:, 5].mean(); T, F = _disp(true, pz), _disp(flow, pz)
+            ti, fi = _sub(len(T), 1200, 0), _sub(len(F), 1200, 1)
+            for c, (i, j, nm) in enumerate(PAIRS):
+                a = ax[r, c]
+                a.scatter(T[ti, i], T[ti, j], s=fs["s"], alpha=fs["alpha"],
+                          color=c_t, edgecolors="none")
+                a.scatter(F[fi, i], F[fi, j], s=fs["s"], alpha=fs["alpha"],
+                          color=c_f, edgecolors="none")
+                a.set_xlabel(LABELS[i], fontsize=fs["lab"])
+                a.tick_params(labelsize=fs["tick"])
+                a.set_ylabel((lab + "\n" if c == 0 else "") + LABELS[j],
+                             fontsize=fs["lab"])
+                if r == 0:
+                    a.set_title(nm, fontsize=fs["title"])
+        fig.legend(handles=[plt.Line2D([], [], color=c_t, label="true"),
+                            plt.Line2D([], [], color=c_f, label="flow")],
+                   loc="upper right", fontsize=fs["leg"])
+        fig.suptitle("Phase-space slices — true vs flow (rows: sample × bunch)",
+                     fontsize=fs["sup"])
+        fig.tight_layout(rect=(0, 0, 1, 0.98))
+        sk = {"facecolor": "black"} if dark else {}
+        fig.savefig(path, dpi=120, bbox_inches="tight", **sk); plt.close(fig)
     print("wrote", path)
 
 
@@ -255,27 +273,38 @@ def main():
     ap.add_argument("--out", default="artifacts/surrogate/diagnostics")
     ap.add_argument("--samples", type=int, nargs="+", default=[693, 4778],
                     help="processed-row indices (default: an intact + a scraped witness)")
+    ap.add_argument("--dark", action="store_true",
+                    help="black-background, large-font slideshow styling for slices.")
+    ap.add_argument("--suffix", default="",
+                    help="appended to output filenames (e.g. slices<suffix>.png).")
+    ap.add_argument("--only-slices", action="store_true",
+                    help="render only slices.png (skip corner/beam/knob/feasibility/dispersion).")
     args = ap.parse_args()
     ckpt = sorted(glob.glob(args.ckpt))[-1] if "*" in args.ckpt else args.ckpt
     out = repo_root() / args.out
     out.mkdir(parents=True, exist_ok=True)
     b = Bundle(ckpt, args.processed)
 
+    sfx = args.suffix
     rep = args.samples[0]
-    corner(b.true(rep, 0), b.flow(rep, 0), f"Drive phase space — sample row {rep}", str(out / "corner_drive.png"))
-    corner(b.true(rep, 1), b.flow(rep, 1), f"Witness phase space — sample row {rep}", str(out / "corner_witness.png"))
+    if not args.only_slices:
+        corner(b.true(rep, 0), b.flow(rep, 0), f"Drive phase space — sample row {rep}", str(out / f"corner_drive{sfx}.png"))
+        corner(b.true(rep, 1), b.flow(rep, 1), f"Witness phase space — sample row {rep}", str(out / f"corner_witness{sfx}.png"))
 
     items = []
     for row in args.samples:
         wf = float(b.ds.witness_frac[row])
         items.append((b.true(row, 0), b.flow(row, 0), f"row {row} drive"))
         items.append((b.true(row, 1), b.flow(row, 1), f"row {row} witness (frac {wf:.2f})"))
-    slices(items, str(out / "slices.png"))
-    beam_matrix(items, str(out / "beam_matrix.png"))
+    slices(items, str(out / f"slices{sfx}.png"), dark=args.dark)
+    if args.only_slices:
+        print("done:", out)
+        return
+    beam_matrix(items, str(out / f"beam_matrix{sfx}.png"))
 
-    knob_response(b, str(out / "knob_response.png"))
-    feasibility(b, str(out / "feasibility.png"))
-    dispersion_ratio(b, str(out / "dispersion_ratio.png"))
+    knob_response(b, str(out / f"knob_response{sfx}.png"))
+    feasibility(b, str(out / f"feasibility{sfx}.png"))
+    dispersion_ratio(b, str(out / f"dispersion_ratio{sfx}.png"))
     print("done:", out)
 
 
