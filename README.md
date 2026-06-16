@@ -12,7 +12,7 @@ S2E analog of `photoinjector-rl-clean` (which targets the PR10241 photoinjector)
 | `datagen` — LHS sweep (Bmad/Tao) | **working** (5000-sample campaign complete) |
 | `analysis` — consolidation + summary plots | **working** |
 | `surrogate` — conditional NF | **working** — RealNVP + per-bunch whitening + feasibility heads; viability AUC 0.999, inter-bunch R²>0.97 (witness emittance R²~0.5–0.7 is the v2 target) |
-| `rl` — PPO/SHAC/BPTT on the surrogate | stub |
+| `rl` — SHAC/BPTT on the surrogate | **working** — `TwoBunchFlowEnv` + composite reward (200 µm spacing target, floor-clamped emittance, >90% survival hinge); vendored diffrl SHAC/BPTT; DR hooks (random starts + off-by-default RF drift); particle-count study sets n=2048 |
 
 ## Two environments
 
@@ -77,9 +77,10 @@ src/twobunch_s2e_rl/
   datagen/    sweep_params.py (authoritative 8-knob table), run_sweep.py, paths.py
     phase0/   run_baseline.py, run_convergence.py, bench_threads.py (pre-campaign study)
   analysis/   build_dataset.py, summary_plots.py, twobunch_quality_plots.py
-  surrogate/  stub  (see docs/surrogate_roadmap.md)
-  rl/         stub
-configs/      smoke|pilot|full|wakes_gate.yaml   (output_dir -> data/<name>)
+  surrogate/  preprocess, dataset, model (TwoBunchFlow), train, eval, diagnostics
+  rl/         reward, diff_env (TwoBunchFlowEnv), diffrl/ (vendored SHAC/BPTT),
+              train_{shac,bptt}, eval, compare, particle_study
+configs/      smoke|pilot|full|wakes_gate.yaml (datagen); shac|bptt.yaml (MBRL)
 data/         campaign output + data/phase0/ baseline study output (gitignored)
 artifacts/    regenerated dataset cache + figures (gitignored)
 docs/         surrogate_roadmap.md

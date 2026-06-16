@@ -1,0 +1,72 @@
+# SHAC over the two-bunch flow surrogate (TwoBunchFlowEnv). Composite reward: spacing target
+# (200 um) + per-bunch emittance (floor-clamped minimize) + survival hinge (>90%). diffrl SHAC
+# reused unchanged. target_critic_alpha=0.6 + best_policy eval mitigate the late-collapse seen
+# in prior flow-MBRL (stochastic reward).
+params:
+  diff_env:
+    name: TwoBunchFlowEnv
+    episode_length: 64
+    stochastic_env: true          # random starting knobs each episode (active DR)
+    action_scale: 0.05
+    rf_drift_std: 0.0             # hidden per-episode RF-knob drift (built, OFF by default)
+    common_random_numbers: false  # fresh base noise per step (unbiased reparam gradient)
+    n_particles: 512             # MEMORY-DOMINANT knob: retained flow graph ~ num_actors *
+                                  # n_particles * steps_num. 512 keeps grad-CoV ~0.05 (converged,
+                                  # particle_study.py); value noise (~5%) averages over actors.
+                                  # Bump to 1024 (~2x mem) if you want tighter value noise.
+    # ---- reward ----
+    campaign_h5: processed/twobunch_flow_v4.h5
+    reward_norms_json: artifacts/rl/metric_norms.json   # cache of per-metric z-scores + floors
+    spacing_target_m: 2.0e-4      # 200 um (campaign median ~212 um -> reachable)
+    surv_T_min: 0.9               # survival hinge floor on T_drive / T_witness
+    surv_margin: 0.05             # hinge at T_min+margin (~witness head MAE) -> off the cliff
+    floor_pct: 10.0               # emittance floor = campaign p10 (flow RMS units)
+    emit_mode: minimize_floor     # range-normalized floor barrier (minimize | ceiling also avail)
+    emit_below_weight: 1.0        # sub-floor barrier weight (penalize extrapolation below floor)
+    emit_gate_band: 0.2           # survival-gate ramp width: full emit credit only at T>=T_min
+    w_spacing: 1.0
+    w_emit: 1.0
+    w_emit_witness: 0.5           # down-weight the witness (flow's weakest observable, R2~0.88)
+    w_surv: 2.0
+    w_ood: 0.5                    # knob trust-region: discourage box-corner extrapolation
+    boundary_margin: 0.05         # edge band where the trust-region penalty ramps in
+    w_collinearity: 0.0           # offset/angle terms off by default
+  general:
+    seed: 0
+    device: cuda:0
+    render: false
+    train: true
+    logdir: logs/shac
+  config:
+    name: TwoBunchSHAC
+    num_actors: 32
+    steps_num: 16
+    max_epochs: 500
+    actor_learning_rate: 5e-4
+    critic_learning_rate: 1e-3
+    lr_schedule: linear
+    gamma: 0.99
+    critic_method: td-lambda
+    lambda: 0.95
+    target_critic_alpha: 0.6
+    obs_rms: true
+    ret_rms: false
+    critic_iterations: 16
+    num_batch: 4
+    truncate_grads: true
+    grad_norm: 1.0
+    rew_scale: 1.0
+    save_interval: 50
+    betas: [0.7, 0.95]
+    player:
+      games_num: 64
+      deterministic: false
+  network:
+    actor_mlp:
+      units: [128, 128]
+      activation: elu
+    actor_logstd_init: -1.0
+    critic: CriticMLP
+    critic_mlp:
+      units: [128, 128]
+      activation: elu

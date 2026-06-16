@@ -1,8 +1,7 @@
-"""RL on the two-bunch surrogate (NOT YET IMPLEMENTED).
+"""MBRL on the two-bunch flow surrogate.
 
-Planned: PPO/SHAC/BPTT agents tuning the 8 sweep knobs against surrogate-derived rewards
-(witness emittance / BMAG, bunch spacing, collinearity), mirroring photoinjector-rl-clean.
-Blocked on the surrogate stage. Runs in the `slac-rl` (torch) env once implemented.
+BPTT/SHAC agents tune the 8 sweep knobs against a composite, feasibility-gated reward
+(spacing target + per-bunch emittance + survival) computed from the differentiable
+`TwoBunchFlow.observables()`. Mirrors the photoinjector-rl-clean flow-MBRL stack. Runs in the
+`slac-rl` (torch) env. See lab-notebook 2026-06-15 MBRL plan.
 """
-
-raise NotImplementedError("twobunch_s2e_rl.rl is a stub — blocked on the surrogate stage")

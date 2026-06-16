@@ -1,0 +1,58 @@
+# BPTT over the two-bunch flow surrogate (TwoBunchFlowEnv). Same env/reward as shac.yaml; pure
+# backprop through the rollout, no critic. steps_num is the TRUNCATED BPTT horizon: with flow
+# particle-sampling, full-episode (64) backprop is memory-heavy, so use a shorter window (the
+# env still auto-resets at episode_length=64).
+params:
+  diff_env:
+    name: TwoBunchFlowEnv
+    episode_length: 64
+    stochastic_env: true
+    action_scale: 0.05
+    rf_drift_std: 0.0
+    common_random_numbers: false
+    n_particles: 512             # memory-dominant (BPTT retains steps_num=32 graphs); see shac.yaml note
+    # ---- reward ----
+    campaign_h5: processed/twobunch_flow_v4.h5
+    reward_norms_json: artifacts/rl/metric_norms.json
+    spacing_target_m: 2.0e-4
+    surv_T_min: 0.9
+    surv_margin: 0.05
+    floor_pct: 10.0
+    emit_mode: minimize_floor
+    emit_below_weight: 1.0
+    emit_gate_band: 0.2
+    w_spacing: 1.0
+    w_emit: 1.0
+    w_emit_witness: 0.5
+    w_surv: 2.0
+    w_ood: 0.5
+    boundary_margin: 0.05
+    w_collinearity: 0.0
+  general:
+    seed: 0
+    device: cuda:0
+    render: false
+    train: true
+    logdir: logs/bptt
+  config:
+    name: TwoBunchBPTT
+    num_actors: 32
+    steps_num: 32           # truncated BPTT horizon (memory; <= episode_length)
+    max_epochs: 200
+    actor_learning_rate: 5e-4
+    lr_schedule: linear
+    gamma: 0.99
+    obs_rms: true
+    truncate_grads: true
+    grad_norm: 1.0
+    rew_scale: 1.0
+    save_interval: 50
+    betas: [0.7, 0.95]
+    player:
+      games_num: 64
+      deterministic: false
+  network:
+    actor_mlp:
+      units: [128, 128]
+      activation: elu
+    actor_logstd_init: -1.0
