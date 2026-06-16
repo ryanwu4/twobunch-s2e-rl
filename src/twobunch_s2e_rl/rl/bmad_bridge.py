@@ -34,12 +34,14 @@ class BmadBridge:
     def __init__(self, *, baseline_config: str, drive_full_nc: float, witness_full_nc: float,
                  num_macro: int = 20000, csr: bool = True, wakes: bool = True,
                  P: int = 2048, scratch: str | None = None, bmad_python: str = BMAD_PYTHON,
-                 ready_timeout: float = 900.0):
+                 ready_timeout: float = 900.0, threads: int = 32):
         self.scratch = scratch or str(repo_root() / "data" / "rl_bmad_scratch")
         os.makedirs(self.scratch, exist_ok=True)
         self._errlog = open(Path(self.scratch) / "worker.err", "w")
         env = dict(os.environ)
         env["PYTHONPATH"] = str(repo_root() / "src")
+        # single serial worker: OpenMP threads PER track (Bmad saturates ~8-32); read by the worker
+        env["BMAD_OMP_THREADS"] = str(int(threads))
         cmd = [bmad_python, "-u", "-m", "twobunch_s2e_rl.rl._bmad_worker",
                "--baseline-config", baseline_config,
                "--num-macro", str(int(num_macro)), "--csr", str(int(csr)),

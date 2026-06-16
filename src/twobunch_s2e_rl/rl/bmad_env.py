@@ -27,7 +27,8 @@ _INTER_KEYS = ("bunch_spacing", "energy_difference", "transverse_offset", "angul
 class BmadTwoBunchEnv:
     def __init__(self, bridge, reward_spec: TwoBunchRewardSpec, *, num_envs: int = 1,
                  device: str = "cpu", episode_length: int = 24, action_scale: float = 0.05,
-                 stochastic_init: bool = True, seed: int = 0, min_particles: int = 64):
+                 stochastic_init: bool = True, seed: int = 0, min_particles: int = 64,
+                 spacing_goal: float | None = None):
         self.bridge = bridge
         self._reward_spec = reward_spec
         self.num_envs = int(num_envs)
@@ -53,6 +54,10 @@ class BmadTwoBunchEnv:
                 self._neutral[key] = float(10 ** mean)   # emit keys are log10-normed
         self._spacing_target = next((t.target for t in reward_spec.terms
                                      if t.key == "bunch_spacing"), 2e-4)
+        # goal-conditioning: if the policy/spec expects a "spacing_goal" obs column, inject a fixed
+        # eval goal each step (defaults to the reward's spacing target when none is given).
+        self._goal_conditioned = "spacing_goal" in reward_spec.obs_keys
+        self._spacing_goal = float(spacing_goal) if spacing_goal is not None else self._spacing_target
         self._knobs = torch.zeros(self.num_envs, N_KNOB, device=self.device)
         self._step_count = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
         self._last_obs_extra = torch.zeros(self.num_envs, reward_spec.n_obs_extra, device=self.device)
@@ -80,7 +85,7 @@ class BmadTwoBunchEnv:
             out.update(inter_bunch(d, w))
         else:
             for k in _INTER_KEYS:
-                out[k] = torch.tensor([self._spacing_target if k == "bunch_spacing" else 0.0],
+                out[k] = torch.tensor([self._spacing_goal if k == "bunch_spacing" else 0.0],
                                       device=self.device)
         out["T_drive"] = torch.tensor([float(res["T_drive"])], device=self.device)
         out["T_witness"] = torch.tensor([float(res["T_witness"])], device=self.device)
@@ -94,6 +99,9 @@ class BmadTwoBunchEnv:
             per.append(self._per_env(res))
         obs_dict = {k: torch.cat([p[k] for p in per], dim=0) for k in per[0]}
         obs_dict[KNOBS_KEY] = knobs_norm
+        if self._goal_conditioned:             # load-bearing: a goal-conditioned policy expects it
+            obs_dict["spacing_goal"] = torch.full((self.num_envs,), self._spacing_goal,
+                                                  device=self.device)
         reward, achieved = self._reward_spec(obs_dict)
         obs_extra = self._reward_spec.obs_scaled(obs_dict)
         return reward, obs_extra, {k: v for k, v in achieved.items()}
@@ -112,7 +120,10 @@ class BmadTwoBunchEnv:
         return self._compute_obs()
 
     def step(self, action: torch.Tensor):
-        action = action.to(self.device)
+        # Bmad is non-differentiable (eval-only): detach so `self._knobs` stays a grad-free leaf
+        # (the policy is called outside no_grad, so the action carries grad) -- otherwise _observe
+        # can't .numpy() the knobs and a graph would accrue across steps.
+        action = action.detach().to(self.device)
         self._knobs = torch.clamp(self._knobs + self.action_scale * action, 0.0, 1.0)
         reward, obs_extra, achieved = self._observe(self._knobs)
         self._last_obs_extra, self._last_achieved = obs_extra, achieved

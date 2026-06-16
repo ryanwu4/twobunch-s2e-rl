@@ -84,6 +84,47 @@ def test_drift_zero_by_default():
     assert torch.count_nonzero(env._drift) == 0
 
 
+# ---- goal-conditioning (dynamic target spacing) -------------------------------
+
+def _gc_spec():
+    return _spec(spacing_goal_key="spacing_goal")
+
+
+def test_non_goal_env_unchanged():
+    """No goal kwargs -> non-goal env, obs dim 15, identical to the fixed-target env."""
+    env = _env()
+    assert env.num_obs == N_KNOB + 7 == 15 and env._goal_conditioned is False
+
+
+def test_goal_conditioned_obs_dim_grows():
+    env = _env(reward_spec=_gc_spec(), spacing_goal_lo=1e-4, spacing_goal_hi=3e-4)
+    assert env._goal_conditioned and env.num_obs == N_KNOB + 8 == 16
+    obs = env.reset()
+    assert obs.shape == (4, 16) and torch.isfinite(obs).all()
+
+
+def test_goal_in_range_and_partial_reset():
+    env = _env(num_envs=6, reward_spec=_gc_spec(), spacing_goal_lo=1e-4, spacing_goal_hi=3e-4)
+    g0 = env._spacing_goal.clone()
+    assert (g0 >= 1e-4).all() and (g0 <= 3e-4).all()
+    env.reset(torch.tensor([0, 2]))                       # partial reset
+    g1 = env._spacing_goal
+    assert (g1 >= 1e-4).all() and (g1 <= 3e-4).all()
+    survivors = [1, 3, 4, 5]
+    assert torch.equal(g1[survivors], g0[survivors])      # survivors keep their goal
+
+
+def test_goal_is_detached_and_gradient_still_flows():
+    """The goal is a detached constant -> no grad path, and the action->reward grad is unaffected."""
+    env = _env(reward_spec=_gc_spec(), stochastic_init=False, no_grad=False,
+               spacing_goal_lo=1e-4, spacing_goal_hi=3e-4)
+    assert env._spacing_goal.requires_grad is False
+    a = torch.zeros(4, 8, requires_grad=True)
+    _, rew, _, _ = env.step(a)
+    rew.sum().backward()
+    assert a.grad is not None and torch.isfinite(a.grad).all() and a.grad.abs().sum() > 0
+
+
 def test_drift_only_on_rf_indices():
     env = _env(rf_drift_std=0.1)
     nz = (env._drift != 0).any(dim=0)             # per-knob: any env drifted?

@@ -1,0 +1,83 @@
+# SHAC over the two-bunch flow surrogate (TwoBunchFlowEnv) -- DOMAIN-RANDOMIZED variant.
+# Differs from shac.yaml only by: (1) latent per-episode RF drift turned ON (physical 0.5 deg
+# phase / 0.5% amplitude); (2) a much stricter, raw-loss survival target (penalty = 1 - T).
+# Everything else (env/network/optimizer) is identical so this is a clean A/B vs the clean run.
+params:
+  diff_env:
+    name: TwoBunchFlowEnv
+    episode_length: 64
+    stochastic_env: true          # random starting knobs each episode (active DR)
+    action_scale: 0.05
+    # ---- latent RF drift (hidden per-episode offset, unobserved by the policy) ----
+    rf_drift:
+      enabled: true               # ON for this DR variant (rf_drift_std scalar is ignored)
+      phase_drift_deg: 0.5        # 1-sigma RF phase jitter on L1/L2 PhaseSet (deg)
+      amp_drift_frac: 0.005       # 1-sigma RF amplitude jitter on L1/L2/L3 energy gain (fraction)
+      # -> normalized per-knob 1-sigma: L1Phase 0.100, L2Phase 0.125, each energy ~0.250.
+      # NB 0.5% amplitude is ~1/4 of the narrow +-1% energy box; dial amp_drift_frac for nominal jitter.
+    rf_drift_std: 0.0             # scalar fallback (unused while rf_drift.enabled)
+    common_random_numbers: false  # fresh base noise per step (unbiased reparam gradient)
+    n_particles: 512             # MEMORY-DOMINANT knob: retained flow graph ~ num_actors *
+                                  # n_particles * steps_num. 512 keeps grad-CoV ~0.05 (converged,
+                                  # particle_study.py); value noise (~5%) averages over actors.
+    # ---- reward ----
+    campaign_h5: processed/twobunch_flow_v4.h5
+    reward_norms_json: artifacts/rl/norms/metric_norms_dr.json   # SEPARATE cache (per-bunch floors differ from clean)
+    spacing_target_m: 2.0e-4      # 200 um (campaign median ~212 um -> reachable)
+    surv_T_min: 0.98              # STRICT: with margin 0.02 -> hinge_at 1.0 -> penalty = raw loss (1-T)
+    surv_margin: 0.02             # campaign supports both-bunch T>=0.99 (14%), T>=0.995 (0%) -> don't exceed
+    floor_pct: 10.0               # default emittance-floor percentile (used where no per-bunch override)
+    # ---- emittance rebalance: drive was floor-pinned at campaign p10 (63.7 um-rad emit_x); weights
+    # can't push below the floor, so lower the DRIVE floor to chase the lower tail (p2 ~48 um-rad
+    # emit_x; campaign min ~35), and sacrifice witness via a lower weight + unchanged p10 floor.
+    drive_floor_pct: 2.0          # drive emittance floor = campaign p2 (emit_x ~48, emit_y ~9.6)
+    witness_floor_pct: 10.0       # witness floor unchanged (p10); low weight lets it drift up
+    emit_mode: minimize_floor     # range-normalized floor barrier (minimize | ceiling also avail)
+    emit_below_weight: 1.0        # sub-floor barrier weight (penalize extrapolation below floor)
+    emit_gate_band: 0.2           # survival-gate ramp [0.78, 0.98]: full emit credit only at T>=0.98
+    w_spacing: 1.0
+    w_emit: 1.5                   # UP from 1.0: prioritize pulling drive to its (now lower) floor
+    w_emit_witness: 0.3           # DOWN from 0.5: sacrifice witness emittance to help drive
+    w_surv: 4.0                   # MAIN strictness dial (raw-loss fraction is small in the clean region)
+    w_ood: 0.5                    # knob trust-region: keeps the strict target off surrogate over-prediction
+    boundary_margin: 0.05         # edge band where the trust-region penalty ramps in
+    w_collinearity: 0.0           # offset/angle terms off by default
+  general:
+    seed: 0
+    device: cuda:0
+    render: false
+    train: true
+    logdir: logs/shac_dr
+  config:
+    name: TwoBunchSHAC_DR
+    num_actors: 32
+    steps_num: 16
+    max_epochs: 500
+    actor_learning_rate: 5e-4
+    critic_learning_rate: 1e-3
+    lr_schedule: linear
+    gamma: 0.99
+    critic_method: td-lambda
+    lambda: 0.95
+    target_critic_alpha: 0.6
+    obs_rms: true
+    ret_rms: false
+    critic_iterations: 16
+    num_batch: 4
+    truncate_grads: true
+    grad_norm: 1.0
+    rew_scale: 1.0
+    save_interval: 50
+    betas: [0.7, 0.95]
+    player:
+      games_num: 64
+      deterministic: false
+  network:
+    actor_mlp:
+      units: [128, 128]
+      activation: elu
+    actor_logstd_init: -1.0
+    critic: CriticMLP
+    critic_mlp:
+      units: [128, 128]
+      activation: elu

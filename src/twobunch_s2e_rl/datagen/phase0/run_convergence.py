@@ -15,6 +15,15 @@ Run with the bmad-qpad-dev env, from the repo root:
     -m twobunch_s2e_rl.datagen.phase0.run_convergence
 """
 
+import os
+
+# Single serial Bmad track -> use multiple OpenMP threads (Bmad saturates ~8-32). Default 32;
+# override with BMAD_OMP_THREADS. Set before pytao loads.
+_THREADS = os.environ.get("BMAD_OMP_THREADS", "32")
+os.environ["OMP_NUM_THREADS"] = _THREADS
+os.environ["OPENBLAS_NUM_THREADS"] = _THREADS
+os.environ["MKL_NUM_THREADS"] = _THREADS
+
 import json
 import time
 

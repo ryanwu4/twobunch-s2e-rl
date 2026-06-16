@@ -42,6 +42,8 @@ from ..surrogate.properties import inter_bunch, per_bunch
 # observables() dict keys grouped for convenience
 EMIT_KEYS = ("drive_norm_emit_x", "drive_norm_emit_y",
              "witness_norm_emit_x", "witness_norm_emit_y")
+DRIVE_EMIT_KEYS = ("drive_norm_emit_x", "drive_norm_emit_y")
+WITNESS_EMIT_KEYS = ("witness_norm_emit_x", "witness_norm_emit_y")
 SURV_KEYS = ("T_drive", "T_witness")
 KNOBS_KEY = "knobs"   # injected by the env for the trust-region term
 # keys exposed to the policy as (z-scored) achieved observables, appended to the knobs in obs
@@ -136,26 +138,31 @@ def compute_metric_norms(h5_path: str, keys=None, chunk: int = 256) -> dict[str,
 
 
 def derive_floors_from_campaign(h5_path: str, pct: float = 10.0,
-                                emit_keys=EMIT_KEYS, chunk: int = 256) -> dict[str, float]:
-    """Per-emittance floor = the `pct`-percentile of the campaign distribution, in PHYSICAL
-    units (the flow RMS norm_emit kernel)."""
+                                emit_keys=EMIT_KEYS, chunk: int = 256,
+                                pct_by_key: dict[str, float] | None = None) -> dict[str, float]:
+    """Per-emittance floor = the percentile of the campaign distribution, in PHYSICAL units (the
+    flow RMS norm_emit kernel). `pct` is the default; `pct_by_key` overrides it per metric (e.g. a
+    lower drive percentile lets the policy chase the campaign's lower emittance tail)."""
     metrics = _campaign_metrics(h5_path, chunk=chunk)
+    pct_by_key = pct_by_key or {}
     floors = {}
     for k in emit_keys:
         a = metrics[k]
         a = a[np.isfinite(a) & (a > 0)]
         if a.size == 0:
             raise ValueError(f"emittance {k!r} has no positive campaign rows -- cannot floor")
-        floors[k] = float(np.percentile(a, pct))
+        floors[k] = float(np.percentile(a, pct_by_key.get(k, pct)))
     return floors
 
 
 # ----- norms cache with provenance (fix #5) ------------------------------------
 
-def _provenance(h5_path: str, floor_pct: float) -> dict:
+def _provenance(h5_path: str, floor_desc) -> dict:
+    """`floor_desc` is whatever uniquely identifies the floors (a scalar pct, or a dict of
+    {floor_pct, pct_by_key} for per-bunch floors) so the cache invalidates when floors change."""
     st = os.stat(h5_path)
     return {"campaign_h5": os.path.abspath(h5_path), "mtime": st.st_mtime,
-            "size": st.st_size, "floor_pct": float(floor_pct)}
+            "size": st.st_size, "floor": floor_desc}
 
 
 def save_norms(norms: dict, floors: dict, path: str, provenance: dict | None = None) -> None:
@@ -188,6 +195,8 @@ class RewardTerm:
     gate_low: float = 0.7          # gate ramp: 0 at/below gate_low, 1 at/above gate_high
     gate_high: float = 0.9
     margin: float = 0.05           # boundary mode: edge band width
+    goal_key: str | None = None    # target mode: per-env target read from obs[goal_key] (B,), physical
+                                   # units; overrides the scalar `target` for goal-conditioned RL
 
     def _gate(self, obs: dict[str, torch.Tensor]) -> torch.Tensor | None:
         if self.gate_key is None:
@@ -204,7 +213,13 @@ class RewardTerm:
             return prox.mean(dim=-1)
         tx = _t(obs[self.key], self.transform)
         if self.mode == "target":
-            return torch.abs(tx - _tval(self.target, self.transform)) / self.std
+            # per-env goal (goal-conditioned) overrides the scalar target; the goal is a detached
+            # constant w.r.t. the knobs, so only `tx` carries grad -- d(penalty)/d(knobs) is unchanged.
+            if self.goal_key is not None:
+                tgt = _t(obs[self.goal_key], self.transform)   # (B,) physical -> transform space
+            else:
+                tgt = _tval(self.target, self.transform)       # scalar fallback (back-compat)
+            return torch.abs(tx - tgt) / self.std
         if self.mode == "minimize":
             return (tx - self.mean) / self.std
         if self.mode == "maximize":
@@ -285,6 +300,7 @@ def build_twobunch_reward_spec(
     boundary_margin: float = 0.05,
     w_collinearity: float = 0.0,
     obs_keys=DEFAULT_OBS_KEYS,
+    spacing_goal_key: str | None = None,
 ) -> TwoBunchRewardSpec:
     """Assemble the default composite spec.
 
@@ -302,7 +318,8 @@ def build_twobunch_reward_spec(
     terms: list[RewardTerm] = []
 
     tr, m, s = nrm("bunch_spacing")
-    terms.append(RewardTerm("bunch_spacing", "target", tr, m, s, w_spacing, target=spacing_target_m))
+    terms.append(RewardTerm("bunch_spacing", "target", tr, m, s, w_spacing,
+                            target=spacing_target_m, goal_key=spacing_goal_key))
 
     for k in emit_keys:
         tr, m, s = nrm(k)
@@ -325,21 +342,40 @@ def build_twobunch_reward_spec(
             tr, m, s = nrm(k)
             terms.append(RewardTerm(k, "minimize", tr, m, s, w_collinearity))
 
+    obs_keys = tuple(obs_keys)
+    # goal-conditioned: expose the per-env target spacing to the policy, APPENDED to the end so the
+    # obs prefix stays byte-identical to a non-goal run (preserves checkpoint/obs ordering). z-scored
+    # with the bunch_spacing norms (same physical scale as the achieved spacing already in obs).
+    if spacing_goal_key is not None and spacing_goal_key not in obs_keys:
+        obs_keys = obs_keys + (spacing_goal_key,)
     obs_norms = {k: norms[k] for k in obs_keys if k in norms}
-    return TwoBunchRewardSpec(terms=terms, obs_keys=tuple(obs_keys), obs_norms=obs_norms)
+    if spacing_goal_key is not None:
+        obs_norms[spacing_goal_key] = norms["bunch_spacing"]
+    return TwoBunchRewardSpec(terms=terms, obs_keys=obs_keys, obs_norms=obs_norms)
 
 
 def reward_spec_from_campaign(h5_path: str, *, floor_pct: float = 10.0,
+                              drive_floor_pct: float | None = None,
+                              witness_floor_pct: float | None = None,
                               cache_json: str | None = None, **kwargs) -> TwoBunchRewardSpec:
-    """Compute norms+floors from the campaign h5 (or load a provenance-matched cache) and build
-    the spec. The cache is invalidated if the campaign file or floor_pct changed (fix #5)."""
+    """Compute norms+floors from the campaign h5 (or load a provenance-matched cache) and build the
+    spec. `floor_pct` is the default emittance-floor percentile; `drive_floor_pct`/`witness_floor_pct`
+    override it per bunch (a lower drive percentile lets the policy chase a lower drive emittance,
+    at the campaign tail's expense). The cache invalidates if the campaign file or any floor changed."""
+    pct_by_key: dict[str, float] = {}
+    if drive_floor_pct is not None:
+        pct_by_key.update({k: float(drive_floor_pct) for k in DRIVE_EMIT_KEYS})
+    if witness_floor_pct is not None:
+        pct_by_key.update({k: float(witness_floor_pct) for k in WITNESS_EMIT_KEYS})
+    floor_desc = ({"floor_pct": float(floor_pct), "pct_by_key": pct_by_key}
+                  if pct_by_key else float(floor_pct))
     if cache_json is not None and os.path.exists(cache_json):
-        want = _provenance(h5_path, floor_pct)
+        want = _provenance(h5_path, floor_desc)
         prov, norms, floors = load_norms(cache_json)
         if prov == want:
             return build_twobunch_reward_spec(norms, floors, **kwargs)
     norms = compute_metric_norms(h5_path)
-    floors = derive_floors_from_campaign(h5_path, pct=floor_pct)
+    floors = derive_floors_from_campaign(h5_path, pct=floor_pct, pct_by_key=pct_by_key)
     if cache_json is not None:
-        save_norms(norms, floors, cache_json, _provenance(h5_path, floor_pct))
+        save_norms(norms, floors, cache_json, _provenance(h5_path, floor_desc))
     return build_twobunch_reward_spec(norms, floors, **kwargs)

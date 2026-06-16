@@ -55,6 +55,25 @@ def test_target_term_zero_at_target():
     assert (pen[1:] > 0).all() and torch.isclose(pen[1], pen[2], atol=1e-9)
 
 
+def test_target_term_per_env_goal():
+    """Goal-conditioned: the target is read per-env from obs[goal_key], so each env is scored
+    against its own target spacing; only the achieved value carries grad."""
+    t = RewardTerm("bunch_spacing", "target", "identity", std=0.5, goal_key="spacing_goal")
+    obs = {"bunch_spacing": torch.tensor([2e-4, 3e-4]), "spacing_goal": torch.tensor([2e-4, 3e-4])}
+    assert torch.allclose(t.penalty(obs), torch.zeros(2), atol=1e-9)   # each env at its own goal
+    miss = {"bunch_spacing": torch.tensor([2e-4]), "spacing_goal": torch.tensor([2.5e-4])}
+    assert torch.isclose(t.penalty(miss)[0], torch.tensor(abs(2e-4 - 2.5e-4) / 0.5), atol=1e-9)
+
+
+def test_target_term_scalar_fallback_unchanged():
+    """goal_key=None reproduces the fixed-scalar-target behavior exactly (back-compat)."""
+    t = RewardTerm("bunch_spacing", "target", "identity", std=0.5, target=2e-4)
+    obs = {"bunch_spacing": torch.tensor([2e-4, 3e-4])}
+    pen = t.penalty(obs)
+    assert torch.isclose(pen[0], torch.tensor(0.0), atol=1e-9)
+    assert torch.isclose(pen[1], torch.tensor(abs(3e-4 - 2e-4) / 0.5), atol=1e-9)
+
+
 def _emit_term(**kw):
     d = dict(key="witness_norm_emit_x", mode="minimize_floor", transform="log10",
              mean=-4.4, std=0.3, floor=1.4e-5)
@@ -166,6 +185,27 @@ def test_obs_scaled_shape_and_finite():
     assert v.shape == (5, spec.n_obs_extra) == (5, 7) and torch.isfinite(v).all()
 
 
+def test_default_spec_obs_keys_unchanged():
+    """Without spacing_goal_key the spec is byte-identical to before: no goal in obs_keys, dim 7,
+    and the spacing term keeps its scalar target (guards the (5,7) obs_scaled canary above)."""
+    spec = build_twobunch_reward_spec(_norms(), _floors())
+    assert "spacing_goal" not in spec.obs_keys and spec.n_obs_extra == 7
+    assert next(t for t in spec.terms if t.key == "bunch_spacing").goal_key is None
+
+
+def test_goal_conditioned_spec_obs_and_norms():
+    """spacing_goal_key appends the goal to the END of obs_keys (prefix unchanged), reuses the
+    bunch_spacing z-score, grows n_obs_extra by 1, and points the spacing term at the per-env goal."""
+    norms = _norms()
+    spec = build_twobunch_reward_spec(norms, _floors(), spacing_goal_key="spacing_goal")
+    base = build_twobunch_reward_spec(norms, _floors())
+    assert spec.obs_keys[:-1] == base.obs_keys            # prefix byte-identical
+    assert spec.obs_keys[-1] == "spacing_goal"
+    assert spec.obs_norms["spacing_goal"] == norms["bunch_spacing"]
+    assert spec.n_obs_extra == base.n_obs_extra + 1
+    assert next(t for t in spec.terms if t.key == "bunch_spacing").goal_key == "spacing_goal"
+
+
 def test_reward_equals_neg_weighted_penalties():
     spec = build_twobunch_reward_spec(_norms(), _floors())
     m = _model()
@@ -215,14 +255,32 @@ def test_reward_spec_from_campaign_cache_provenance(tmp_path):
     cache = str(tmp_path / "norms.json")
     s10 = reward_spec_from_campaign(p, cache_json=cache, floor_pct=10.0)
     prov1, _, floors10 = load_norms(cache)
-    assert prov1["floor_pct"] == 10.0
+    assert prov1["floor"] == 10.0
     # re-run with a DIFFERENT floor_pct against the same cache path -> must recompute
     s50 = reward_spec_from_campaign(p, cache_json=cache, floor_pct=50.0)
     prov2, _, floors50 = load_norms(cache)
-    assert prov2["floor_pct"] == 50.0
+    assert prov2["floor"] == 50.0
     f10 = {t.key: t.floor for t in s10.terms if t.mode == "minimize_floor"}
     f50 = {t.key: t.floor for t in s50.terms if t.mode == "minimize_floor"}
     assert f50["witness_norm_emit_x"] > f10["witness_norm_emit_x"]   # p50 > p10
     # a matched re-run reuses the cache (same provenance) and builds identically
     s50b = reward_spec_from_campaign(p, cache_json=cache, floor_pct=50.0)
     assert len(s50b.terms) == len(s50.terms)
+
+
+def test_per_bunch_floor_percentiles(tmp_path):
+    """Per-bunch floor: a lower drive percentile drops the drive floor below the witness floor,
+    and the per-bunch descriptor lands in the cache provenance (so it invalidates correctly)."""
+    p = str(tmp_path / "campaign.h5")
+    _make_h5(p)
+    cache = str(tmp_path / "norms_pb.json")
+    s = reward_spec_from_campaign(p, cache_json=cache, floor_pct=10.0,
+                                  drive_floor_pct=2.0, witness_floor_pct=10.0)
+    f = {t.key: t.floor for t in s.terms if t.mode == "minimize_floor"}
+    # p2 floor must be <= the p10 floor for the SAME drive metric
+    s10 = reward_spec_from_campaign(p, floor_pct=10.0)
+    f10 = {t.key: t.floor for t in s10.terms if t.mode == "minimize_floor"}
+    assert f["drive_norm_emit_x"] <= f10["drive_norm_emit_x"]
+    assert f["witness_norm_emit_x"] == pytest.approx(f10["witness_norm_emit_x"])  # witness unchanged
+    prov, _, _ = load_norms(cache)
+    assert prov["floor"]["pct_by_key"]["drive_norm_emit_x"] == 2.0

@@ -1,7 +1,10 @@
-# BPTT over the two-bunch flow surrogate (TwoBunchFlowEnv). Same env/reward as shac.yaml; pure
-# backprop through the rollout, no critic. steps_num is the TRUNCATED BPTT horizon: with flow
-# particle-sampling, full-episode (64) backprop is memory-heavy, so use a shorter window (the
-# env still auto-resets at episode_length=64).
+# Goal-conditioned BPTT over the two-bunch flow surrogate. Same env/reward as bptt.yaml, but the
+# per-episode target bunch spacing is sampled in [spacing_goal_lo_m, spacing_goal_hi_m] and exposed
+# to the policy as an extra obs column (so num_obs = N_KNOB + n_obs_extra = 16). The reward's spacing
+# term tracks that per-env goal instead of the fixed 200 um. Clean machine (no RF drift) first, so the
+# goal-tracking signal is not confounded; surrogate spacing R^2=0.996 over the campaign and 100-300 um
+# is ~+-1 sigma of the campaign mean (204 um), i.e. interpolation. Norms cache is goal-independent,
+# so metric_norms.json is reused unchanged.
 params:
   diff_env:
     name: TwoBunchFlowEnv
@@ -10,11 +13,13 @@ params:
     action_scale: 0.05
     rf_drift_std: 0.0
     common_random_numbers: false
-    n_particles: 512             # memory-dominant (BPTT retains steps_num=32 graphs); see shac.yaml note
+    n_particles: 512
     # ---- reward ----
     campaign_h5: processed/twobunch_flow_v4.h5
     reward_norms_json: artifacts/rl/norms/metric_norms.json
-    spacing_target_m: 2.0e-4
+    spacing_target_m: 2.0e-4     # eval/fallback default (used when goal range is absent)
+    spacing_goal_lo_m: 1.0e-4    # 100 um -> goal-conditioned mode (both bounds present)
+    spacing_goal_hi_m: 3.0e-4    # 300 um
     surv_T_min: 0.9
     surv_margin: 0.05
     floor_pct: 10.0
@@ -33,7 +38,7 @@ params:
     device: cuda:0
     render: false
     train: true
-    logdir: logs/bptt
+    logdir: logs/bptt_gc
   config:
     name: TwoBunchBPTT
     num_actors: 32

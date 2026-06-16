@@ -12,7 +12,7 @@ import glob
 import os
 from functools import partial
 
-from .diff_env import TwoBunchFlowEnv
+from .diff_env import TwoBunchFlowEnv, rf_drift_std_vector
 from .reward import reward_spec_from_campaign
 
 
@@ -29,6 +29,10 @@ def add_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--n-particles", default=None, type=int)
     p.add_argument("--action-scale", default=None, type=float)
     p.add_argument("--rf-drift-std", default=None, type=float)
+    p.add_argument("--spacing-goal-lo-m", default=None, type=float,
+                   help="enable goal-conditioned RL: lower bound of the per-episode target spacing (m)")
+    p.add_argument("--spacing-goal-hi-m", default=None, type=float,
+                   help="upper bound of the per-episode target spacing (m); both bounds enable goal mode")
     p.add_argument("--checkpoint", default=None, type=str, help="policy .pt for --play")
     p.add_argument("--play", action="store_true")
 
@@ -53,6 +57,11 @@ def override(cfg: dict, args: argparse.Namespace) -> dict:
         de["action_scale"] = args.action_scale
     if args.rf_drift_std is not None:
         de["rf_drift_std"] = args.rf_drift_std
+        de["rf_drift"] = {"enabled": False}   # explicit scalar override wins over a config block
+    if args.spacing_goal_lo_m is not None:
+        de["spacing_goal_lo_m"] = args.spacing_goal_lo_m
+    if args.spacing_goal_hi_m is not None:
+        de["spacing_goal_hi_m"] = args.spacing_goal_hi_m
     if args.campaign_h5 is not None:
         de["campaign_h5"] = args.campaign_h5
     if args.play:
@@ -69,10 +78,17 @@ def build_reward_spec(de: dict):
     cache = de.get("reward_norms_json")
     if cache:
         os.makedirs(os.path.dirname(cache) or ".", exist_ok=True)
+    # goal-conditioned RL: a spacing_goal_{lo,hi}_m range enables a per-env target-spacing obs + the
+    # reward's spacing term reading that per-env goal (see diff_env / reward). Norms are goal-
+    # independent, so the metric_norms cache is reused unchanged.
+    goal_conditioned = de.get("spacing_goal_lo_m") is not None and de.get("spacing_goal_hi_m") is not None
     return reward_spec_from_campaign(
         de["campaign_h5"],
         cache_json=cache,
+        spacing_goal_key="spacing_goal" if goal_conditioned else None,
         floor_pct=de.get("floor_pct", 10.0),
+        drive_floor_pct=de.get("drive_floor_pct"),
+        witness_floor_pct=de.get("witness_floor_pct"),
         spacing_target_m=de.get("spacing_target_m", 2.0e-4),
         surv_T_min=de.get("surv_T_min", 0.9),
         surv_margin=de.get("surv_margin", 0.05),
@@ -94,14 +110,23 @@ def build_env_fn(cfg: dict, flow_ckpt: str):
     standard (num_envs, device, seed, episode_length, stochastic_init, ...) kwargs."""
     de = cfg["params"]["diff_env"]
     spec = build_reward_spec(de)
+    # latent RF drift: an `rf_drift` block (physical units) builds a per-knob normalized-std
+    # vector; otherwise fall back to the scalar `rf_drift_std` (CLI-overridable, 0 = off).
+    rf = de.get("rf_drift", {})
+    if rf.get("enabled", False):
+        drift = rf_drift_std_vector(rf.get("phase_drift_deg", 0.5), rf.get("amp_drift_frac", 0.005))
+    else:
+        drift = de.get("rf_drift_std", 0.0)
     return partial(
         TwoBunchFlowEnv,
         flow_ckpt=resolve_ckpt(flow_ckpt),
         reward_spec=spec,
         n_particles=de.get("n_particles", 512),
         action_scale=de.get("action_scale", 0.05),
-        rf_drift_std=de.get("rf_drift_std", 0.0),
+        rf_drift_std=drift,
         common_random_numbers=de.get("common_random_numbers", False),
+        spacing_goal_lo=de.get("spacing_goal_lo_m"),
+        spacing_goal_hi=de.get("spacing_goal_hi_m"),
     )
 
 

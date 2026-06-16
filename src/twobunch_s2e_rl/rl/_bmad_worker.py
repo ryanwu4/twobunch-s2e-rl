@@ -19,10 +19,14 @@ n_drive, n_witness (i32), ok (bool), error (str, on failure).
 """
 import os
 
-# Match run_sweep: pin threads before pytao loads (avoid OpenMP oversubscription).
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
+# SINGLE serial eval worker (one Tao, one track at a time) -> give each track multiple OpenMP
+# threads (Bmad's OpenMP saturates ~8-32, phase-0 scan). Default 32; override with BMAD_OMP_THREADS.
+# (The PARALLEL sweep in run_sweep.py keeps this at 1 to avoid n_workers x N oversubscription.)
+# Must be set before pytao/numpy load.
+_THREADS = os.environ.get("BMAD_OMP_THREADS", "32")
+os.environ["OMP_NUM_THREADS"] = _THREADS
+os.environ["OPENBLAS_NUM_THREADS"] = _THREADS
+os.environ["MKL_NUM_THREADS"] = _THREADS
 
 import argparse
 import json

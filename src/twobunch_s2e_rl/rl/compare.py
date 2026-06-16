@@ -46,7 +46,7 @@ def main():
     print("\n==== SHAC vs BPTT (held-out random starts) ====")
     for name in out:
         print(_row(name, out[name]))
-    p = repo_root() / "artifacts/rl/compare.json"
+    p = repo_root() / "artifacts/rl/surrogate/compare.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "w") as f:
         json.dump(out, f, indent=2)
