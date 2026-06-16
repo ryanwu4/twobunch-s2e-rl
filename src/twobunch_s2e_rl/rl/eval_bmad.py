@@ -36,7 +36,7 @@ from ..datagen.sweep_params import BOUNDS_HIGH, BOUNDS_LOW
 from ._train_utils import build_reward_spec, resolve_ckpt
 from .bmad_bridge import BmadBridge
 from .bmad_env import BmadTwoBunchEnv
-from .diff_env import TwoBunchFlowEnv
+from .diff_env import N_KNOB, TwoBunchFlowEnv
 from .eval import _load_policy
 from .reward import EMIT_KEYS
 
@@ -59,11 +59,16 @@ def _rollout(env, actor, rms):
     for _ in range(env.episode_length):
         o = rms.normalize(obs) if rms is not None else obs
         obs, _, _, info = env.step(torch.tanh(actor(o, deterministic=True)))
-    return info["achieved"], env._knobs.detach()
+    # converged knobs are the PRE-reset state (env._knobs has been re-randomized by the
+    # episode-end auto-reset); read obs_before_reset, consistent with info["achieved"].
+    return info["achieved"], info["obs_before_reset"][:, :N_KNOB].detach()
 
 
 def _med(ach, k, sc=1.0):
-    return float(np.median(ach[k].cpu().numpy())) * sc
+    # nan-median: invalid (failed/scraped-bunch) points are NaN'd in the openloop validator so
+    # they are excluded here rather than fabricating agreement via neutral substitutes.
+    a = ach[k].detach().cpu().numpy()
+    return float(np.nanmedian(a)) * sc if np.isfinite(a).any() else float("nan")
 
 
 def _ss(a, m=3000, seed=0):
@@ -100,13 +105,14 @@ def _plot_phase_space(sd, sw, bd, bw, sc, bc, title, out_png):
 
 
 def _gap_report(surr_ach, bmad_ach, out):
-    print(f"\n{'metric':22s} {'surrogate':>12s} {'bmad':>12s}   gap")
+    n_valid = {k: int(np.isfinite(bmad_ach[k].detach().cpu().numpy()).sum()) for k in REPORT}
+    print(f"\n{'metric':22s} {'surrogate':>12s} {'bmad':>12s}   gap   (bmad n_valid)")
     for k in REPORT:
         s, b = _med(surr_ach, k), _med(bmad_ach, k)
         u = "um-rad" if "emit" in k else ("um" if k == "bunch_spacing" else "")
         sc = 1e6 if ("emit" in k or k == "bunch_spacing") else 1.0
-        print(f"  {k:22s} {s*sc:12.3f} {b*sc:12.3f}   Δ={(b-s)*sc:+.3f} {u}")
-        out.setdefault("gap", {})[k] = {"surr_med": s, "bmad_med": b}
+        print(f"  {k:22s} {s*sc:12.3f} {b*sc:12.3f}   Δ={(b-s)*sc:+.3f} {u}   (n={n_valid[k]})")
+        out.setdefault("gap", {})[k] = {"surr_med": s, "bmad_med": b, "bmad_n_valid": n_valid[k]}
 
 
 def main():
@@ -147,24 +153,46 @@ def main():
                                    episode_length=int(de["episode_length"]), stochastic_init=True,
                                    no_grad=True, flow_ckpt=flow_ckpt, reward_spec=spec,
                                    n_particles=args.n_particles, action_scale=float(de["action_scale"]))
-            surr_ach, knobs = _rollout(senv, actor, rms)
+            _, knobs = _rollout(senv, actor, rms)
             flow = senv._flow
+            # stabilize the surrogate prediction: average over several flow draws at the converged
+            # knobs (a single env draw can be high-variance at a borderline operating point).
+            with torch.no_grad():
+                draws = [flow.observables(knobs, n=args.n_particles) for _ in range(8)]
+            surr_ach = {k: torch.stack([d[k] for d in draws]).mean(0) for k in draws[0]}
             sd = flow.sample_bunch(knobs, 0, args.n_particles).cpu().numpy()   # (npts, n, 6)
             sw = flow.sample_bunch(knobs, 1, args.n_particles).cpu().numpy()
 
             lo = torch.tensor(BOUNDS_LOW, device=device); hi = torch.tensor(BOUNDS_HIGH, device=device)
             phys = (lo + knobs * (hi - lo)).cpu().numpy()
             benv = BmadTwoBunchEnv(bridge, spec, num_envs=1, device=device, min_particles=64)
+            MIN = benv.min_particles
             per, bd, bw = [], [], []
             for i in range(args.n_points):
                 res = bridge.track(phys[i])
                 if not res["ok"]:
-                    print(f"  [point {i}] Bmad track failed: {res['error']}")
-                per.append(benv._per_env(res))
+                    print(f"  [point {i}] Bmad track FAILED: {res['error']}")
+                p = benv._per_env(res)
+                # VALIDATION integrity: a failed track or a bunch scraped below min_particles has
+                # no meaningful emittance/spacing (_per_env substitutes neutral campaign-mean /
+                # target values, which would fabricate agreement). NaN those out so the gap report
+                # excludes them; keep the real charge-fraction T (valid even at 0 = destroyed).
+                nd, nw = int(res["n_drive"]), int(res["n_witness"])
+                nan = lambda: torch.full((1,), float("nan"), device=device)
+                if (not res["ok"]) or nd < MIN:
+                    for k in ("drive_norm_emit_x", "drive_norm_emit_y", "drive_norm_emit_4d"):
+                        if k in p: p[k] = nan()
+                if (not res["ok"]) or nw < MIN:
+                    for k in ("witness_norm_emit_x", "witness_norm_emit_y", "witness_norm_emit_4d"):
+                        if k in p: p[k] = nan()
+                if (not res["ok"]) or nd < MIN or nw < MIN:
+                    for k in ("bunch_spacing", "transverse_offset", "angular_misalignment"):
+                        if k in p: p[k] = nan()
+                per.append(p)
                 bd.append(np.asarray(res["drive"], np.float32))
                 bw.append(np.asarray(res["witness"], np.float32))
-                print(f"  [point {i}] tracked: n_drive={int(res['n_drive'])} "
-                      f"n_witness={int(res['n_witness'])}")
+                print(f"  [point {i}] tracked: n_drive={nd} n_witness={nw}"
+                      f"{'  (witness scraped < min)' if nw < MIN else ''}")
             bmad_ach = {k: torch.cat([p[k] for p in per], dim=0) for k in per[0]}
 
             print("\n=== open-loop: surrogate prediction vs Bmad truth at the policy's knobs ===")

@@ -203,11 +203,14 @@ class TwoBunchFlowEnv:
         done = self._step_count >= self.episode_length
 
         obs_pre = self._compute_obs().detach()   # SHAC terminal bootstrap reads this
+        # Snapshot achieved BEFORE any reset: a partial reset mutates self._last_achieved
+        # (== this dict) in place, which would corrupt info["achieved"] for survivors.
+        achieved_info = {k: v.clone() for k, v in achieved.items()}
         done_ids = done.nonzero(as_tuple=False).squeeze(-1)
         if done_ids.numel() > 0:
             self.reset(done_ids)
 
-        info: dict[str, Any] = {"obs_before_reset": obs_pre, "achieved": achieved}
+        info: dict[str, Any] = {"obs_before_reset": obs_pre, "achieved": achieved_info}
         return self._compute_obs(), reward, done, info
 
     def render(self) -> None:
