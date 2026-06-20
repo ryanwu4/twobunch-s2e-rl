@@ -1,0 +1,16 @@
+# Expanded-sweep harness validation (26-D: 8 original + 6 FF quads + 4 kickers + 8 movers).
+# Same cost as smoke.yaml; confirms the larger manifest builds and tracks end-to-end and that
+# setLattice accepts every new knob. Wakes off here (fast harness check); the pilot exercises
+# the wakes-on transverse path.
+name: expanded_smoke
+sweep_set: expanded
+n_samples: 16
+n_baseline_repeats: 1   # pinned-baseline sample reproduces the golden two-bunch working point
+num_macro_particles: 10000
+n_workers: 8
+seed: 20260620
+csrTF: true
+transverseWakes: false
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/expanded_smoke
+save_beams_at: [PENT]

@@ -1,0 +1,16 @@
+# Expanded-sweep pilot (26-D). Beyond the original pilot's throughput/RSS/seed-scatter checks,
+# this measures the KEY new unknown: the FF box-LHS viability/BMAG distribution at PENT (how
+# many of the 6-FF-quad draws land near-matched vs blown-up/scraped). Use it to decide whether
+# the 10k full run stays box-LHS or switches FF to the manifold-anchored sampler.
+name: expanded_pilot
+sweep_set: expanded
+n_samples: 512
+n_baseline_repeats: 8
+num_macro_particles: 100000
+n_workers: 120
+seed: 20260621
+csrTF: true
+transverseWakes: true  # transverse objectives need wakes on; coefficients pending validation (2026-06-10 audit)
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/expanded_pilot
+save_beams_at: [PENT]

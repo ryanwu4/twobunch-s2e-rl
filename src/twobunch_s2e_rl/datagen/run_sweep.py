@@ -34,7 +34,7 @@ import numpy as np
 import yaml
 from scipy.stats import qmc
 
-from .sweep_params import PARAM_KEYS, BOUNDS_LOW, BOUNDS_HIGH, BASELINE_KNOBS
+from .sweep_params import resolve_sweep_set
 from .paths import facet2_root, repo_root
 
 TREATY_POINTS = ["BEGBC20", "MFFF", "PENT"]
@@ -65,26 +65,29 @@ def load_cfg(path):
 
 
 def build_manifest(cfg):
-    """LHS over SWEEP_PARAMS bounds + optional baseline repeats. Deterministic by seed;
-    written once and reused on resume so indices never reshuffle."""
+    """LHS over the configured sweep set's bounds + optional baseline repeats. Deterministic
+    by seed; written once and reused on resume so indices never reshuffle. The set is
+    cfg["sweep_set"] (default "original8")."""
     manifest_path = Path(cfg["output_dir"]) / "manifest.json"
     if manifest_path.exists():
         with open(manifest_path) as f:
             return json.load(f)
 
+    keys, low, high, baseline = resolve_sweep_set(cfg.get("sweep_set", "original8"))
+
     if cfg["n_samples"] > 0:
-        sampler = qmc.LatinHypercube(d=len(PARAM_KEYS), seed=cfg["seed"])
-        scaled = qmc.scale(sampler.random(n=cfg["n_samples"]), BOUNDS_LOW, BOUNDS_HIGH)
+        sampler = qmc.LatinHypercube(d=len(keys), seed=cfg["seed"])
+        scaled = qmc.scale(sampler.random(n=cfg["n_samples"]), low, high)
     else:
         scaled = []  # baseline-repeats-only config (e.g. the transverse-wakes gate)
 
     manifest = [
-        {"idx": i, "knobs": dict(zip(PARAM_KEYS, map(float, row))), "is_baseline_repeat": False}
+        {"idx": i, "knobs": dict(zip(keys, map(float, row))), "is_baseline_repeat": False}
         for i, row in enumerate(scaled)
     ]
     for j in range(cfg.get("n_baseline_repeats", 0)):
         manifest.append(
-            {"idx": cfg["n_samples"] + j, "knobs": dict(BASELINE_KNOBS), "is_baseline_repeat": True}
+            {"idx": cfg["n_samples"] + j, "knobs": dict(baseline), "is_baseline_repeat": True}
         )
 
     manifest_path.parent.mkdir(parents=True, exist_ok=True)

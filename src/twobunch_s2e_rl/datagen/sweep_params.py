@@ -34,7 +34,7 @@ lab-notebook claude/analyses/2026-06-09_two-bunch-deck-analysis.md):
 # key -> (low, high, baseline)  — baselines are the exact 2024-10-14 yml / defaults values
 SWEEP_PARAMS = {
     "L1PhaseSet":     (-22.8,          -17.8,          -20.2889213421),
-    "L2PhaseSet":     (-38.0,          -34.0,          -35.5447801603),
+    "L2PhaseSet":     (-40.0,          -34.0,          -35.5447801603), #changed bc close to rail on 300um
     "L1EnergyOffset": (-2.1e6,          2.1e6,          0.0),
     "L2EnergyOffset": (-48.5e6,         34.9e6,        -6.817565553821569e6),
     "L3EnergyOffset": (-43.3e6,         66.7e6,         1.1703527144314773e7),
@@ -47,3 +47,78 @@ PARAM_KEYS = list(SWEEP_PARAMS)
 BOUNDS_LOW = [SWEEP_PARAMS[k][0] for k in PARAM_KEYS]
 BOUNDS_HIGH = [SWEEP_PARAMS[k][1] for k in PARAM_KEYS]
 BASELINE_KNOBS = {k: SWEEP_PARAMS[k][2] for k in PARAM_KEYS}
+
+
+# ----------------------------------------------------------------------------------------
+# Expanded 26-D set: the original 8 longitudinal knobs + the transverse final-focus system
+# (6 FF quads, 4 FF kickers, 8 BC20 sextupole movers). These were held FIXED at the golden
+# two-bunch working point in the original campaign; this set unfreezes them so the surrogate
+# and RL controller become relevant to the transverse objectives (PENT matching / BMAG,
+# driver-witness collinearity). The golden baseline is already transversely tuned (non-zero
+# movers/kickers), so the baselines below are those tuned values, not zero.
+#
+# Range provenance:
+# - FF quads (Q5FF..Q0FF, kG.m): symmetric about golden by the per-quad excursion from the
+#   2026-06-19 PENT beta-matching solve (golden beta*=0.5 m -> ~7.6 cm round-waist floor;
+#   FACET2-S2E/analysis/2026-06-19_ff-quad-range/), mirrored to both sides and clipped to the
+#   EPICS bounds (none clip at present). baseline = golden. Dogleg Q0D/Q1D/Q2D excluded
+#   (downstream of PENT). NOTE: independent box-LHS over these lands mostly off the matched
+#   manifold -> mostly mismatched PENT beams; the pilot gates whether to switch to a
+#   manifold-anchored sampler for the full run.
+# - FF kickers (XC1/XC3/YC1/YC2 FF, kG.m): +/-0.01 (PROVISIONAL -- FACET had no firm number;
+#   golden already uses ~+/-0.005, so this is ~2x golden ~ +/-90 um centroid at PENT;
+#   hardware rails are +/-0.37). Confirm true range with Zack / Ryan L.
+# - Sextupole movers (S1EL/S1ER/S2EL/S2ER x/y, meters): golden baseline +/- 1.5 mm (FACET
+#   cited ~1.5 mm mover travel). Applied independently of symmetricSextupoleStrengths.
+# Transverse-wake coefficients (first-order for these knobs' objectives) are still pending
+# validation (2026-06-10 audit) -- results from this set are provisional until then.
+# ----------------------------------------------------------------------------------------
+SWEEP_PARAMS_EXPANDED_EXTRA = {
+    # FF telescope quads (kG.m) -- symmetric about golden by the derived golden->7.6cm
+    # excursion (clipped to EPICS bounds; none clip at present). baseline = golden.
+    "Q5FFkG":       (-103.287,  -40.387,  -71.837),
+    "Q4FFkG":       (-133.581,  -28.921,  -81.251),
+    "Q3FFkG":       (  81.146,  117.304,   99.225),
+    "Q2FFkG":       ( 106.539,  146.161,  126.350),
+    "Q1FFkG":       (-242.185, -228.251, -235.218),
+    "Q0FFkG":       ( 108.703,  144.003,  126.353),
+    # FF steering kickers (kG.m) -- provisional +/-0.01 (baseline = golden tuned value)
+    "XC1FFkG":      (-0.01, 0.01,  0.0023982219),
+    "XC3FFkG":      (-0.01, 0.01,  0.0015344214),
+    "YC1FFkG":      (-0.01, 0.01, -0.0053321184),
+    "YC2FFkG":      (-0.01, 0.01, -0.0035512385),
+    # BC20 sextupole movers (m) -- golden tuned value +/- 1.5 mm (FACET cited ~1.5 mm travel)
+    "S1EL_xOffset": (-0.0005931732, 0.0024068268,  0.0009068268),
+    "S1EL_yOffset": (-0.0013684246, 0.0016315754,  0.0001315754),
+    "S2EL_xOffset": (-0.0018885830, 0.0011114170, -0.0003885830),
+    "S2EL_yOffset": (-0.0013834225, 0.0016165775,  0.0001165775),
+    "S2ER_xOffset": (-0.0016679111, 0.0013320889, -0.0001679111),
+    "S2ER_yOffset": (-0.0029881668, 0.0000118332, -0.0014881668),
+    "S1ER_xOffset": (-0.0001676698, 0.0028323302,  0.0013323302),
+    "S1ER_yOffset": (-0.0026182646, 0.0003817354, -0.0011182646),
+}
+
+EXPANDED_PARAMS = {**SWEEP_PARAMS, **SWEEP_PARAMS_EXPANDED_EXTRA}
+
+# Named sweep sets, selectable per campaign config via the `sweep_set` key. run_sweep
+# defaults to "original8" so the existing 8-D campaign/configs/manifests reproduce exactly.
+SWEEP_SETS = {
+    "original8": SWEEP_PARAMS,
+    "expanded":  EXPANDED_PARAMS,
+}
+
+
+def resolve_sweep_set(name="original8"):
+    """Return (keys, low, high, baseline) for a named sweep set.
+
+    keys preserve dict-insertion order, so a given (set, seed) yields a stable LHS draw.
+    Raises KeyError on an unknown set name.
+    """
+    if name not in SWEEP_SETS:
+        raise KeyError(f"unknown sweep_set {name!r}; choose from {list(SWEEP_SETS)}")
+    params = SWEEP_SETS[name]
+    keys = list(params)
+    low = [params[k][0] for k in keys]
+    high = [params[k][1] for k in keys]
+    baseline = {k: params[k][2] for k in keys}
+    return keys, low, high, baseline

@@ -1,0 +1,16 @@
+# Expanded-sweep production campaign (26-D, 10k samples): ~1.2-2 days on 120 workers
+# (~1242 s/sample single-thread with wakes; expanded_pilot measures the real contention factor
+# and the FF viability fraction). Launch only after reviewing the pilot. 26-D at 10k is sparse
+# coverage -- the trained surrogate's per-observable R^2 will say whether more samples are needed.
+name: expanded_full
+sweep_set: expanded
+n_samples: 10000
+n_baseline_repeats: 0   # pilot covers seed scatter
+num_macro_particles: 100000
+n_workers: 120
+seed: 20260622
+csrTF: true
+transverseWakes: true  # transverse objectives need wakes on; coefficients pending validation (2026-06-10 audit)
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/expanded_full
+save_beams_at: [PENT]
