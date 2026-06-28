@@ -39,7 +39,7 @@ import numpy as np
 from pmd_beamphysics import ParticleGroup
 
 from ..datagen.paths import repo_root
-from ..datagen.sweep_params import PARAM_KEYS, SWEEP_PARAMS
+from ..datagen.sweep_params import resolve_sweep_set
 from . import COORD_KEYS, DEFAULT_P, ELECTRON_MC2_EV
 
 PENT = "PENT"
@@ -55,13 +55,13 @@ def _subsample(coords: np.ndarray, p: int, rng: np.random.Generator) -> np.ndarr
     return coords[idx]
 
 
-def parse_one(json_path: str, p: int, rng: np.random.Generator) -> dict | None:
+def parse_one(json_path: str, p: int, rng: np.random.Generator, keys: list) -> dict | None:
     with open(json_path) as f:
         d = json.load(f)
     if not d.get("success"):
         return None
     spec = d.get("specs", {}).get(PENT, {})
-    knobs = np.array([d["knobs"][k] for k in PARAM_KEYS], dtype=np.float32)
+    knobs = np.array([d["knobs"][k] for k in keys], dtype=np.float32)
 
     drive_present = spec.get("PDrive_norm_emit_x") is not None
     witness_viable = spec.get("PWitness_norm_emit_x") is not None
@@ -146,20 +146,22 @@ def _scaler(records, key_parts, key_density, mode="intrabunch"):
 
 
 def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
-               scaler="intrabunch", verbose=True):
+               scaler="intrabunch", sweep_set="original8", verbose=True):
     data_dir = repo_root() / "data" / subdir
     files = sorted(glob.glob(str(data_dir / "sample_*.json")))
     if max_samples:
         files = files[:max_samples]
     if not files:
         raise SystemExit(f"No sample_*.json under {data_dir}")
+    keys, knob_low, knob_high, _ = resolve_sweep_set(sweep_set)
     rng = np.random.default_rng(seed)
     if verbose:
-        print(f"Parsing {len(files)} samples from {data_dir} (P={p})")
+        print(f"Parsing {len(files)} samples from {data_dir} (P={p}, sweep_set={sweep_set}, "
+              f"{len(keys)} knobs)")
 
     records = []
     for i, fp in enumerate(files):
-        rec = parse_one(fp, p, rng)
+        rec = parse_one(fp, p, rng, keys)
         if rec is not None:
             records.append(rec)
         if verbose and (i + 1) % 500 == 0:
@@ -196,14 +198,14 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
         h.attrs["coord_order"] = ",".join(COORD_KEYS)
 
     norm = {
-        "knob_keys": PARAM_KEYS,
-        "knob_low": [float(SWEEP_PARAMS[k][0]) for k in PARAM_KEYS],
-        "knob_high": [float(SWEEP_PARAMS[k][1]) for k in PARAM_KEYS],
+        "knob_keys": list(keys),
+        "knob_low": [float(v) for v in knob_low],
+        "knob_high": [float(v) for v in knob_high],
         "drive_mean": drive_mean.tolist(), "drive_std": drive_std.tolist(),
         "witness_mean": witness_mean.tolist(), "witness_std": witness_std.tolist(),
         "drive_full_charge_nC": drive_full, "witness_full_charge_nC": witness_full,
         "coord_keys": list(COORD_KEYS), "electron_mc2_ev": ELECTRON_MC2_EV,
-        "P": int(p), "n_records": n, "scaler": scaler,
+        "P": int(p), "n_records": n, "scaler": scaler, "sweep_set": sweep_set,
     }
     with open(out.replace(".h5", "_norm.json"), "w") as f:
         json.dump(norm, f, indent=2)
@@ -226,9 +228,11 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--scaler", choices=["pooled", "intrabunch"], default="intrabunch",
                     help="per-bunch std basis (v2 default 'intrabunch'; v1 used 'pooled')")
+    ap.add_argument("--sweep-set", default="original8",
+                    help="knob set (sweep_params.SWEEP_SETS): original8 | expanded | expanded_anchored")
     args = ap.parse_args()
     preprocess(subdir=args.subdir, p=args.P, max_samples=args.max_samples,
-               seed=args.seed, out=args.out, scaler=args.scaler)
+               seed=args.seed, out=args.out, scaler=args.scaler, sweep_set=args.sweep_set)
 
 
 if __name__ == "__main__":

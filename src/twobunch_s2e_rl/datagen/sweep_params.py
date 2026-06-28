@@ -100,11 +100,51 @@ SWEEP_PARAMS_EXPANDED_EXTRA = {
 
 EXPANDED_PARAMS = {**SWEEP_PARAMS, **SWEEP_PARAMS_EXPANDED_EXTRA}
 
+
+# ----------------------------------------------------------------------------------------
+# Manifold-anchored 26-D set: same knobs as `expanded`, but the transverse knobs are sampled
+# near the deliverable manifold (build_manifest + datagen/ff_manifold.py; rationale in
+# lab-notebook/claude/analyses/2026-06-21_manifold-anchoring-strategy.md). The FF quads are
+# drawn on the matched beta-curve (build_manifest overwrites them via MANIFOLD_SPECS), so the
+# FF entries here keep the `expanded` envelope only for clipping/baseline. The movers/kickers
+# are NARROWED about their golden tuned values: offset is controllable in a ~0.15 mm basin, so
+# +/-1.5 mm buries the collinear region (pilot: median offset 935 um, 0% < 10 um). A ~30%
+# wide-box stratification tail (the `expanded` ranges) is added by build_manifest so the
+# feasibility head still sees scraped/mismatched beams.
+_ANCHORED_OVERRIDE = {
+    # FF quads: declared range = EPICS bounds (the hard clip the curve sampler uses; jitter can
+    # push a hair past the symmetric envelope). baseline = golden. The anchor block overwrites
+    # these with the matched-curve draws; the wide tail draws FF from the `expanded` envelope.
+    "Q5FFkG": (-256.0, 0.0, -71.837),
+    "Q4FFkG": (-446.0, 0.0, -81.251),
+    "Q3FFkG": (0.0, 457.0, 99.225),
+    "Q2FFkG": (0.0, 167.0, 126.350),
+    "Q1FFkG": (-257.0, 0.0, -235.218),
+    "Q0FFkG": (0.0, 167.0, 126.353),
+    # BC20 sextupole movers (m) -- golden +/- 0.15 mm
+    "S1EL_xOffset": (0.0007568268, 0.0010568268, 0.0009068268),
+    "S1EL_yOffset": (-0.0000184246, 0.0002815754, 0.0001315754),
+    "S2EL_xOffset": (-0.0005385830, -0.0002385830, -0.0003885830),
+    "S2EL_yOffset": (-0.0000334225, 0.0002665775, 0.0001165775),
+    "S2ER_xOffset": (-0.0003179111, -0.0000179111, -0.0001679111),
+    "S2ER_yOffset": (-0.0016381668, -0.0013381668, -0.0014881668),
+    "S1ER_xOffset": (0.0011823302, 0.0014823302, 0.0013323302),
+    "S1ER_yOffset": (-0.0012682646, -0.0009682646, -0.0011182646),
+    # FF steering kickers (kG.m) -- golden +/- 0.005
+    "XC1FFkG": (-0.0026017781, 0.0073982219, 0.0023982219),
+    "XC3FFkG": (-0.0034655786, 0.0065344214, 0.0015344214),
+    "YC1FFkG": (-0.0103321184, -0.0003321184, -0.0053321184),
+    "YC2FFkG": (-0.0085512385, 0.0014487615, -0.0035512385),
+}
+EXPANDED_ANCHORED_PARAMS = {**EXPANDED_PARAMS, **_ANCHORED_OVERRIDE}
+
 # Named sweep sets, selectable per campaign config via the `sweep_set` key. run_sweep
 # defaults to "original8" so the existing 8-D campaign/configs/manifests reproduce exactly.
+# `expanded_anchored` additionally triggers manifold sampling (ff_manifold.MANIFOLD_SPECS).
 SWEEP_SETS = {
     "original8": SWEEP_PARAMS,
     "expanded":  EXPANDED_PARAMS,
+    "expanded_anchored": EXPANDED_ANCHORED_PARAMS,
 }
 
 

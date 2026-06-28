@@ -1,0 +1,16 @@
+# Manifold-anchored expanded production campaign (26-D, 10k): ~1.2-2 days on 120 workers.
+# Launch only after the anchored re-pilot confirms trainable BMAG/offset coverage and the
+# surrogate passes its offset/slice-beta/BMAG R^2 gates. Sampling: FF quads on the matched
+# beta-curve + jitter, movers/kickers narrowed about golden, ~30% wide-box stratification tail.
+name: expanded_anchored_full
+sweep_set: expanded_anchored
+n_samples: 10000
+n_baseline_repeats: 0   # pilot covers seed scatter
+num_macro_particles: 100000
+n_workers: 120
+seed: 20260622
+csrTF: true
+transverseWakes: true  # transverse objectives need wakes on; coefficients pending validation (2026-06-10 audit)
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/expanded_anchored_full
+save_beams_at: [PENT]

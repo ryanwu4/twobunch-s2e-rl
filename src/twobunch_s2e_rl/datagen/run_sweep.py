@@ -35,6 +35,7 @@ import yaml
 from scipy.stats import qmc
 
 from .sweep_params import resolve_sweep_set
+from .ff_manifold import MANIFOLD_SPECS, sample_anchored_ff
 from .paths import facet2_root, repo_root
 
 TREATY_POINTS = ["BEGBC20", "MFFF", "PENT"]
@@ -67,33 +68,67 @@ def load_cfg(path):
 def build_manifest(cfg):
     """LHS over the configured sweep set's bounds + optional baseline repeats. Deterministic
     by seed; written once and reused on resume so indices never reshuffle. The set is
-    cfg["sweep_set"] (default "original8")."""
+    cfg["sweep_set"] (default "original8"). A set listed in ff_manifold.MANIFOLD_SPECS instead
+    uses manifold-anchored sampling for its FF quads (see _manifold_rows)."""
     manifest_path = Path(cfg["output_dir"]) / "manifest.json"
     if manifest_path.exists():
         with open(manifest_path) as f:
             return json.load(f)
 
-    keys, low, high, baseline = resolve_sweep_set(cfg.get("sweep_set", "original8"))
+    set_name = cfg.get("sweep_set", "original8")
+    keys, low, high, baseline = resolve_sweep_set(set_name)
+    n = cfg["n_samples"]
+    spec = MANIFOLD_SPECS.get(set_name)
 
-    if cfg["n_samples"] > 0:
+    if n <= 0:
+        rows = []  # baseline-repeats-only config (e.g. the transverse-wakes gate)
+    elif spec is None:
         sampler = qmc.LatinHypercube(d=len(keys), seed=cfg["seed"])
-        scaled = qmc.scale(sampler.random(n=cfg["n_samples"]), low, high)
+        scaled = qmc.scale(sampler.random(n=n), low, high)
+        rows = [{"knobs": dict(zip(keys, map(float, r)))} for r in scaled]
     else:
-        scaled = []  # baseline-repeats-only config (e.g. the transverse-wakes gate)
+        rows = _manifold_rows(cfg["seed"], n, keys, low, high, spec)
 
-    manifest = [
-        {"idx": i, "knobs": dict(zip(keys, map(float, row))), "is_baseline_repeat": False}
-        for i, row in enumerate(scaled)
-    ]
+    manifest = [{"idx": i, "is_baseline_repeat": False, **row} for i, row in enumerate(rows)]
     for j in range(cfg.get("n_baseline_repeats", 0)):
         manifest.append(
-            {"idx": cfg["n_samples"] + j, "knobs": dict(baseline), "is_baseline_repeat": True}
+            {"idx": n + j, "knobs": dict(baseline), "is_baseline_repeat": True}
         )
 
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
     return manifest
+
+
+def _manifold_rows(seed, n, keys, low, high, spec):
+    """Stratified manifold-anchored rows. ~(1-tail) drawn near the deliverable manifold (FF on
+    the matched beta-curve + jitter, transverse knobs in their narrowed ranges) and ~tail from
+    the wide transverse box (spec['wide_set']) for feasibility/recovery coverage. Deterministic
+    by seed. Each row carries a "block" tag; anchor rows also carry their FF target beta."""
+    n_tail = round(spec["stratify_tail_frac"] * n)
+    n_anchor = n - n_tail
+    ff_idx = [keys.index(k) for k in spec["ff_keys"]]
+    rng = np.random.default_rng(seed)
+    rows = []
+
+    if n_anchor > 0:
+        a = qmc.scale(qmc.LatinHypercube(d=len(keys), seed=seed).random(n=n_anchor), low, high)
+        beta, ff = sample_anchored_ff(rng, n_anchor, spec["jitter_frac"],
+                                      spec["beta_lo"], spec["beta_hi"])
+        a[:, ff_idx] = ff
+        rows += [{"knobs": dict(zip(keys, map(float, r))), "block": "anchor",
+                  "ff_target_beta_m": float(b)} for r, b in zip(a, beta)]
+
+    if n_tail > 0:
+        wkeys, wlow, whigh, _ = resolve_sweep_set(spec["wide_set"])
+        wlow = [wlow[wkeys.index(k)] for k in keys]   # realign to this set's key order
+        whigh = [whigh[wkeys.index(k)] for k in keys]
+        t = qmc.scale(qmc.LatinHypercube(d=len(keys), seed=seed + 1).random(n=n_tail), wlow, whigh)
+        rows += [{"knobs": dict(zip(keys, map(float, r))), "block": "tail",
+                  "ff_target_beta_m": None} for r in t]
+
+    return rows
 
 
 def _sample_json_path(out_dir, idx):

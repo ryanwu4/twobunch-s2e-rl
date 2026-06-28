@@ -1,0 +1,17 @@
+# Manifold-anchored expanded pilot (26-D). Re-pilot that replaces independent box-LHS with
+# manifold-anchored sampling for the transverse knobs (FF quads on the matched beta-curve +
+# jitter; movers/kickers narrowed about golden; ~30% wide-box tail). Confirms the tracked BMAG
+# and offset land in trainable bands (BMAG ~1-3, offset tens of um, survival ~100%) before the
+# 10k full run -- vs the box-LHS pilot's 0% near-matched / 935 um median offset.
+name: expanded_anchored_pilot
+sweep_set: expanded_anchored
+n_samples: 512
+n_baseline_repeats: 8
+num_macro_particles: 100000
+n_workers: 120
+seed: 20260621
+csrTF: true
+transverseWakes: true  # transverse objectives need wakes on; coefficients pending validation (2026-06-10 audit)
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/expanded_anchored_pilot
+save_beams_at: [PENT]
