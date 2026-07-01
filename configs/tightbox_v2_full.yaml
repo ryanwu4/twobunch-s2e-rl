@@ -1,0 +1,20 @@
+# Tightened-box production campaign -- the DENSE "good" half of the combined good+failing
+# dataset (paired with expanded_full, the broad boundary/failing half). 26-D plain box-LHS
+# over the v2 tightbox bounds (FF quads + kickers + BC20 sextupole strengths + movers tightened
+# about the beam-based matched region; longitudinal wide). The v2 pilot (512) validated this box:
+# 100% witness-resolved, ranges re-centered on golden -- see claude/drafts/2026-06-30_tightbox-v2-pilot.
+# 6000 samples ~ 36 h on 120 workers (~165 samples/h measured from the pilot).
+# Combine with expanded_full at preprocess: --subdir tightbox_v2_full,expanded_full
+#                                           --sweep-set tightbox+expanded  (union bounds).
+name: tightbox_v2_full
+sweep_set: tightbox
+n_samples: 6000
+n_baseline_repeats: 8    # anchor golden + seed scatter
+num_macro_particles: 100000
+n_workers: 120
+seed: 20260630
+csrTF: true
+transverseWakes: true  # transverse objectives need wakes on; coefficients pending validation (2026-06-10 audit)
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/tightbox_v2_full
+save_beams_at: [PENT]

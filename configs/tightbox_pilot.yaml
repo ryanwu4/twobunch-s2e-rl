@@ -1,0 +1,17 @@
+# Tightened-box pilot (26-D, plain box-LHS over the matched-region-tightened bounds from the
+# 2026-06-21 beam-based beta* scan). The A/B counterpart to expanded_anchored_pilot: does a
+# simple tight box centered on the matched region give acceptable near-matched coverage
+# (witness BMAG <~2, survival ~100%, slice-beta tracking beta*)? If yes, ship the box and skip
+# the anchoring machinery. Score with achievable_targets + anchored_validation.
+name: tightbox_pilot
+sweep_set: tightbox
+n_samples: 512
+n_baseline_repeats: 8
+num_macro_particles: 100000
+n_workers: 120
+seed: 20260623
+csrTF: true
+transverseWakes: true  # transverse objectives need wakes on; coefficients pending validation (2026-06-10 audit)
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/tightbox_pilot
+save_beams_at: [PENT]

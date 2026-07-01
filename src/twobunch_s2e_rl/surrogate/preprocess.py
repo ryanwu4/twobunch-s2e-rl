@@ -147,16 +147,23 @@ def _scaler(records, key_parts, key_density, mode="intrabunch"):
 
 def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
                scaler="intrabunch", sweep_set="original8", verbose=True):
-    data_dir = repo_root() / "data" / subdir
-    files = sorted(glob.glob(str(data_dir / "sample_*.json")))
-    if max_samples:
-        files = files[:max_samples]
-    if not files:
-        raise SystemExit(f"No sample_*.json under {data_dir}")
+    # subdir may be comma-separated to MERGE campaigns (e.g. "tightbox_v2_full,expanded_full").
+    # When merging boxes with different bounds, pass a union sweep_set (e.g. "tightbox+expanded")
+    # so every draw is normalized in one common frame; parse_one stores raw knobs, so the frame
+    # lives entirely in norm.json (knob_low/high) -- the RL env must resolve the same union name.
+    subdirs = [s.strip() for s in str(subdir).split(",") if s.strip()]
+    files = []
+    for sd in subdirs:
+        fs = sorted(glob.glob(str(repo_root() / "data" / sd / "sample_*.json")))
+        if max_samples:
+            fs = fs[:max_samples]
+        if not fs:
+            raise SystemExit(f"No sample_*.json under data/{sd}")
+        files.extend(fs)
     keys, knob_low, knob_high, _ = resolve_sweep_set(sweep_set)
     rng = np.random.default_rng(seed)
     if verbose:
-        print(f"Parsing {len(files)} samples from {data_dir} (P={p}, sweep_set={sweep_set}, "
+        print(f"Parsing {len(files)} samples from {subdirs} (P={p}, sweep_set={sweep_set}, "
               f"{len(keys)} knobs)")
 
     records = []
@@ -221,7 +228,9 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--subdir", default="full")
+    ap.add_argument("--subdir", default="full",
+                    help="data/<subdir>; comma-separated to MERGE campaigns "
+                         "(e.g. 'tightbox_v2_full,expanded_full')")
     ap.add_argument("--P", type=int, default=DEFAULT_P)
     ap.add_argument("--max-samples", type=int, default=None)
     ap.add_argument("--seed", type=int, default=0)
@@ -229,7 +238,9 @@ def main():
     ap.add_argument("--scaler", choices=["pooled", "intrabunch"], default="intrabunch",
                     help="per-bunch std basis (v2 default 'intrabunch'; v1 used 'pooled')")
     ap.add_argument("--sweep-set", default="original8",
-                    help="knob set (sweep_params.SWEEP_SETS): original8 | expanded | expanded_anchored")
+                    help="knob set (sweep_params.SWEEP_SETS): original8 | expanded | expanded_anchored "
+                         "| tightbox; a '+'-joined name (e.g. 'tightbox+expanded') uses the union "
+                         "bounds -- the common frame when merging boxes")
     args = ap.parse_args()
     preprocess(subdir=args.subdir, p=args.P, max_samples=args.max_samples,
                seed=args.seed, out=args.out, scaler=args.scaler, sweep_set=args.sweep_set)

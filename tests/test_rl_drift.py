@@ -43,9 +43,9 @@ def _env(num_envs=4, **kw):
 def test_drift_vector_values():
     v = rf_drift_std_vector(phase_drift_deg=0.5, amp_drift_frac=0.005)
     assert v.shape == (N_KNOB,)
-    # L1Phase 0.5/5.0, L2Phase 0.5/4.0, energies 0.5% of nominal gain / box width
+    # L1Phase 0.5/5.0, L2Phase 0.5/6.0 (box widened low->-40), energies 0.5% of nominal gain / box width
     assert v[0].item() == pytest.approx(0.100, abs=1e-3)   # L1PhaseSet
-    assert v[1].item() == pytest.approx(0.125, abs=1e-3)   # L2PhaseSet
+    assert v[1].item() == pytest.approx(0.0833, abs=1e-3)  # L2PhaseSet
     assert v[2].item() == pytest.approx(0.250, abs=1e-3)   # L1EnergyOffset (4.2e6 box)
     assert v[3].item() == pytest.approx(0.250, abs=1e-2)   # L2EnergyOffset (83.4e6 box ~ 0.2497)
     assert v[4].item() == pytest.approx(0.250, abs=1e-3)   # L3EnergyOffset (110e6 box)

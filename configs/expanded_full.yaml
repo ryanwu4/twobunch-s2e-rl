@@ -1,14 +1,19 @@
-# Expanded-sweep production campaign (26-D, 10k samples): ~1.2-2 days on 120 workers
-# (~1242 s/sample single-thread with wakes; expanded_pilot measures the real contention factor
-# and the FF viability fraction). Launch only after reviewing the pilot. 26-D at 10k is sparse
-# coverage -- the trained surrogate's per-observable R^2 will say whether more samples are needed.
+# Expanded-sweep campaign -- the BROAD "failing/boundary" half of the combined good+failing
+# dataset (paired with tightbox_v2_full, the dense good half). 26-D box-LHS over the WIDE
+# expanded bounds: mostly off-manifold draws, spanning the feasibility boundary and the
+# feasible-but-suboptimal cost surface that teach the surrogate (a) the survival boundary
+# [viability head] and (b) the good->bad reward gradient, so the RL agent can't exploit the
+# surrogate off-manifold. Does NOT need dense coverage (26-D is unfillable) -- 3000 is enough
+# to map the boundary + gross trends. ~18 h on 120 workers.
+# Combine with tightbox_v2_full at preprocess: --subdir tightbox_v2_full,expanded_full
+#                                              --sweep-set tightbox+expanded  (union bounds).
 name: expanded_full
 sweep_set: expanded
-n_samples: 10000
-n_baseline_repeats: 0   # pilot covers seed scatter
+n_samples: 3000
+n_baseline_repeats: 0   # tight campaign carries the golden repeats
 num_macro_particles: 100000
 n_workers: 120
-seed: 20260622
+seed: 20260701
 csrTF: true
 transverseWakes: true  # transverse objectives need wakes on; coefficients pending validation (2026-06-10 audit)
 baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml

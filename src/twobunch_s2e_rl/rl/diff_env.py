@@ -32,7 +32,7 @@ Domain randomization:
 
       knob              phys 1-sigma            box width        normalized std
       L1PhaseSet        0.5 deg                 5.0 deg          0.100
-      L2PhaseSet        0.5 deg                 4.0 deg          0.125
+      L2PhaseSet        0.5 deg                 6.0 deg          0.083
       L1EnergyOffset    0.5% * 210 MeV          4.2e6 eV (+-1%)  0.250
       L2EnergyOffset    0.5% * 4.165 GeV        8.34e7 eV        0.250
       L3EnergyOffset    0.5% * 5.5 GeV          1.10e8 eV        0.250

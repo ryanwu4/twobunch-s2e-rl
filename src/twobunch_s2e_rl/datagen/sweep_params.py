@@ -138,13 +138,65 @@ _ANCHORED_OVERRIDE = {
 }
 EXPANDED_ANCHORED_PARAMS = {**EXPANDED_PARAMS, **_ANCHORED_OVERRIDE}
 
+
+# ----------------------------------------------------------------------------------------
+# Tightened-box 26-D set: a plain box-LHS set (no manifold sampler) whose transverse-matching
+# knobs are tightened to the matched region found by the 2026-06-21 beam-based beta* scan
+# (analysis/2026-06-21_beam-based-matching-and-anchoring.md; curve = artifacts/beam_matched_curve.csv,
+# beta* 7.6-50 cm, witness BMAG ~1.0 throughout). This tests whether a simple tight box -- centered
+# on the MATCHED region, not golden (golden is a mismatched witness) -- gives acceptable near-matched
+# coverage, which would let us skip the anchoring machinery (the A/B vs `expanded_anchored`).
+#
+# - FF quads + S1/S2/S3 sextupole STRENGTHS: scan [min,max] over beta* + ~margin. Several are
+#   offset from golden (Q0FF +12%, Q2FF -5%, S2EL -4%); the box is centered on the matched band.
+#   The FF is loosely constrained (degenerate) so its band is wider; the sextupoles are the tight
+#   beta*-determining lever.
+# - FF kickers / sextupole movers: tight about golden (the matched config used ~golden values;
+#   offset/collinearity is a separate objective handled by the movers + offset_floor).
+# - Longitudinal phases/energies (L1/L2 phase, L1/L2/L3 energy): left at the `expanded` ranges so
+#   the controller still explores spacing/energy. NOTE: the matched band was found at the golden
+#   longitudinal point; if the wide longitudinal variation breaks the match, the pilot will show it
+#   (then narrow longitudinal to isolate, or widen the transverse band).
+# Baselines = the 15 cm matched point (FF + sextupole strengths) / golden (kickers, movers).
+# ----------------------------------------------------------------------------------------
+_TIGHTBOX_OVERRIDE = {
+    # FF quads (kG.m) -- scan matched band + margin (baseline = 15 cm matched)
+    "Q5FFkG": (-95.0, -63.0, -81.740),
+    "Q4FFkG": (-90.0, -74.0, -83.006),
+    "Q3FFkG": (96.0, 108.0, 101.154),
+    "Q2FFkG": (113.0, 125.0, 121.004),
+    "Q1FFkG": (-239.0, -230.0, -232.744),
+    "Q0FFkG": (134.0, 150.0, 142.275),
+    # BC20 sextupole strengths (kG.m) -- the tight beta*-determining lever (baseline = 15 cm matched)
+    "S1ELkG": (2090.0, 2300.0, 2164.438),
+    "S2ELkG": (-4280.0, -3960.0, -4161.751),
+    "S3ELkG": (-1090.0, -925.0, -949.754),
+    # FF kickers (kG.m) -- tight about golden (+/- 0.003)
+    "XC1FFkG": (-0.0006018, 0.0053982, 0.0023982),
+    "XC3FFkG": (-0.0014656, 0.0045344, 0.0015344),
+    "YC1FFkG": (-0.0083321, -0.0023321, -0.0053321),
+    "YC2FFkG": (-0.0065512, -0.0005512, -0.0035512),
+    # BC20 sextupole movers (m) -- tight about golden (+/- 0.1 mm)
+    "S1EL_xOffset": (0.0008068, 0.0010068, 0.0009068),
+    "S1EL_yOffset": (0.0000316, 0.0002316, 0.0001316),
+    "S2EL_xOffset": (-0.0004886, -0.0002886, -0.0003886),
+    "S2EL_yOffset": (0.0000166, 0.0002166, 0.0001166),
+    "S2ER_xOffset": (-0.0002679, -0.0000679, -0.0001679),
+    "S2ER_yOffset": (-0.0015882, -0.0013882, -0.0014882),
+    "S1ER_xOffset": (0.0012323, 0.0014323, 0.0013323),
+    "S1ER_yOffset": (-0.0012183, -0.0010183, -0.0011183),
+}
+TIGHTBOX_PARAMS = {**EXPANDED_PARAMS, **_TIGHTBOX_OVERRIDE}
+
 # Named sweep sets, selectable per campaign config via the `sweep_set` key. run_sweep
 # defaults to "original8" so the existing 8-D campaign/configs/manifests reproduce exactly.
-# `expanded_anchored` additionally triggers manifold sampling (ff_manifold.MANIFOLD_SPECS).
+# `expanded_anchored` additionally triggers manifold sampling (ff_manifold.MANIFOLD_SPECS);
+# `tightbox` is a plain box-LHS over the matched-region-tightened bounds (no manifold sampler).
 SWEEP_SETS = {
     "original8": SWEEP_PARAMS,
     "expanded":  EXPANDED_PARAMS,
     "expanded_anchored": EXPANDED_ANCHORED_PARAMS,
+    "tightbox": TIGHTBOX_PARAMS,
 }
 
 
@@ -152,8 +204,23 @@ def resolve_sweep_set(name="original8"):
     """Return (keys, low, high, baseline) for a named sweep set.
 
     keys preserve dict-insertion order, so a given (set, seed) yields a stable LHS draw.
+    A "+"-joined name (e.g. "tightbox+expanded") returns the *element-wise union* of the
+    named sets' bounds -- the common normalization frame for a dataset combining draws from
+    several boxes (used by preprocess when merging campaigns, and by the RL env so its action
+    space maps onto the same frame). The sets must share identical keys/order; baseline is
+    taken from the first set (its operating point).
     Raises KeyError on an unknown set name.
     """
+    if "+" in name:
+        parts = name.split("+")
+        resolved = [resolve_sweep_set(p) for p in parts]
+        keys0 = resolved[0][0]
+        for k, _, _, _ in resolved[1:]:
+            if k != keys0:
+                raise ValueError(f"cannot union sweep sets with differing keys: {name}")
+        low = [min(r[1][i] for r in resolved) for i in range(len(keys0))]
+        high = [max(r[2][i] for r in resolved) for i in range(len(keys0))]
+        return keys0, low, high, resolved[0][3]
     if name not in SWEEP_SETS:
         raise KeyError(f"unknown sweep_set {name!r}; choose from {list(SWEEP_SETS)}")
     params = SWEEP_SETS[name]

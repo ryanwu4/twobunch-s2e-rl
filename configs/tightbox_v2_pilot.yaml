@@ -1,0 +1,20 @@
+# Tightened-box pilot v2 (26-D, plain box-LHS). Adds the two matching levers on top of v1's
+# FF+kicker tightening: BC20 sextupole STRENGTHS tightened to the beam-based scan band (the
+# beta*-matching lever) and the movers narrowed to +/-0.1 mm about golden (the offset lever).
+# Longitudinal phases/energies still wide (spacing/energy exploration). Tests whether the full
+# matched-region tight box reaches near-matched + better collinearity, where v1 (FF+kicker only)
+# plateaued at median BMAG 7 / offset 514 um. Fresh output_dir so the manifest rebuilds.
+# NOTE: matched sextupole band was found at golden longitudinal; if wide longitudinal dilutes
+# the match, the follow-up is to narrow the longitudinal knobs and re-run.
+name: tightbox_v2_pilot
+sweep_set: tightbox
+n_samples: 512
+n_baseline_repeats: 8
+num_macro_particles: 100000
+n_workers: 120
+seed: 20260624
+csrTF: true
+transverseWakes: true  # transverse objectives need wakes on; coefficients pending validation (2026-06-10 audit)
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/tightbox_v2_pilot
+save_beams_at: [PENT]

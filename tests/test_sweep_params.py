@@ -10,7 +10,7 @@ import pytest
 from twobunch_s2e_rl.datagen.sweep_params import (
     SWEEP_PARAMS, PARAM_KEYS, BOUNDS_LOW, BOUNDS_HIGH, BASELINE_KNOBS,
     SWEEP_PARAMS_EXPANDED_EXTRA, EXPANDED_PARAMS, EXPANDED_ANCHORED_PARAMS,
-    SWEEP_SETS, resolve_sweep_set,
+    TIGHTBOX_PARAMS, SWEEP_SETS, resolve_sweep_set,
 )
 from twobunch_s2e_rl.datagen.ff_manifold import (
     FF_KEYS, FF_MATCHED_CURVE, MANIFOLD_SPECS, sample_anchored_ff,
@@ -68,9 +68,26 @@ def test_resolve_sweep_set():
     assert baseline == {k: EXPANDED_PARAMS[k][2] for k in keys}
 
     assert resolve_sweep_set() == resolve_sweep_set("original8")  # default
-    assert set(SWEEP_SETS) == {"original8", "expanded", "expanded_anchored"}
+    assert set(SWEEP_SETS) == {"original8", "expanded", "expanded_anchored", "tightbox"}
     with pytest.raises(KeyError):
         resolve_sweep_set("nope")
+
+
+def test_tightbox_set():
+    assert len(TIGHTBOX_PARAMS) == 26
+    assert list(TIGHTBOX_PARAMS) == list(EXPANDED_PARAMS)              # same keys/order
+    for k, (lo, hi, base) in TIGHTBOX_PARAMS.items():
+        assert lo < hi and lo <= base <= hi, f"{k} bounds/baseline"
+    # only the longitudinal phases/energies are kept at the expanded ranges; every transverse
+    # knob (FF quads, kickers, sextupole strengths, movers) is tightened vs the expanded box
+    longitudinal = {"L1PhaseSet", "L2PhaseSet", "L1EnergyOffset", "L2EnergyOffset", "L3EnergyOffset"}
+    for k in TIGHTBOX_PARAMS:
+        a = TIGHTBOX_PARAMS[k][1] - TIGHTBOX_PARAMS[k][0]
+        e = EXPANDED_PARAMS[k][1] - EXPANDED_PARAMS[k][0]
+        if k in longitudinal:
+            assert TIGHTBOX_PARAMS[k] == EXPANDED_PARAMS[k], f"{k} should match expanded"
+        else:
+            assert a < e, f"{k} not tightened ({a} !< {e})"
 
 
 # --------------------------------------------------------------------------------------
