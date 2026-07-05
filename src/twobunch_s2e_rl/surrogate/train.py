@@ -9,7 +9,9 @@ loaded from the preprocess _norm.json so the checkpoint is self-contained.
 from __future__ import annotations
 
 import argparse
+import glob
 
+import torch
 import lightning as L
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
@@ -58,6 +60,10 @@ def main():
     ap.add_argument("--limit-train-batches", type=float, default=1.0)
     ap.add_argument("--accelerator", default="auto")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--lr-schedule", choices=["plateau", "cosine"], default="plateau",
+                    help="cosine = smooth anneal to lr/100 over --epochs (for warm-started fine-tunes)")
+    ap.add_argument("--init-ckpt", default=None,
+                    help="warm-start weights from this checkpoint (glob ok) before a fresh fit")
     args = ap.parse_args()
 
     L.seed_everything(args.seed, workers=True)
@@ -69,7 +75,14 @@ def main():
                         hidden_dim=args.hidden_dim, coupling=args.coupling,
                         n_bins=args.n_bins, tail_bound=args.tail_bound,
                         w_emit=args.w_emit, w_emit_z=args.w_emit_z, w_emit_4d=args.w_emit_4d,
-                        w_emit_6d=args.w_emit_6d, w_cov=args.w_cov, bunches=bunches)
+                        w_emit_6d=args.w_emit_6d, w_cov=args.w_cov, bunches=bunches,
+                        lr_schedule=args.lr_schedule, t_max=args.epochs)
+    if args.init_ckpt:
+        # warm-start weights only (new hparams + fresh optimizer/LR schedule); not a full resume
+        ck = sorted(glob.glob(args.init_ckpt))[-1] if "*" in args.init_ckpt else args.init_ckpt
+        state = torch.load(ck, map_location="cpu", weights_only=False)["state_dict"]
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        print(f"warm-started weights from {ck} (missing={len(missing)}, unexpected={len(unexpected)})")
 
     ckpt = ModelCheckpoint(dirpath=f"{args.out}/checkpoints", monitor="val_loss",
                            mode="min", save_top_k=1,

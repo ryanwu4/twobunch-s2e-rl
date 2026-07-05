@@ -31,6 +31,12 @@ PARITY_KEYS = [
     ("energy_difference", "ΔE (D−W) [eV]", False),
     ("transverse_offset", "transverse offset [m]", True),
     ("witness_energy_spread", "witness σ_E [eV]", True),
+    # matching objectives (BMAG / slice-β) -- now MBRL reward terms, so gated by the R² check
+    ("witness_bmag_x", "witness BMAG_x", True),
+    ("witness_bmag_y", "witness BMAG_y", True),
+    ("witness_slice_bmag_max", "witness slice BMAG max", True),
+    ("witness_slice_beta_y_core", "witness slice β_y core [m]", True),
+    ("drive_bmag_x", "drive BMAG_x", True),
 ]
 
 
@@ -74,7 +80,9 @@ def evaluate(ckpt, processed, out_dir, n=2048, device="cuda"):
 
     # ---- parity ----
     metrics = {}
-    fig, axes = plt.subplots(2, 4, figsize=(18, 9))
+    ncol = 4
+    nrow = int(np.ceil(len(PARITY_KEYS) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(4.5 * ncol, 4.5 * nrow))
     for ax, (key, label, logp) in zip(axes.ravel(), PARITY_KEYS):
         bunch = key.split("_")[0]
         mask = wd if bunch == "witness" else dd
@@ -97,6 +105,8 @@ def evaluate(ckpt, processed, out_dir, n=2048, device="cuda"):
         metrics[key] = {"r2": float(r2), "n": int(mask.sum())}
         ax.set_title(f"{label}\nR²={r2:.2f} (n={mask.sum()})", fontsize=10)
         ax.set_xlabel("true"); ax.set_ylabel("surrogate")
+    for ax in axes.ravel()[len(PARITY_KEYS):]:
+        ax.axis("off")
     fig.suptitle("Surrogate vs truth (val split) — per-bunch & inter-bunch observables", fontsize=13)
     fig.tight_layout()
     out_dir = repo_root() / out_dir

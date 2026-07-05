@@ -12,7 +12,7 @@ sweep_set: expanded
 n_samples: 3000
 n_baseline_repeats: 0   # tight campaign carries the golden repeats
 num_macro_particles: 100000
-n_workers: 120
+n_workers: 100
 seed: 20260701
 csrTF: true
 transverseWakes: true  # transverse objectives need wakes on; coefficients pending validation (2026-06-10 audit)

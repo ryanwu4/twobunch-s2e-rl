@@ -167,7 +167,7 @@ class TwoBunchFlow(L.LightningModule):
     def __init__(
         self, condition_dim=8, latent_dim=LATENT_DIM, hidden_dim=128, n_layers=16,
         coupling="affine", n_bins=16, tail_bound=8.0,
-        lr=1e-4, weight_decay=1e-5,
+        lr=1e-4, weight_decay=1e-5, lr_schedule="plateau", t_max=300,
         w_cls=1.0, w_tr=1.0, w_emit=0.25, w_emit_z=0.0, w_emit_4d=0.0, w_emit_6d=0.0, w_cov=0.5, nll_dim_norm=6.0,
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
@@ -389,5 +389,10 @@ class TwoBunchFlow(L.LightningModule):
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.parameters(), lr=self.hparams.lr,
                                weight_decay=self.hparams.weight_decay)
+        if self.hparams.lr_schedule == "cosine":
+            # smooth anneal to ~lr/100 over t_max epochs -- for warm-started fine-tuning phases
+            sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+                opt, T_max=self.hparams.t_max, eta_min=self.hparams.lr * 0.01)
+            return {"optimizer": opt, "lr_scheduler": {"scheduler": sched, "interval": "epoch"}}
         sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
         return {"optimizer": opt, "lr_scheduler": {"scheduler": sched, "monitor": "val_loss"}}
