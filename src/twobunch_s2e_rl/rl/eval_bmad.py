@@ -166,9 +166,9 @@ def main():
     flow_ckpt = resolve_ckpt(args.flow_ckpt)
     drive_full, witness_full = _full_charges(de["campaign_h5"])
     actor, rms = _load_policy(str(logdir / f"{args.policy}_policy.pt"), device)
-    # neat output layout: per-mode results/plots under artifacts/rl/<mode>/, goal-sweep GIFs/PNGs
-    # under artifacts/rl/goal_sweep/.
-    art_root = Path("artifacts/rl")
+    # neat output layout: per-mode results/plots under results/rl/<mode>/, goal-sweep GIFs/PNGs
+    # under results/rl/goal_sweep/.
+    art_root = Path("results/rl")
     artdir = art_root / args.mode
     artdir.mkdir(parents=True, exist_ok=True)
     sweep_dir = art_root / "goal_sweep"

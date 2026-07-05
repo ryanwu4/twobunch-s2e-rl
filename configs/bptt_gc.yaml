@@ -16,7 +16,7 @@ params:
     n_particles: 512
     # ---- reward ----
     campaign_h5: processed/twobunch_flow_v4.h5
-    reward_norms_json: artifacts/rl/norms/metric_norms.json
+    reward_norms_json: results/rl/norms/metric_norms.json
     spacing_target_m: 2.0e-4     # eval/fallback default (used when goal range is absent)
     spacing_goal_lo_m: 1.0e-4    # 100 um -> goal-conditioned mode (both bounds present)
     spacing_goal_hi_m: 3.0e-4    # 300 um

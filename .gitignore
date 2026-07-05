@@ -4,8 +4,11 @@ data/
 # Transient per-worker beam files written under any output/data dir
 **/scratch/
 
-# Regenerated analysis artifacts (dataset cache, figures)
-artifacts/
+# Generated outputs (figures, metrics, dataset caches) live in results/, but the colocated
+# report scripts there ARE tracked (reproducibility): ignore everything except .py + dirs.
+results/**
+!results/**/
+!results/**/*.py
 
 # Future ML stages
 processed/

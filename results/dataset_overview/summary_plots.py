@@ -1,6 +1,6 @@
 """Summary plots for the two-bunch LHS sweep.
 
-Reads artifacts/dataset.pkl (built by build_dataset.py). Produces, in artifacts/figures/:
+Reads results/tables/dataset.pkl (built by analysis_tools/build_dataset.py). Produces, beside this script:
   fig1_inputs.png        - 8 sweep-knob input distributions (bounds + baseline)
   fig2_feasibility.png   - witness-survival taxonomy per treaty point + transmission
   fig3_outputs_PENT.png  - key output distributions at PENT (drive vs witness)
@@ -8,7 +8,7 @@ Reads artifacts/dataset.pkl (built by build_dataset.py). Produces, in artifacts/
 
 Also prints a feasibility table and output summary stats to stdout.
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis.summary_plots
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/dataset_overview/summary_plots.py
 """
 import os
 
@@ -19,12 +19,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from ..datagen.paths import repo_root
-from ..datagen.sweep_params import SWEEP_PARAMS, PARAM_KEYS
+from pathlib import Path
 
-ART = repo_root() / "artifacts"
-FIG = ART / "figures"
-os.makedirs(FIG, exist_ok=True)
+from twobunch_s2e_rl.datagen.paths import tables_dir
+from twobunch_s2e_rl.datagen.sweep_params import SWEEP_PARAMS, PARAM_KEYS
+
+ART = tables_dir()                          # dataset.pkl lives here
+FIG = Path(__file__).resolve().parent       # write figures beside this script
 POINTS = ["BEGBC20", "MFFF", "PENT"]
 DRIVE_C = "#1f77b4"
 WIT_C = "#d62728"

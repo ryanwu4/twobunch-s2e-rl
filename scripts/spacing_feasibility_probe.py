@@ -83,7 +83,7 @@ def probe(flow_ckpt, n=20000, n_particles=512, t_thresh=0.95, device="cuda",
     else:
         print("  OK: every populated target bin has high-survival knobs -> range is feasible.")
 
-    out = Path(out) if out else Path("artifacts/rl/spacing_feasibility.png")
+    out = Path(out) if out else Path("results/rl/spacing_feasibility.png")
     out.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(1, 2, figsize=(13, 5))
     s = spacing_um

@@ -11,7 +11,7 @@ converges far faster than emittance. Run wakes-on (default) for a realistic floo
 transverse wake adds a kick the movers must also cancel (coefficients still provisional).
 
 Usage (bmad-qpad-dev; from twobunch-s2e-rl repo root):
-  PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.analysis.offset_floor \
+  PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.analysis_tools.offset_floor \
       [--npart 20000] [--wakes/--no-wakes] [--knobs movers|movers+strengths|movers+ff] \
       [--maxfev 200] [--span 1.5e-3]
 """

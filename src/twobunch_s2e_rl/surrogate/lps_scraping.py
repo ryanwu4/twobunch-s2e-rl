@@ -8,7 +8,7 @@ correlation, longitudinal emittance (sqrt det cov(z,pz)), and energy spread sigm
   PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.lps_scraping \
       --ckpt "trained/twobunch_flow_v2/checkpoints/best-*.ckpt" --processed processed/twobunch_flow_v2.h5
 
-Writes artifacts/surrogate_v2/diagnostics/lps_scraping_{box,trend,examples}.png + a summary.
+Writes <--out, default results/surrogate/v2/diagnostics>/lps_scraping_{box,trend,examples}.png + a summary.
 """
 from __future__ import annotations
 
@@ -154,7 +154,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--processed", default=str(repo_root() / "processed" / "twobunch_flow_v2.h5"))
-    ap.add_argument("--out", default="artifacts/surrogate_v2/diagnostics")
+    ap.add_argument("--out", default="results/surrogate/v2/diagnostics")
     args = ap.parse_args()
     ckpt = sorted(glob.glob(args.ckpt))[-1] if "*" in args.ckpt else args.ckpt
     analyze(ckpt, args.processed, args.out)

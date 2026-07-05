@@ -127,9 +127,9 @@ def main():
     finally:
         bridge.close()
 
-    Path("artifacts/rl/openloop").mkdir(parents=True, exist_ok=True)
-    json.dump(out, open("artifacts/rl/openloop/eval_baseline_sanity.json", "w"), indent=2)
-    print("\nWrote artifacts/rl/openloop/eval_baseline_sanity.json")
+    Path("results/rl/openloop").mkdir(parents=True, exist_ok=True)
+    json.dump(out, open("results/rl/openloop/eval_baseline_sanity.json", "w"), indent=2)
+    print("\nWrote results/rl/openloop/eval_baseline_sanity.json")
 
 
 if __name__ == "__main__":

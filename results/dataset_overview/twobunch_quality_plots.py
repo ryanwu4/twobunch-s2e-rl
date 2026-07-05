@@ -1,16 +1,16 @@
 """Drive<->witness relative ('collision quality') quantities for the two-bunch sweep.
 
-Reads artifacts/dataset.pkl. All four are defined only where the witness is viable
+Reads results/tables/dataset.pkl. All four are defined only where the witness is viable
 (bunchCount==2). Definitions match UTILITY_quickstart.getBeamSpecs:
   bunch spacing        = PWitness_zCentroid - PDrive_zCentroid           (signed, m)
   transverse offset    = |median (x,y)_drive - median (x,y)_witness|     (>=0, m)
   energy difference    = PDrive_median_energy - PWitness_median_energy   (signed, eV)
   angular misalignment = |median (xp,yp)_drive - median (xp,yp)_witness| (>=0, rad)
 
-Produces artifacts/figures/fig5_twobunch_quality_PENT.png and fig6_..._evolution.png,
+Produces, beside this script, fig5_twobunch_quality_PENT.png and fig6_..._evolution.png,
 and prints per-point summary stats.
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis.twobunch_quality_plots
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/dataset_overview/twobunch_quality_plots.py
 """
 import os
 
@@ -20,11 +20,12 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ..datagen.paths import repo_root
+from pathlib import Path
 
-ART = repo_root() / "artifacts"
-FIG = ART / "figures"
-os.makedirs(FIG, exist_ok=True)
+from twobunch_s2e_rl.datagen.paths import tables_dir
+
+ART = tables_dir()                          # dataset.pkl lives here
+FIG = Path(__file__).resolve().parent       # write figures beside this script
 POINTS = ["BEGBC20", "MFFF", "PENT"]
 df = pd.read_pickle(ART / "dataset.pkl")
 

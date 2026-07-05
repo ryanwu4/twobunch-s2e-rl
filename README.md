@@ -48,11 +48,14 @@ PYTHONPATH=$PWD/src MPLBACKEND=Agg \
 Re-running resumes: completed samples are skipped via their `sample_*.json`; the LHS
 manifest is seeded and written once, so indices are stable. Output → `data/<config name>/`.
 
-**Analysis** (`bmad-qpad-dev`, or any env with pandas/matplotlib/h5py):
+**Analysis** (`bmad-qpad-dev`, or any env with pandas/matplotlib/h5py). Reusable per-campaign
+tools live in `src/.../analysis_tools/`; one-off study reports live beside their figures in
+`results/<study>/` and write there (run by file path):
 ```bash
-PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.analysis.build_dataset           # -> artifacts/dataset.pkl
-PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis.summary_plots
-PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis.twobunch_quality_plots
+PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.analysis_tools.build_dataset                    # -> results/tables/dataset.pkl
+PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis_tools.achievable_targets tightbox_v2_full  # -> results/tightbox_v2_full/
+PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/dataset_overview/summary_plots.py
+PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/combined_dataset/dataset_coverage.py
 ```
 
 **Surrogate** (`slac-rl` torch env): conditional RealNVP over the 8 knobs → drive+witness 6D
@@ -65,8 +68,8 @@ PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.eval  --ckpt "trained/tw
 PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.diagnostics --ckpt "trained/twobunch_flow/checkpoints/best-*.ckpt"
 PYTHONPATH=$PWD/src pytest tests/                                                  # 21 tests (data tests auto-skip if absent)
 ```
-`eval` writes parity / phase-space / metrics to `artifacts/surrogate/`; `diagnostics` adds
-`artifacts/surrogate/diagnostics/` (full 6D corner plots per bunch, phase-space slices +
+`eval` writes parity / phase-space / metrics to `results/surrogate/<model>/` (via `--out`);
+`diagnostics` adds a `diagnostics/` subfolder there (full 6D corner plots per bunch, phase-space slices +
 correlation matrices for representative samples, the knob→observable response surface,
 feasibility calibration, and per-coordinate dispersion ratios).
 
@@ -74,17 +77,21 @@ feasibility calibration, and per-coordinate dispersion ratios).
 
 ```
 src/twobunch_s2e_rl/
-  datagen/    sweep_params.py (authoritative 8-knob table), run_sweep.py, paths.py
-    phase0/   run_baseline.py, run_convergence.py, bench_threads.py (pre-campaign study)
-  analysis/   build_dataset.py, summary_plots.py, twobunch_quality_plots.py
-  surrogate/  preprocess, dataset, model (TwoBunchFlow), train, eval, diagnostics
-  rl/         reward, diff_env (TwoBunchFlowEnv), diffrl/ (vendored SHAC/BPTT),
-              train_{shac,bptt}, eval, compare, particle_study
-configs/      smoke|pilot|full|wakes_gate.yaml (datagen); shac|bptt.yaml (MBRL)
-data/         campaign output + data/phase0/ baseline study output (gitignored)
-artifacts/    regenerated dataset cache + figures (gitignored)
-docs/         surrogate_roadmap.md
-tests/        test_sweep_params.py
+  datagen/        sweep_params.py (authoritative knob table), run_sweep.py, paths.py (+ output-dir helpers)
+    phase0/       run_baseline.py, run_convergence.py, bench_threads.py (pre-campaign study)
+  analysis_io.py  shared loaders (load/derived/flatten_sample) for tools + report scripts
+  analysis_tools/ reusable per-campaign tools: achievable_targets, build_dataset, beam_matching_solve, offset_floor
+  surrogate/      preprocess, dataset, model (TwoBunchFlow), train, eval, diagnostics, plot_training
+  rl/             reward, diff_env (TwoBunchFlowEnv), diffrl/ (vendored SHAC/BPTT),
+                  train_{shac,bptt}, eval, compare, particle_study
+configs/          smoke|pilot|full|tightbox*|wakes_gate.yaml (datagen); shac|bptt.yaml (MBRL)
+data/             campaign output + data/phase0/ baseline study output (gitignored)
+results/          generated outputs (gitignored): <study>/ (report scripts + their figures/CSVs),
+                  surrogate/<model>/ (metrics, parity, loss_curves, diagnostics, r2),
+                  tables/ (dataset cache), rl/, presentation_figures/
+trained/<model>/  checkpoints/ + csv/ + train.log  (models + logs only, no figures)
+docs/             surrogate_roadmap.md
+tests/            test_sweep_params.py + surrogate/rl tests
 ```
 
 ## Parameters & provenance

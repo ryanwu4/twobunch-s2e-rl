@@ -1,5 +1,5 @@
 """Head-to-head SHAC vs BPTT comparison: deterministic eval of each run's best_policy on the
-same held-out random starts, printed as a table + saved to artifacts/rl/compare.json.
+same held-out random starts, printed as a table + saved to results/rl/compare.json.
 
   PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.rl.compare \
       --shac logs/shac --bptt logs/bptt \
@@ -46,7 +46,7 @@ def main():
     print("\n==== SHAC vs BPTT (held-out random starts) ====")
     for name in out:
         print(_row(name, out[name]))
-    p = repo_root() / "artifacts/rl/surrogate/compare.json"
+    p = repo_root() / "results/rl/surrogate/compare.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "w") as f:
         json.dump(out, f, indent=2)

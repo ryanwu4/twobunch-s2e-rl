@@ -142,7 +142,7 @@ EXPANDED_ANCHORED_PARAMS = {**EXPANDED_PARAMS, **_ANCHORED_OVERRIDE}
 # ----------------------------------------------------------------------------------------
 # Tightened-box 26-D set: a plain box-LHS set (no manifold sampler) whose transverse-matching
 # knobs are tightened to the matched region found by the 2026-06-21 beam-based beta* scan
-# (analysis/2026-06-21_beam-based-matching-and-anchoring.md; curve = artifacts/beam_matched_curve.csv,
+# (analysis/2026-06-21_beam-based-matching-and-anchoring.md; curve = results/beam_matching/beam_matched_curve.csv,
 # beta* 7.6-50 cm, witness BMAG ~1.0 throughout). This tests whether a simple tight box -- centered
 # on the MATCHED region, not golden (golden is a mismatched witness) -- gives acceptable near-matched
 # coverage, which would let us skip the anchoring machinery (the A/B vs `expanded_anchored`).

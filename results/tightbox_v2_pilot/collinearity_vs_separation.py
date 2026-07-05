@@ -8,9 +8,9 @@ Bins the witness-viable draws by bunch spacing and plots offset/angle vs spacing
 test), then vs L3EnergyOffset (the dominant dispersion lever) to show the real dependence.
 
 Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg \
-    python -m twobunch_s2e_rl.analysis.collinearity_vs_separation [subdir]
+    python results/tightbox_v2_pilot/collinearity_vs_separation.py [subdir]
     (default: tightbox_v2_pilot)
-Outputs: artifacts/figures/<subdir>/collinearity_vs_separation.png
+Outputs: collinearity_vs_separation.png beside this script (results/tightbox_v2_pilot/)
 """
 import argparse
 import os
@@ -20,8 +20,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ..datagen.paths import repo_root
-from .achievable_targets import load, derived
+from pathlib import Path
+
+from twobunch_s2e_rl.analysis_io import load, derived
 
 BLUE, ORANGE, GREEN = "#4c72b0", "#dd8452", "#55a868"
 
@@ -55,8 +56,7 @@ def main():
     m = np.isfinite(sp) & np.isfinite(off) & np.isfinite(ang) & np.isfinite(l3)
     sp, off, ang, l3 = sp[m], off[m], ang[m], l3[m]
 
-    figdir = repo_root() / "artifacts" / "figures" / args.subdir
-    os.makedirs(figdir, exist_ok=True)
+    figdir = Path(__file__).resolve().parent
     fig, ax = plt.subplots(2, 2, figsize=(13, 9))
 
     panels = [

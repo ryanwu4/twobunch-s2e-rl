@@ -6,7 +6,7 @@ and answers: how much particle loss does the dataset actually contain, and where
 is loss minimized? This grounds the MBRL survival target -- the campaign supports both-bunch
 T>=0.99 (~14% of samples) but T>=0.995 in 0% of samples, so the reward should not chase >0.99.
 
-Writes artifacts/figures/particle_loss.png:
+Writes particle_loss.png beside this script:
   (a) loss = 1 - T histograms (drive vs witness), full range + a 0-10% zoom
   (b) "both bunches survive at T >= threshold" fraction-vs-threshold curve (the 0.99->0.995 cliff)
   (c) per-knob clean-vs-dirty separation (std units) -- which knob drives clean joint survival
@@ -14,7 +14,7 @@ Writes artifacts/figures/particle_loss.png:
 and prints the threshold table + the suggested "aim for zero loss" config (clean-subset physical
 medians) to stdout.
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis.particle_loss_dist
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/dataset_overview/particle_loss_dist.py
        [--h5 processed/twobunch_flow_v4.h5] [--clean-thr 0.99]
 """
 from __future__ import annotations
@@ -28,8 +28,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ..datagen.paths import repo_root
-from ..datagen.sweep_params import PARAM_KEYS, SWEEP_PARAMS
+from pathlib import Path
+
+from twobunch_s2e_rl.datagen.paths import repo_root
+from twobunch_s2e_rl.datagen.sweep_params import PARAM_KEYS, SWEEP_PARAMS
 
 DRIVE_C = "#1f77b4"
 WIT_C = "#d62728"
@@ -155,7 +157,7 @@ def _plot(h5_path, loss_d, loss_w, df, wf, dd, wd, both, kn, clean, dirty, sep, 
 
     fig.suptitle(f"Two-bunch particle loss -- {os.path.basename(h5_path)}", fontsize=13)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
-    out = repo_root() / "artifacts" / "figures"
+    out = Path(__file__).resolve().parent
     os.makedirs(out, exist_ok=True)
     p = out / "particle_loss.png"
     fig.savefig(p, dpi=130, bbox_inches="tight")

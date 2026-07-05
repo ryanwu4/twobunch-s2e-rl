@@ -2,7 +2,7 @@
 
   PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.eval --ckpt trained/twobunch_flow/checkpoints/best-*.ckpt
 
-Writes artifacts/surrogate/{parity.png, phase_space.png, metrics.json}.
+Writes <--out, default results/surrogate/default>/{parity.png, phase_space.png, metrics.json}.
 """
 from __future__ import annotations
 
@@ -153,7 +153,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ckpt", required=True, help="checkpoint path (glob ok)")
     ap.add_argument("--processed", default=str(repo_root() / "processed" / "twobunch_flow.h5"))
-    ap.add_argument("--out", default="artifacts/surrogate")
+    ap.add_argument("--out", default="results/surrogate/default")
     ap.add_argument("--n", type=int, default=2048)
     args = ap.parse_args()
     ckpt = sorted(glob.glob(args.ckpt))[-1] if "*" in args.ckpt else args.ckpt

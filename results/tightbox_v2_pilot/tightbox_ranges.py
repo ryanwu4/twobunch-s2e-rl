@@ -16,10 +16,10 @@ Two honesty points baked in:
 Reads data/<subdir>/sample_*.json via achievable_targets.{load,derived}. No new tracking.
 
 Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg \
-    python -m twobunch_s2e_rl.analysis.tightbox_ranges [v2_subdir] [v1_subdir]
+    python results/tightbox_v2_pilot/tightbox_ranges.py [v2_subdir] [v1_subdir]
     (defaults: tightbox_v2_pilot tightbox_pilot)
-Outputs: artifacts/figures/<v2_subdir>/range_comparison.png, fraction_vs_golden.png
-         artifacts/<v2_subdir>_range_comparison.csv
+Outputs: written beside this script in results/tightbox_v2_pilot/
+         (range_comparison.png, fraction_vs_golden.png, <v2_subdir>_range_comparison.csv)
 """
 import argparse
 import os
@@ -30,8 +30,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ..datagen.paths import repo_root
-from .achievable_targets import load, derived
+from pathlib import Path
+
+from twobunch_s2e_rl.analysis_io import load, derived
 
 GREY, BLUE, GREEN = "#9aa4b0", "#4c72b0", "#55a868"
 
@@ -85,8 +86,7 @@ def main():
 
     q2, golden, n2 = _viable_derived(args.v2)
     q1, _, n1 = _viable_derived(args.v1)
-    figdir = repo_root() / "artifacts" / "figures" / args.v2
-    os.makedirs(figdir, exist_ok=True)
+    figdir = Path(__file__).resolve().parent
 
     labels = {"v1": f"v1 FF+kick (n={n1})", "v2": f"v2 +sext+movers (n={n2})"}
 
@@ -102,7 +102,7 @@ def main():
             d[f"{tag}_frac_ge_golden"] = _frac_at_least_golden(q[key], golden.get(key, np.nan), direction)
         rows.append(d)
     tbl = pd.DataFrame(rows)
-    csv = repo_root() / "artifacts" / f"{args.v2}_range_comparison.csv"
+    csv = figdir / f"{args.v2}_range_comparison.csv"
     tbl.to_csv(csv, index=False)
     print(f"\n=== observed-range comparison: {args.v1} (v1) vs {args.v2} (v2) ===\n")
     with pd.option_context("display.width", 200, "display.max_columns", 30):

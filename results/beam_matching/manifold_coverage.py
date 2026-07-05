@@ -13,7 +13,7 @@ jitter, clip to EPICS bounds. Movers: narrowed box about their golden tuned valu
 
 Figures -> lab-notebook/images/2026-06-21_manifold_coverage_{knobs,bmag}.png
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis.manifold_coverage \
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/beam_matching/manifold_coverage.py \
          [--n 400] [--jitter 0.06] [--no-tao]
 """
 import argparse
@@ -24,7 +24,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ..datagen.paths import repo_root, facet2_root
+from twobunch_s2e_rl.datagen.paths import repo_root, facet2_root
 
 FIGDIR = "/home/rwu4/photoinjector-rl/lab-notebook/images"
 FF = ["Q5FFkG", "Q4FFkG", "Q3FFkG", "Q2FFkG", "Q1FFkG", "Q0FFkG"]

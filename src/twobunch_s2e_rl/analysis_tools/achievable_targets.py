@@ -15,8 +15,8 @@ build_dataset.flatten_sample, then computes/plots over the LHS subset:
 Golden working point shown from the baseline-repeat samples.
 
 Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg \
-    python -m twobunch_s2e_rl.analysis.achievable_targets [subdir]
-Outputs: artifacts/figures/<subdir>/*.png and artifacts/<subdir>_achievable_summary.csv
+    python -m twobunch_s2e_rl.analysis_tools.achievable_targets [subdir]
+Outputs: results/<subdir>/*.png and results/<subdir>/<subdir>_achievable_summary.csv
 """
 import argparse
 import glob
@@ -29,62 +29,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ..datagen.paths import repo_root
-from ..datagen.sweep_params import SWEEP_PARAMS_EXPANDED_EXTRA
-from .build_dataset import flatten_sample
+from ..datagen.paths import campaign_dir
+from ..analysis_io import load, derived, P, ff_offmanifold, FF_QUADS
 
-FF_QUADS = ["Q5FFkG", "Q4FFkG", "Q3FFkG", "Q2FFkG", "Q1FFkG", "Q0FFkG"]
 BLUE, ORANGE, GREEN, RED = "#4c72b0", "#dd8452", "#55a868", "#c44e52"
-
-
-def load(subdir):
-    files = sorted(glob.glob(str(repo_root() / "data" / subdir / "sample_*.json")))
-    if not files:
-        raise SystemExit(f"no sample_*.json under data/{subdir}")
-    df = pd.DataFrame(flatten_sample(json.load(open(f))) for f in files)
-    return df.sort_values("idx").reset_index(drop=True)
-
-
-def P(df, metric):
-    """PENT column as float array (NaN where absent, e.g. witness not resolved)."""
-    col = f"PENT__{metric}"
-    return df[col].to_numpy(dtype=float) if col in df else np.full(len(df), np.nan)
-
-
-def derived(df):
-    """Display-unit target quantities at PENT (per row; NaN where undefined)."""
-    ang = np.sqrt((P(df, "PDrive_median_xp") - P(df, "PWitness_median_xp"))**2 +
-                  (P(df, "PDrive_median_yp") - P(df, "PWitness_median_yp"))**2) * 1e6  # urad
-    bmag_max = np.nanmax(np.vstack([P(df, f"P{b}_BMAG_{a}")
-                                    for b in ("Drive", "Witness") for a in ("x", "y")]), axis=0)
-    return {
-        "transmission":      P(df, "transmission_total"),                       # fraction
-        "spacing":           P(df, "bunchSpacing") * 1e6,                        # um (signed)
-        "offset":            P(df, "transverseCentroidOffset") * 1e6,           # um
-        "angle":             ang,                                                # urad
-        "dE":               (P(df, "PDrive_median_energy") - P(df, "PWitness_median_energy")) * 1e-6,  # MeV
-        "drive_emit_x":      P(df, "PDrive_norm_emit_x") * 1e6,                  # um-rad
-        "drive_emit_y":      P(df, "PDrive_norm_emit_y") * 1e6,
-        "witness_emit_x":    P(df, "PWitness_norm_emit_x") * 1e6,
-        "witness_emit_y":    P(df, "PWitness_norm_emit_y") * 1e6,
-        "drive_BMAG_x":      P(df, "PDrive_BMAG_x"),
-        "drive_BMAG_y":      P(df, "PDrive_BMAG_y"),
-        "witness_BMAG_x":    P(df, "PWitness_BMAG_x"),
-        "witness_BMAG_y":    P(df, "PWitness_BMAG_y"),
-        "BMAG_max":          bmag_max,                                           # worst of the 4
-        "drive_sigz":        P(df, "PDrive_sigmaSI90_z") * 1e6,                  # um
-        "witness_sigz":      P(df, "PWitness_sigmaSI90_z") * 1e6,
-    }
-
-
-def ff_offmanifold(df):
-    """Per-row L2 distance of the 6 FF quads from golden, in units of each half-range."""
-    z = np.zeros(len(df))
-    for q in FF_QUADS:
-        lo, hi, base = SWEEP_PARAMS_EXPANDED_EXTRA[q]
-        half = (hi - lo) / 2.0
-        z = z + ((df[q].to_numpy(dtype=float) - base) / half) ** 2
-    return np.sqrt(z)
 
 
 # (key, label, unit, log?)
@@ -125,8 +73,7 @@ def main():
     args = ap.parse_args()
 
     df = load(args.subdir)
-    figdir = repo_root() / "artifacts" / "figures" / args.subdir
-    os.makedirs(figdir, exist_ok=True)
+    figdir = campaign_dir(args.subdir)
 
     lhs = df[(df["success"] == True) & (df["is_baseline_repeat"] == False)].copy()
     base = df[df["is_baseline_repeat"] == True].copy()
@@ -173,7 +120,7 @@ def main():
         print(f"   {label:30s}[{unit:7s}] {p5:11.3g} {p50:11.3g} {p95:11.3g}   golden {g:.3g}")
         rows.append(dict(target=label, unit=unit, p5=p5, p50=p50, p95=p95,
                          min=v.min(), max=v.max(), golden=g))
-    summ = repo_root() / "artifacts" / f"{args.subdir}_achievable_summary.csv"
+    summ = campaign_dir(args.subdir) / f"{args.subdir}_achievable_summary.csv"
     pd.DataFrame(rows).to_csv(summ, index=False)
     print(f"\nwrote {summ}")
 

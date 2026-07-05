@@ -8,12 +8,13 @@ target beta* (from the manifest) using the slice-beta tools, and checks:
   - is the witness matched to its target (slice BMAG vs beta* ~ 1)?
   - is the offset controlled (anchor vs wide tail)?
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis.anchored_validation
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/expanded_anchored_pilot/anchored_validation.py
 """
 import glob
 import json
 import os
 import re
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -23,8 +24,8 @@ import matplotlib.pyplot as plt
 from pmd_beamphysics import ParticleGroup
 
 import FACET2_S2E as qs
-from ..datagen.paths import repo_root
-from ..surrogate.properties import twiss_bmag, slice_twiss_bmag, _bmag
+from twobunch_s2e_rl.datagen.paths import repo_root
+from twobunch_s2e_rl.surrogate.properties import twiss_bmag, slice_twiss_bmag, _bmag
 
 SUB = "expanded_anchored_pilot"
 COORD = ["x", "y", "z", "px", "py", "pz"]
@@ -107,8 +108,7 @@ def main():
         dp = np.percentile([r["drive_slice_bmag_vs_t"] for r in anc], [5, 50, 95])
         print(f"   drive slice-BMAG vs beta*: p5/p50/p95 = {dp[0]:.2f}/{dp[1]:.2f}/{dp[2]:.2f}")
 
-    figdir = repo_root() / "artifacts" / "figures" / SUB
-    os.makedirs(figdir, exist_ok=True)
+    figdir = Path(__file__).resolve().parent
     fig, ax = plt.subplots(1, 3, figsize=(16, 4.6))
     if anc:
         ax[0].scatter(bt, bay, s=12, alpha=0.5)

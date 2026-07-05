@@ -19,7 +19,7 @@ params:
     n_particles: 512             # memory-dominant (BPTT retains steps_num=32 graphs); see shac.yaml note
     # ---- reward ----
     campaign_h5: processed/twobunch_flow_v4.h5
-    reward_norms_json: artifacts/rl/norms/metric_norms_dr.json   # SEPARATE cache (per-bunch floors differ from clean)
+    reward_norms_json: results/rl/norms/metric_norms_dr.json   # SEPARATE cache (per-bunch floors differ from clean)
     spacing_target_m: 2.0e-4
     surv_T_min: 0.98              # STRICT: with margin 0.02 -> hinge_at 1.0 -> penalty = raw loss (1-T)
     surv_margin: 0.02             # campaign supports both-bunch T>=0.99 (14%), T>=0.995 (0%) -> don't exceed

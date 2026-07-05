@@ -7,7 +7,7 @@ converged or is still descending (i.e. whether more epochs would help).
 Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg \
     python -m twobunch_s2e_rl.surrogate.plot_training [run_dir]
     (default run_dir: trained/twobunch_combined)
-Outputs: <run_dir>/loss_curves.png
+Outputs: results/surrogate/<model>/loss_curves.png  (model = run_dir basename minus 'twobunch_')
 """
 import argparse
 import glob
@@ -19,7 +19,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ..datagen.paths import repo_root
+from ..datagen.paths import repo_root, surrogate_dir
 
 BLUE, ORANGE, GREEN = "#4c72b0", "#dd8452", "#55a868"
 
@@ -70,7 +70,8 @@ def main():
     fig.suptitle(f"Surrogate training curves — {args.run_dir}  "
                  f"(green = best-val epoch {best_ep}/{int(va.index.max())})", fontsize=13)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
-    out = run_dir / "loss_curves.png"
+    model = os.path.basename(str(args.run_dir).rstrip("/")).removeprefix("twobunch_")
+    out = surrogate_dir(model) / "loss_curves.png"
     fig.savefig(out, dpi=130); plt.close(fig)
     print(f"best val_loss {best:.4f} at epoch {best_ep} / {int(va.index.max())}")
     print(f"Δval_loss/epoch over last 20: {slope:+.5f}  (negative = still improving)")

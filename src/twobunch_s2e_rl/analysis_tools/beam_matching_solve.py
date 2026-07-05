@@ -24,7 +24,7 @@ import numpy as np
 import torch
 from scipy.optimize import minimize
 
-from ..datagen.paths import facet2_root, repo_root
+from ..datagen.paths import facet2_root, campaign_dir
 from ..surrogate.properties import slice_twiss_bmag
 
 BASELINE_CFG = "setLattice_configs/2024-10-14_twoBunch_baseline.yml"
@@ -130,7 +130,7 @@ def main():
 
     if args.scan_betas:
         import csv
-        out = args.out or str(repo_root() / "artifacts" / "beam_matched_curve.csv")
+        out = args.out or str(campaign_dir("beam_matching") / "beam_matched_curve.csv")
         os.makedirs(os.path.dirname(out), exist_ok=True)
         with open(out, "w", newline="") as fh:
             w = csv.writer(fh)

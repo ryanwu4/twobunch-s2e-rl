@@ -3,7 +3,7 @@
   PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.diagnostics \
       --ckpt "trained/twobunch_flow/checkpoints/best-*.ckpt"
 
-Writes to artifacts/surrogate/diagnostics/:
+Writes to <--out, default results/surrogate/default/diagnostics>/:
   corner_drive.png / corner_witness.png  full 6D lower-triangle phase space (one sample)
   slices.png                             x-y, x-px, y-py, z-pz for a couple samples x both bunches
   beam_matrix.png                        6x6 correlation matrices (true / flow / diff), per sample x bunch
@@ -270,7 +270,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--processed", default=str(repo_root() / "processed" / "twobunch_flow.h5"))
-    ap.add_argument("--out", default="artifacts/surrogate/diagnostics")
+    ap.add_argument("--out", default="results/surrogate/default/diagnostics")
     ap.add_argument("--samples", type=int, nargs="+", default=[693, 4778],
                     help="processed-row indices (default: an intact + a scraped witness)")
     ap.add_argument("--dark", action="store_true",

@@ -13,9 +13,9 @@ The training set is two campaigns: a dense "good" tight box (tightbox_v2_full) a
 Reads data/<good>/ and data/<wide>/ via achievable_targets.{load,derived}.
 
 Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg \
-    python -m twobunch_s2e_rl.analysis.dataset_coverage [good_subdir] [wide_subdir]
+    python results/combined_dataset/dataset_coverage.py [good_subdir] [wide_subdir]
     (defaults: tightbox_v2_full expanded_full)
-Outputs: artifacts/figures/combined_dataset/*.png, artifacts/combined_dataset_summary.csv
+Outputs: written beside this script in results/combined_dataset/ (*.png + combined_dataset_summary.csv)
 """
 import argparse
 import os
@@ -26,9 +26,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ..datagen.paths import repo_root
-from ..datagen.sweep_params import resolve_sweep_set
-from .achievable_targets import load, derived, P
+from pathlib import Path
+
+from twobunch_s2e_rl.datagen.sweep_params import resolve_sweep_set
+from twobunch_s2e_rl.analysis_io import load, derived, P
 
 BLUE, ORANGE, GREEN, RED, GREY = "#4c72b0", "#dd8452", "#55a868", "#c44e52", "#8c8c8c"
 GOOD_SET, WIDE_SET, UNION_SET = "tightbox", "expanded", "tightbox+expanded"
@@ -65,8 +66,7 @@ def main():
     ap.add_argument("wide", nargs="?", default="expanded_full")
     args = ap.parse_args()
 
-    figdir = repo_root() / "artifacts" / "figures" / "combined_dataset"
-    os.makedirs(figdir, exist_ok=True)
+    figdir = Path(__file__).resolve().parent
 
     dg, qg = _prep(args.good)
     dw, qw = _prep(args.wide)
@@ -87,7 +87,7 @@ def main():
                  good_n=int(round(a[1]*ng)), wide_n=int(round(b[1]*nw)),
                  combined_frac=(a[1]*ng + b[1]*nw)/(ng+nw)) for nm, a, b in zip(names, fg, fw)]
     tbl = pd.DataFrame(rows)
-    csv = repo_root() / "artifacts" / "combined_dataset_summary.csv"
+    csv = figdir / "combined_dataset_summary.csv"
     tbl.to_csv(csv, index=False)
     print(f"\n=== combined dataset: {args.good} (good) + {args.wide} (wide) ===")
     print(f"golden: offset {g_off:.0f}um  BMAG_max {g_bmag:.2f}  spacing {g_sp:.0f}um\n")

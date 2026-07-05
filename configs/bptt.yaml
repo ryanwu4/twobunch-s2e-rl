@@ -13,7 +13,7 @@ params:
     n_particles: 512             # memory-dominant (BPTT retains steps_num=32 graphs); see shac.yaml note
     # ---- reward ----
     campaign_h5: processed/twobunch_flow_v4.h5
-    reward_norms_json: artifacts/rl/norms/metric_norms.json
+    reward_norms_json: results/rl/norms/metric_norms.json
     spacing_target_m: 2.0e-4
     surv_T_min: 0.9
     surv_margin: 0.05

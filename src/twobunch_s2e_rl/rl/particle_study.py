@@ -13,7 +13,7 @@ heads (T_drive/T_witness) are N-independent (no sampling) and excluded.
   PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.rl.particle_study \
       --ckpt "trained/twobunch_flow_v4/checkpoints/best-*.ckpt"
 
-Writes artifacts/rl/particle_study.{json,png}.
+Writes results/rl/particle_study.{json,png}.
 """
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ def _reference(flow, knob_pt, ref_N, device, reps=4):
 
 
 def study(ckpt, device="cuda", n_draws=32, grad_draws=16, ref_N=16384,
-          n_points=3, out_dir="artifacts/rl/surrogate", seed=0):
+          n_points=3, out_dir="results/rl/surrogate", seed=0):
     device = device if torch.cuda.is_available() else "cpu"
     flow = TwoBunchFlow.load_from_checkpoint(ckpt, map_location=device).eval().to(device)
     for p in flow.parameters():
@@ -152,7 +152,7 @@ def main():
     ap.add_argument("--grad-draws", type=int, default=16)
     ap.add_argument("--ref-n", type=int, default=16384)
     ap.add_argument("--n-points", type=int, default=3)
-    ap.add_argument("--out", default="artifacts/rl/surrogate")
+    ap.add_argument("--out", default="results/rl/surrogate")
     args = ap.parse_args()
     ckpt = sorted(glob.glob(args.ckpt))[-1] if "*" in args.ckpt else args.ckpt
     study(ckpt, device=args.device, n_draws=args.n_draws, grad_draws=args.grad_draws,

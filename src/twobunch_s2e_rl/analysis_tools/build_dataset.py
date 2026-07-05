@@ -1,11 +1,11 @@
 """Consolidate the per-sample JSONs from a campaign data dir into one flat table.
 
 Usage:
-  PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.analysis.build_dataset [data_subdir]
+  PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.analysis_tools.build_dataset [data_subdir]
     data_subdir defaults to "full" -> reads data/full/sample_*.json
 
-Output: artifacts/dataset.pkl  (pandas DataFrame, one row per sample)
-        artifacts/dataset.csv  (same, human-inspectable)
+Output: results/tables/dataset.pkl  (pandas DataFrame, one row per sample)
+        results/tables/dataset.csv  (same, human-inspectable)
 
 Columns:
   meta:   idx, success, is_baseline_repeat, num_macro_particles, csrTF,
@@ -17,46 +17,16 @@ Columns:
 import argparse
 import glob
 import json
-import os
-import warnings
 
 import numpy as np
 import pandas as pd
 
-from ..datagen.paths import repo_root
-
-POINTS = ["BEGBC20", "MFFF", "PENT"]
+from ..datagen.paths import repo_root, tables_dir
+from ..analysis_io import flatten_sample
 
 
 def data_dir(subdir="full"):
     return repo_root() / "data" / subdir
-
-
-def artifacts_dir():
-    d = repo_root() / "artifacts"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def flatten_sample(d):
-    row = {}
-    for k in ("idx", "success", "is_baseline_repeat", "num_macro_particles",
-              "csrTF", "transverseWakes", "wall_s"):
-        row[k] = d.get(k)
-    for k, v in d["knobs"].items():
-        row[k] = v
-    for pt in POINTS:
-        spec = d["specs"].get(pt, {})
-        for mk, mv in spec.items():
-            if isinstance(mv, list):
-                arr = np.asarray(mv, dtype=float)
-                with warnings.catch_warnings():  # all-NaN slice is expected (absent bunch)
-                    warnings.simplefilter("ignore", RuntimeWarning)
-                    row[f"{pt}__{mk}_max"] = np.nanmax(arr) if arr.size else np.nan
-                    row[f"{pt}__{mk}_mean"] = np.nanmean(arr) if arr.size else np.nan
-            else:
-                row[f"{pt}__{mk}"] = mv
-    return row
 
 
 def build(subdir="full"):
@@ -74,7 +44,7 @@ def build(subdir="full"):
     df = pd.DataFrame(rows).sort_values("idx").reset_index(drop=True)
     print(f"DataFrame: {df.shape[0]} rows x {df.shape[1]} cols")
 
-    art = artifacts_dir()
+    art = tables_dir()
     out_pkl, out_csv = art / "dataset.pkl", art / "dataset.csv"
     df.to_pickle(out_pkl)
     df.to_csv(out_csv, index=False)

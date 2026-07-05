@@ -8,7 +8,7 @@ curve, which commanded 12-35% FF moves to the wrong place. Three figures:
   2. knob displacement: beam-match (tiny FF, sextupole-led) vs the design-curve FF prescription
   3. Tao validation: per-slice beta profile at PENT, golden vs matched-15cm (witness flattened)
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis.matching_result_figs
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/beam_matching/matching_result_figs.py
 """
 import os
 import numpy as np
@@ -17,9 +17,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ..datagen.paths import facet2_root
-from ..datagen.ff_manifold import FF_MATCHED_CURVE
-from ..surrogate.properties import _trace_twiss
+from twobunch_s2e_rl.datagen.paths import facet2_root
+from twobunch_s2e_rl.datagen.ff_manifold import FF_MATCHED_CURVE
+from twobunch_s2e_rl.surrogate.properties import _trace_twiss
 
 FIG = "/home/rwu4/photoinjector-rl/lab-notebook/images"
 COORD = ["x", "y", "z", "px", "py", "pz"]

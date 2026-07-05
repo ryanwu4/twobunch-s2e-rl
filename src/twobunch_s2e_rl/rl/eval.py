@@ -10,7 +10,7 @@ pass --rf-drift-std to probe robustness.
 With --goal-sweep (a goal-conditioned policy), it also renders -- from surrogate-sampled clouds at
 each goal's representative operating point -- a 6D corner plot (both bunches overlaid) and a combined
 z-pz LPS, stitched across the sweep into corner_<run>_surr_sweep.gif / lps_<run>_surr_sweep.gif under
-artifacts/rl/ (mirrors eval_bmad's plots; --no-plot to skip).
+results/rl/ (mirrors eval_bmad's plots; --no-plot to skip).
 
   PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.rl.eval --logdir logs/shac \
       --flow-ckpt "trained/twobunch_flow_v4/checkpoints/best-*.ckpt"
@@ -172,7 +172,7 @@ def main():
 
     common = dict(policy=args.policy, num_rollouts=args.num_rollouts, rf_drift_std=args.rf_drift_std,
                   device=args.device, seed=args.seed, make_frame=not args.no_plot)
-    artdir = Path("artifacts/rl/goal_sweep")
+    artdir = Path("results/rl/goal_sweep")
     name = f"{Path(args.logdir).name}_surr"
     if args.goal_sweep is not None:
         goals = [float(x) for x in args.goal_sweep.split(",") if x.strip()]

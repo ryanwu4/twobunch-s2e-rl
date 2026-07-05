@@ -11,14 +11,15 @@ three candidate causes with discriminating figures + correlations:
       through the chromatic FF. Prediction: witness slice-beta grows with |dE|.
   (H_A design-vs-beam incoming Twiss is the residual once H_B/H_C are accounted for.)
 
-Writes a per-sample CSV (artifacts/) and figures to lab-notebook/images/.
+Writes a per-sample CSV (beside this script) and figures to lab-notebook/images/.
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis.anchored_failure_analysis
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/expanded_anchored_pilot/anchored_failure_analysis.py
 """
 import glob
 import json
 import os
 import re
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -28,10 +29,10 @@ import matplotlib.pyplot as plt
 from pmd_beamphysics import ParticleGroup
 
 import FACET2_S2E as qs
-from ..datagen.paths import repo_root
-from ..datagen.sweep_params import resolve_sweep_set, PARAM_KEYS
-from ..datagen.ff_manifold import FF_KEYS
-from ..surrogate.properties import twiss_bmag, slice_twiss_bmag, _energy
+from twobunch_s2e_rl.datagen.paths import repo_root
+from twobunch_s2e_rl.datagen.sweep_params import resolve_sweep_set, PARAM_KEYS
+from twobunch_s2e_rl.datagen.ff_manifold import FF_KEYS
+from twobunch_s2e_rl.surrogate.properties import twiss_bmag, slice_twiss_bmag, _energy
 
 SUB = "expanded_anchored_pilot"
 COORD = ["x", "y", "z", "px", "py", "pz"]
@@ -89,7 +90,7 @@ def build_table():
 
 
 def main():
-    cache = repo_root() / "artifacts" / f"{SUB}_failure.csv"
+    cache = Path(__file__).resolve().parent / f"{SUB}_failure.csv"
     if cache.exists():
         import csv
         rows = [{k: float(v) for k, v in r.items()} for r in csv.DictReader(open(cache))]

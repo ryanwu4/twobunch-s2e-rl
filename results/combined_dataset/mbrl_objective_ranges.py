@@ -15,9 +15,9 @@ Objectives (reward semantics):
   spacing         bunch_spacing                            goal-conditioned target
 
 Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg \
-    python -m twobunch_s2e_rl.analysis.mbrl_objective_ranges [good_subdir] [wide_subdir]
-Outputs: artifacts/figures/combined_dataset/{mbrl_objective_ranges,mbrl_reachability}.png
-         artifacts/combined_mbrl_ranges.csv
+    python results/combined_dataset/mbrl_objective_ranges.py [good_subdir] [wide_subdir]
+Outputs: written beside this script in results/combined_dataset/
+         ({mbrl_objective_ranges,mbrl_reachability}.png + combined_mbrl_ranges.csv)
 """
 import argparse
 import os
@@ -28,8 +28,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ..datagen.paths import repo_root
-from .achievable_targets import load, derived, P
+from pathlib import Path
+
+from twobunch_s2e_rl.analysis_io import load, derived, P
 
 BLUE, ORANGE, GREEN, GREY = "#4c72b0", "#dd8452", "#55a868", "#8c8c8c"
 C_LIGHT = 2.99792458e8
@@ -80,8 +81,7 @@ def main():
     ap.add_argument("good", nargs="?", default="tightbox_v2_full")
     ap.add_argument("wide", nargs="?", default="expanded_full")
     args = ap.parse_args()
-    figdir = repo_root() / "artifacts" / "figures" / "combined_dataset"
-    os.makedirs(figdir, exist_ok=True)
+    figdir = Path(__file__).resolve().parent
 
     qg, wg = _objectives(args.good)
     qw, ww = _objectives(args.wide)
@@ -114,7 +114,7 @@ def main():
         rows.append(dict(group=grp, objective=label, unit=unit, direction=direction,
                          p5=p5, p50=p50, p95=p95, best=best, golden=gval(key)))
     tbl = pd.DataFrame(rows)
-    csv = repo_root() / "artifacts" / "combined_mbrl_ranges.csv"
+    csv = figdir / "combined_mbrl_ranges.csv"
     tbl.to_csv(csv, index=False)
     print(f"\n=== achievable MBRL objective ranges (combined {args.good}+{args.wide}) ===\n")
     with pd.option_context("display.width", 220):
