@@ -6,7 +6,7 @@ vendored `rl.diffrl.SHAC` unchanged.
 
 Usage:
     python -m twobunch_s2e_rl.rl.train_shac \
-        --cfg configs/shac.yaml \
+        --cfg configs/rl/shac.yaml \
         --flow-ckpt "trained/twobunch_flow_v4/checkpoints/best-*.ckpt" \
         --logdir logs/shac --seed 0
 """

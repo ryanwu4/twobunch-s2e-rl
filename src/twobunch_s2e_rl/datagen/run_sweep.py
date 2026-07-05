@@ -3,7 +3,7 @@
 Usage (bmad-qpad-dev env, from the repo root):
   PYTHONPATH=$PWD/src MPLBACKEND=Agg \
     /home/rwu4/miniconda3/envs/bmad-qpad-dev/bin/python -u \
-    -m twobunch_s2e_rl.datagen.run_sweep configs/smoke.yaml
+    -m twobunch_s2e_rl.datagen.run_sweep configs/datagen/smoke.yaml
 
 Per sample: setLattice(baseline + LHS knobs) -> trackBeam (L0AFEND->end, CSR per config)
 -> per-bunch specs at BEGBC20/MFFF/PENT -> sample_{idx:05d}.json + PENT beam h5.
@@ -237,7 +237,7 @@ def run_sample(item):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("config", help="path to a sweep yaml (configs/*.yaml)")
+    parser.add_argument("config", help="path to a sweep yaml (configs/datagen/*.yaml)")
     args = parser.parse_args()
 
     cfg = load_cfg(args.config)

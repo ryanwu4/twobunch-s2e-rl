@@ -160,3 +160,30 @@ def test_drift_zero_matches_no_drift_reward():
     torch.manual_seed(3)
     r_cmd, _, _ = e0._observe(knobs)
     assert torch.count_nonzero(e0._drift) == 0
+
+
+# ---- knob count follows the surrogate's condition_dim (8 vs 26) --------------
+
+def _env_nk(n_knob, num_envs=4, **kw):
+    torch.manual_seed(0)
+    flow = TwoBunchFlow(condition_dim=n_knob, n_layers=4, hidden_dim=32, n_aux_particles=128).eval()
+    defaults = dict(device="cpu", episode_length=8, n_particles=128, reward_spec=_spec())
+    defaults.update(kw)
+    return TwoBunchFlowEnv(num_envs, flow=flow, **defaults)
+
+
+def test_env_knob_count_follows_flow_condition_dim():
+    env = _env_nk(26)
+    assert env.n_knob == 26 and env.num_actions == 26
+    assert env.num_obs == 26 + env._reward_spec.n_obs_extra
+    obs = env.reset()
+    assert obs.shape == (4, 26 + env._reward_spec.n_obs_extra) and torch.isfinite(obs).all()
+    obs, rew, done, _ = env.step(torch.zeros(4, 26))          # accepts a 26-wide action
+    assert obs.shape == (4, 26 + env._reward_spec.n_obs_extra) and rew.shape == (4,)
+
+
+def test_env_drift_confined_to_rf_idx_26knob():
+    env = _env_nk(26, rf_drift_std=0.1)
+    assert env._drift_std is not None and env._drift_std.numel() == 26
+    nz = (env._drift_std != 0).nonzero().flatten().tolist()
+    assert nz == list(RF_DRIFT_IDX)                           # drift only on RF/energy knobs

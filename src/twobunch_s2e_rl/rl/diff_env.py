@@ -125,7 +125,20 @@ class TwoBunchFlowEnv:
         self.stochastic_init = bool(stochastic_init)
         self.no_grad = bool(no_grad)
         self.action_scale = float(action_scale)
-        self._drift_std = self._build_drift_std(rf_drift_std)   # (N_KNOB,) normalized, or None
+
+        # ---- load + freeze the flow (FIRST: knob count is read from its condition_dim) ------
+        if flow is None:
+            if flow_ckpt is None:
+                raise ValueError("pass `flow` (instance) or `flow_ckpt` (path)")
+            flow = TwoBunchFlow.load_from_checkpoint(str(flow_ckpt), map_location=self.device)
+        flow = flow.to(self.device).eval()
+        for p in flow.parameters():
+            p.requires_grad_(False)
+        self._flow = flow
+        # knob count = surrogate conditioning dim (8 for original8, 26 for the combined union set)
+        self.n_knob = int(getattr(flow.hparams, "condition_dim", N_KNOB))
+
+        self._drift_std = self._build_drift_std(rf_drift_std)   # (n_knob,) normalized, or None
         self.common_random_numbers = bool(common_random_numbers)
         self._n = int(n_particles)
         self._reward_spec = reward_spec
@@ -138,23 +151,13 @@ class TwoBunchFlowEnv:
         self._rng = torch.Generator(device=self.device)
         self._rng.manual_seed(int(seed))
 
-        # ---- load + freeze the flow ----------------------------------------
-        if flow is None:
-            if flow_ckpt is None:
-                raise ValueError("pass `flow` (instance) or `flow_ckpt` (path)")
-            flow = TwoBunchFlow.load_from_checkpoint(str(flow_ckpt), map_location=self.device)
-        flow = flow.to(self.device).eval()
-        for p in flow.parameters():
-            p.requires_grad_(False)
-        self._flow = flow
-
-        self.num_actions = ACTION_DIM
-        self.num_obs = N_KNOB + self._reward_spec.n_obs_extra
+        self.num_actions = self.n_knob
+        self.num_obs = self.n_knob + self._reward_spec.n_obs_extra
 
         # ---- state buffers --------------------------------------------------
         z = lambda *s: torch.zeros(*s, device=self.device)
-        self._knobs = z(self.num_envs, N_KNOB)                 # commanded (grad leaf)
-        self._drift = z(self.num_envs, N_KNOB)                 # hidden, detached
+        self._knobs = z(self.num_envs, self.n_knob)            # commanded (grad leaf)
+        self._drift = z(self.num_envs, self.n_knob)            # hidden, detached
         self._spacing_goal = z(self.num_envs)                  # (B,) per-episode goal, detached
         self._step_count = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
         self._last_obs_extra = z(self.num_envs, self._reward_spec.n_obs_extra)  # detached
@@ -172,23 +175,23 @@ class TwoBunchFlowEnv:
             return None
         if torch.is_tensor(rf_drift_std) or isinstance(rf_drift_std, (list, tuple)):
             v = torch.as_tensor(rf_drift_std, dtype=torch.float32, device=self.device).flatten()
-            if v.numel() != N_KNOB:
-                raise ValueError(f"rf_drift_std vector must have {N_KNOB} entries, got {v.numel()}")
+            if v.numel() != self.n_knob:
+                raise ValueError(f"rf_drift_std vector must have {self.n_knob} entries, got {v.numel()}")
             return v if float(v.abs().sum()) > 0 else None
         s = float(rf_drift_std)
         if s <= 0:
             return None
-        v = torch.zeros(N_KNOB, device=self.device)
+        v = torch.zeros(self.n_knob, device=self.device)
         v[list(RF_DRIFT_IDX)] = s
         return v
 
     def _uniform(self, n: int) -> torch.Tensor:
-        return torch.rand(n, N_KNOB, generator=self._rng, device=self.device)
+        return torch.rand(n, self.n_knob, generator=self._rng, device=self.device)
 
     def _sample_drift(self, n: int) -> torch.Tensor:
         if self._drift_std is None:
-            return torch.zeros(n, N_KNOB, device=self.device)
-        return torch.randn(n, N_KNOB, generator=self._rng,
+            return torch.zeros(n, self.n_knob, device=self.device)
+        return torch.randn(n, self.n_knob, generator=self._rng,
                            device=self.device) * self._drift_std
 
     def _sample_goal(self, n: int) -> torch.Tensor:
@@ -227,7 +230,7 @@ class TwoBunchFlowEnv:
         if self.stochastic_init:
             new_knobs = self._uniform(n)
         else:
-            new_knobs = torch.full((n, N_KNOB), 0.5, device=self.device)
+            new_knobs = torch.full((n, self.n_knob), 0.5, device=self.device)
         new_drift = self._sample_drift(n)
         new_goal = self._sample_goal(n)
 
@@ -272,9 +275,9 @@ class TwoBunchFlowEnv:
         self._last_obs_extra = self._last_obs_extra.detach()
 
     def step(self, action: torch.Tensor):
-        if action.shape != (self.num_envs, ACTION_DIM):
+        if action.shape != (self.num_envs, self.n_knob):
             raise ValueError(f"action shape {tuple(action.shape)} != "
-                             f"({self.num_envs}, {ACTION_DIM})")
+                             f"({self.num_envs}, {self.n_knob})")
         knobs_next = torch.clamp(self._knobs + self.action_scale * action, 0.0, 1.0)
 
         if self.no_grad:

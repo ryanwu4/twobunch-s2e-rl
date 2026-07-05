@@ -1,0 +1,70 @@
+# Goal-conditioned BPTT over the 26-knob COMBINED flow surrogate (trained/twobunch_combined_ft).
+# Targets a commanded bunch separation (100-300 um, sampled per-episode, exposed as an obs column)
+# while keeping the other bunch metrics strong. Unlike bptt_gc.yaml (8-knob v4 surrogate, fixed
+# hardcoded reward), the reward here is fully specified by the `objectives:` block below -- edit that
+# list to add/drop/retarget objectives (obs keys are derived from it). 26-knob control (RF/energy +
+# BC20 sextupoles + FF quads + kickers + movers) makes collinearity actually controllable.
+# Run with: --flow-ckpt trained/twobunch_combined_ft/checkpoints/best-epoch=493-val_loss=0.5126.ckpt
+# Clean machine first (rf_drift_std 0) so the goal-tracking signal is not confounded.
+params:
+  diff_env:
+    name: TwoBunchFlowEnv
+    episode_length: 64
+    stochastic_env: true
+    action_scale: 0.05
+    rf_drift_std: 0.0
+    common_random_numbers: false
+    n_particles: 512
+    # ---- reward inputs ----
+    campaign_h5: processed/twobunch_combined.h5          # norms/floors source (26-knob union frame)
+    reward_norms_json: results/rl/norms/metric_norms_combined.json   # auto-regen via provenance
+    # global defaults for objective entries that omit them
+    surv_T_min: 0.9
+    surv_margin: 0.05
+    floor_pct: 10.0
+    emit_below_weight: 1.0
+    emit_gate_band: 0.2
+    # ---- objectives: one reward term per entry; obs = these keys (+ per-env goals) -------------
+    #   kind: target | minimize | maximize | ceiling | minimize_floor | hinge | boundary
+    #   goal: [lo, hi] on a target makes it goal-conditioned (per-episode, appended to obs)
+    objectives:
+      - {key: bunch_spacing,        kind: target,         weight: 1.0, goal: [1.0e-4, 3.0e-4]}
+      - {key: T_drive,              kind: hinge,          weight: 2.0, hinge_at: 0.95}
+      - {key: T_witness,            kind: hinge,          weight: 2.0, hinge_at: 0.95}
+      - {key: drive_norm_emit_x,    kind: minimize_floor, weight: 1.0, floor_pct: 10}
+      - {key: drive_norm_emit_y,    kind: minimize_floor, weight: 1.0, floor_pct: 10}
+      - {key: witness_norm_emit_x,  kind: minimize_floor, weight: 0.5, floor_pct: 10}
+      - {key: witness_norm_emit_y,  kind: minimize_floor, weight: 0.5, floor_pct: 10}
+      - {key: transverse_offset,    kind: minimize,       weight: 0.5}
+      - {key: angular_misalignment, kind: minimize,       weight: 0.5}
+      - {key: knobs,                kind: boundary,       weight: 0.5, margin: 0.05}
+      # matching deferred (surrogate optimistically biased in the high-mismatch tail):
+      # - {key: witness_bmag_x,     kind: target,         weight: 0.5, target: 1.0}
+  general:
+    seed: 0
+    device: cuda:0
+    render: false
+    train: true
+    logdir: logs/bptt_gc_combined
+  config:
+    name: TwoBunchBPTT
+    num_actors: 32
+    steps_num: 32           # truncated BPTT horizon (memory; <= episode_length)
+    max_epochs: 200
+    actor_learning_rate: 5e-4
+    lr_schedule: linear
+    gamma: 0.99
+    obs_rms: true
+    truncate_grads: true
+    grad_norm: 1.0
+    rew_scale: 1.0
+    save_interval: 50
+    betas: [0.7, 0.95]
+    player:
+      games_num: 64
+      deterministic: false
+  network:
+    actor_mlp:
+      units: [128, 128]
+      activation: elu
+    actor_logstd_init: -1.0

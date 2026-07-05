@@ -63,6 +63,14 @@ _TRANSFORM = {
 # which transmission head gates each emittance term (survival-gating, fix #1)
 _GATE_FOR = {k: ("T_drive" if k.startswith("drive") else "T_witness") for k in EMIT_KEYS}
 
+# default metric keys normalized from the campaign (the observables the reward can act on today)
+_DEFAULT_NORM_KEYS = (("bunch_spacing", "energy_difference", "transverse_offset",
+                       "angular_misalignment") + SURV_KEYS + EMIT_KEYS)
+
+# goal-conditioned target: which obs key carries the per-env goal for a given metric. Only
+# bunch_spacing is wired end-to-end in the env today (self._spacing_goal -> obs["spacing_goal"]).
+_GOAL_KEY_FOR = {"bunch_spacing": "spacing_goal"}
+
 
 def _t(x: torch.Tensor, transform: str) -> torch.Tensor:
     if transform == "log10":
@@ -118,8 +126,7 @@ def _campaign_metrics(h5_path: str, chunk: int = 256, device: str = "cpu") -> di
 def compute_metric_norms(h5_path: str, keys=None, chunk: int = 256) -> dict[str, dict]:
     """(transform, mean, std) per metric key over the campaign TRUE clouds, in the metric's
     transform space."""
-    keys = keys or (("bunch_spacing", "energy_difference", "transverse_offset",
-                     "angular_misalignment") + SURV_KEYS + EMIT_KEYS)
+    keys = keys or _DEFAULT_NORM_KEYS
     metrics = _campaign_metrics(h5_path, chunk=chunk)
     norms = {}
     for k in keys:
@@ -281,6 +288,45 @@ class TwoBunchRewardSpec:
         return len(self.obs_keys)
 
 
+def _term_from_spec(e: dict, norms: dict, floors: dict, *, surv_T_min: float, surv_margin: float,
+                    emit_below_weight: float, emit_gate_band: float,
+                    boundary_margin: float) -> RewardTerm:
+    """Build one RewardTerm from a config objective entry {key, kind, weight, ...}.
+
+    kinds: target (scalar `target` or `goal:[lo,hi]` -> per-env goal_key), minimize/maximize/
+    ceiling (optional `floor`), minimize_floor (campaign floor + survival gate), hinge
+    (`hinge_at`, default surv_T_min+margin), boundary (knob trust-region, `margin`).
+    """
+    key, kind, w = e["key"], e["kind"], float(e.get("weight", 1.0))
+    if kind == "boundary":
+        return RewardTerm(key, "boundary", weight=w, margin=float(e.get("margin", boundary_margin)))
+    if kind == "hinge":
+        return RewardTerm(key, "hinge", "identity", weight=w,
+                          hinge_at=float(e.get("hinge_at", surv_T_min + surv_margin)))
+    if key not in norms:
+        raise KeyError(f"objective metric {key!r} has no campaign norm; available: {sorted(norms)}")
+    s = norms[key]
+    tr, m, sd = s["transform"], s["mean"], s["std"]
+    if kind == "target":
+        goal_key = None
+        if e.get("goal") is not None:
+            if key not in _GOAL_KEY_FOR:
+                raise ValueError(f"goal-conditioning not wired for {key!r} "
+                                 f"(env supports {list(_GOAL_KEY_FOR)})")
+            goal_key = _GOAL_KEY_FOR[key]
+        return RewardTerm(key, "target", tr, m, sd, w,
+                          target=float(e.get("target", 0.0)), goal_key=goal_key)
+    if kind in ("minimize", "maximize", "ceiling"):
+        return RewardTerm(key, kind, tr, m, sd, w,
+                          floor=(float(e["floor"]) if "floor" in e else None))
+    if kind == "minimize_floor":
+        return RewardTerm(key, "minimize_floor", tr, m, sd, w, floor=floors.get(key),
+                          below_weight=float(e.get("below_weight", emit_below_weight)),
+                          gate_key=_GATE_FOR.get(key),
+                          gate_low=surv_T_min - emit_gate_band, gate_high=surv_T_min)
+    raise ValueError(f"unknown objective kind {kind!r} for {key!r}")
+
+
 def build_twobunch_reward_spec(
     norms: dict[str, dict],
     floors: dict[str, float],
@@ -301,14 +347,32 @@ def build_twobunch_reward_spec(
     w_collinearity: float = 0.0,
     obs_keys=DEFAULT_OBS_KEYS,
     spacing_goal_key: str | None = None,
+    objectives: list[dict] | None = None,
 ) -> TwoBunchRewardSpec:
-    """Assemble the default composite spec.
+    """Assemble the composite spec.
 
+    If `objectives` (a config list of {key, kind, weight, ...}) is given, terms are built from it
+    and obs_keys are derived from the objective keys (+ per-env goal keys). Otherwise the default
+    hardcoded composite is built (back-compat):
     - emittance terms are range-normalized floor-barriers (fix #2/#3), survival-gated by the
       bunch's T head (fix #1); `w_emit_witness` overrides the witness weight (weakest observable).
     - survival hinge uses `surv_T_min + surv_margin` (fix #4).
     - a knob trust-region term (weight `w_ood`) discourages box-corner extrapolation (fix #3).
     """
+    if objectives is not None:
+        terms = [_term_from_spec(e, norms, floors, surv_T_min=surv_T_min, surv_margin=surv_margin,
+                                 emit_below_weight=emit_below_weight, emit_gate_band=emit_gate_band,
+                                 boundary_margin=boundary_margin) for e in objectives]
+        # obs = objective metrics (knobs are already the obs prefix), then per-env goals appended
+        # at the end so the obs prefix stays stable (mirrors the goal-append invariant below).
+        obs_keys = tuple(dict.fromkeys(e["key"] for e in objectives if e["key"] != KNOBS_KEY))
+        obs_norms = {k: norms[k] for k in obs_keys if k in norms}
+        for t in terms:
+            if t.goal_key is not None and t.goal_key not in obs_keys:
+                obs_keys = obs_keys + (t.goal_key,)
+                obs_norms[t.goal_key] = norms[t.key]  # goal z-scored like its target metric
+        return TwoBunchRewardSpec(terms=terms, obs_keys=obs_keys, obs_norms=obs_norms)
+
     def nrm(k):
         if k not in norms:
             raise KeyError(f"metric {k!r} missing from norms; available: {sorted(norms)}")
@@ -357,25 +421,43 @@ def build_twobunch_reward_spec(
 def reward_spec_from_campaign(h5_path: str, *, floor_pct: float = 10.0,
                               drive_floor_pct: float | None = None,
                               witness_floor_pct: float | None = None,
-                              cache_json: str | None = None, **kwargs) -> TwoBunchRewardSpec:
+                              cache_json: str | None = None,
+                              objectives: list[dict] | None = None, **kwargs) -> TwoBunchRewardSpec:
     """Compute norms+floors from the campaign h5 (or load a provenance-matched cache) and build the
     spec. `floor_pct` is the default emittance-floor percentile; `drive_floor_pct`/`witness_floor_pct`
     override it per bunch (a lower drive percentile lets the policy chase a lower drive emittance,
-    at the campaign tail's expense). The cache invalidates if the campaign file or any floor changed."""
+    at the campaign tail's expense). With `objectives`, norms cover every objective metric and floors
+    every minimize_floor key (per-entry `floor_pct` honored). The cache invalidates if the campaign
+    file, any floor, or the objective set changed."""
     pct_by_key: dict[str, float] = {}
     if drive_floor_pct is not None:
         pct_by_key.update({k: float(drive_floor_pct) for k in DRIVE_EMIT_KEYS})
     if witness_floor_pct is not None:
         pct_by_key.update({k: float(witness_floor_pct) for k in WITNESS_EMIT_KEYS})
-    floor_desc = ({"floor_pct": float(floor_pct), "pct_by_key": pct_by_key}
-                  if pct_by_key else float(floor_pct))
+
+    # config-driven objectives: norms must cover every objective metric, floors every minimize_floor
+    if objectives is not None:
+        obj_keys = [e["key"] for e in objectives if e["key"] != KNOBS_KEY]
+        norm_keys = tuple(dict.fromkeys(_DEFAULT_NORM_KEYS + tuple(obj_keys)))
+        floor_keys = tuple(e["key"] for e in objectives if e.get("kind") == "minimize_floor")
+        for e in objectives:
+            if e.get("kind") == "minimize_floor" and "floor_pct" in e:
+                pct_by_key[e["key"]] = float(e["floor_pct"])
+        floor_desc = {"floor_pct": float(floor_pct), "pct_by_key": pct_by_key,
+                      "objectives": [[e["key"], e.get("kind")] for e in objectives]}
+    else:
+        norm_keys, floor_keys = None, EMIT_KEYS
+        floor_desc = ({"floor_pct": float(floor_pct), "pct_by_key": pct_by_key}
+                      if pct_by_key else float(floor_pct))
+
     if cache_json is not None and os.path.exists(cache_json):
         want = _provenance(h5_path, floor_desc)
         prov, norms, floors = load_norms(cache_json)
         if prov == want:
-            return build_twobunch_reward_spec(norms, floors, **kwargs)
-    norms = compute_metric_norms(h5_path)
-    floors = derive_floors_from_campaign(h5_path, pct=floor_pct, pct_by_key=pct_by_key)
+            return build_twobunch_reward_spec(norms, floors, objectives=objectives, **kwargs)
+    norms = compute_metric_norms(h5_path, keys=norm_keys)
+    floors = derive_floors_from_campaign(h5_path, pct=floor_pct, emit_keys=floor_keys,
+                                         pct_by_key=pct_by_key)
     if cache_json is not None:
         save_norms(norms, floors, cache_json, _provenance(h5_path, floor_desc))
-    return build_twobunch_reward_spec(norms, floors, **kwargs)
+    return build_twobunch_reward_spec(norms, floors, objectives=objectives, **kwargs)

@@ -6,7 +6,7 @@ flow sampling, full-episode (=64) backprop is memory-heavy, so the config uses a
 
 Usage:
     python -m twobunch_s2e_rl.rl.train_bptt \
-        --cfg configs/bptt.yaml \
+        --cfg configs/rl/bptt.yaml \
         --flow-ckpt "trained/twobunch_flow_v4/checkpoints/best-*.ckpt" \
         --logdir logs/bptt --seed 0
 """

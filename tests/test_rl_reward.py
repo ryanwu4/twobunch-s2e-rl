@@ -284,3 +284,72 @@ def test_per_bunch_floor_percentiles(tmp_path):
     assert f["witness_norm_emit_x"] == pytest.approx(f10["witness_norm_emit_x"])  # witness unchanged
     prov, _, _ = load_norms(cache)
     assert prov["floor"]["pct_by_key"]["drive_norm_emit_x"] == 2.0
+
+
+# ---- config-driven objectives block -----------------------------------------
+
+def _objectives():
+    return [
+        {"key": "bunch_spacing", "kind": "target", "weight": 1.0, "goal": [1.0e-4, 3.0e-4]},
+        {"key": "T_drive", "kind": "hinge", "weight": 2.0, "hinge_at": 0.95},
+        {"key": "T_witness", "kind": "hinge", "weight": 2.0, "hinge_at": 0.95},
+        {"key": "drive_norm_emit_x", "kind": "minimize_floor", "weight": 1.0, "floor_pct": 10},
+        {"key": "witness_norm_emit_x", "kind": "minimize_floor", "weight": 0.5},
+        {"key": "transverse_offset", "kind": "minimize", "weight": 0.5},
+        {"key": "angular_misalignment", "kind": "minimize", "weight": 0.5},
+        {"key": KNOBS_KEY, "kind": "boundary", "weight": 0.5, "margin": 0.05},
+    ]
+
+
+def test_objectives_block_builds_expected_terms():
+    spec = build_twobunch_reward_spec(_norms(), _floors(), objectives=_objectives())
+    kinds = {t.key: t.mode for t in spec.terms}
+    assert kinds["bunch_spacing"] == "target"
+    assert kinds["T_drive"] == "hinge" and kinds["T_witness"] == "hinge"
+    assert kinds["drive_norm_emit_x"] == "minimize_floor"
+    assert kinds["transverse_offset"] == "minimize" and kinds["angular_misalignment"] == "minimize"
+    assert kinds[KNOBS_KEY] == "boundary"
+    w = {t.key: t.weight for t in spec.terms}
+    assert w["T_drive"] == 2.0 and w["witness_norm_emit_x"] == 0.5
+    hz = next(t for t in spec.terms if t.key == "T_drive")
+    assert hz.hinge_at == pytest.approx(0.95)
+    mf = next(t for t in spec.terms if t.key == "drive_norm_emit_x")
+    assert mf.gate_key == "T_drive" and mf.floor == _floors()["drive_norm_emit_x"]
+
+
+def test_objectives_obs_keys_derived_and_goal_appended():
+    norms = _norms()
+    spec = build_twobunch_reward_spec(norms, _floors(), objectives=_objectives())
+    assert KNOBS_KEY not in spec.obs_keys                 # knobs are the obs prefix, not an extra
+    assert spec.obs_keys[-1] == "spacing_goal"            # goal appended at the END
+    for k in ("bunch_spacing", "T_drive", "transverse_offset", "angular_misalignment"):
+        assert k in spec.obs_keys
+    assert spec.obs_norms["spacing_goal"] == norms["bunch_spacing"]
+    assert next(t for t in spec.terms if t.key == "bunch_spacing").goal_key == "spacing_goal"
+
+
+def test_objectives_drop_entry_removes_term_and_obs():
+    objs = [e for e in _objectives() if e["key"] != "transverse_offset"]
+    spec = build_twobunch_reward_spec(_norms(), _floors(), objectives=objs)
+    assert not any(t.key == "transverse_offset" for t in spec.terms)
+    assert "transverse_offset" not in spec.obs_keys
+
+
+def test_objectives_reward_equals_neg_weighted_penalties():
+    spec = build_twobunch_reward_spec(_norms(), _floors(), objectives=_objectives())
+    m = _model()
+    obs = _obs(m, torch.rand(3, 8), n=128)
+    obs["spacing_goal"] = torch.full((3,), 2e-4)         # env injects the per-env goal
+    reward, _ = spec(obs)
+    manual = -sum(t.weight * t.penalty(obs) for t in spec.terms)
+    assert torch.allclose(reward, manual, atol=1e-6)
+
+
+def test_objectives_bad_kind_and_bad_goal_raise():
+    with pytest.raises(ValueError):
+        build_twobunch_reward_spec(_norms(), _floors(),
+                                   objectives=[{"key": "bunch_spacing", "kind": "bogus"}])
+    with pytest.raises(ValueError):   # goal-conditioning only wired for bunch_spacing
+        build_twobunch_reward_spec(_norms(), _floors(),
+                                   objectives=[{"key": "transverse_offset", "kind": "target",
+                                                "goal": [1e-5, 2e-5]}])

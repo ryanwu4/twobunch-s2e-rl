@@ -43,7 +43,7 @@ is needed. Set `FACET2_S2E_ROOT` only if you point at a different checkout.
 cd twobunch-s2e-rl
 PYTHONPATH=$PWD/src MPLBACKEND=Agg \
   /home/rwu4/miniconda3/envs/bmad-qpad-dev/bin/python -u \
-  -m twobunch_s2e_rl.datagen.run_sweep configs/smoke.yaml      # then pilot.yaml, full.yaml
+  -m twobunch_s2e_rl.datagen.run_sweep configs/datagen/smoke.yaml   # then pilot.yaml, full.yaml
 ```
 Re-running resumes: completed samples are skipped via their `sample_*.json`; the LHS
 manifest is seeded and written once, so indices are stable. Output → `data/<config name>/`.
@@ -84,7 +84,7 @@ src/twobunch_s2e_rl/
   surrogate/      preprocess, dataset, model (TwoBunchFlow), train, eval, diagnostics, plot_training
   rl/             reward, diff_env (TwoBunchFlowEnv), diffrl/ (vendored SHAC/BPTT),
                   train_{shac,bptt}, eval, compare, particle_study
-configs/          smoke|pilot|full|tightbox*|wakes_gate.yaml (datagen); shac|bptt.yaml (MBRL)
+configs/          datagen/ (smoke|pilot|full|tightbox*|wakes_gate); rl/ (shac|bptt*); surrogate/ (CLI-driven, README)
 data/             campaign output + data/phase0/ baseline study output (gitignored)
 results/          generated outputs (gitignored): <study>/ (report scripts + their figures/CSVs),
                   surrogate/<model>/ (metrics, parity, loss_curves, diagnostics, r2),

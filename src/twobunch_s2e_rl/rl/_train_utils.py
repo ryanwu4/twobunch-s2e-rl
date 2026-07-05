@@ -74,13 +74,36 @@ def resolve_ckpt(path: str) -> str:
     return sorted(glob.glob(path))[-1] if "*" in path else path
 
 
+def _spacing_goal_range(de: dict):
+    """(lo, hi) target-spacing range for goal-conditioned RL: from the objectives block's
+    bunch_spacing `goal` if present, else the flat spacing_goal_{lo,hi}_m keys (back-compat)."""
+    for e in de.get("objectives") or []:
+        if e.get("key") == "bunch_spacing" and e.get("goal") is not None:
+            lo, hi = e["goal"]
+            return float(lo), float(hi)
+    return de.get("spacing_goal_lo_m"), de.get("spacing_goal_hi_m")
+
+
 def build_reward_spec(de: dict):
     cache = de.get("reward_norms_json")
     if cache:
         os.makedirs(os.path.dirname(cache) or ".", exist_ok=True)
-    # goal-conditioned RL: a spacing_goal_{lo,hi}_m range enables a per-env target-spacing obs + the
-    # reward's spacing term reading that per-env goal (see diff_env / reward). Norms are goal-
-    # independent, so the metric_norms cache is reused unchanged.
+    # config-driven objectives: a `objectives` list fully specifies the reward terms + obs keys
+    # (goal-conditioning is expressed by a `goal:[lo,hi]` on the bunch_spacing target entry).
+    objectives = de.get("objectives")
+    if objectives is not None:
+        return reward_spec_from_campaign(
+            de["campaign_h5"], cache_json=cache, objectives=objectives,
+            floor_pct=de.get("floor_pct", 10.0),
+            drive_floor_pct=de.get("drive_floor_pct"),
+            witness_floor_pct=de.get("witness_floor_pct"),
+            surv_T_min=de.get("surv_T_min", 0.9),
+            surv_margin=de.get("surv_margin", 0.05),
+            emit_below_weight=de.get("emit_below_weight", 1.0),
+            emit_gate_band=de.get("emit_gate_band", 0.2),
+            boundary_margin=de.get("boundary_margin", 0.05))
+    # legacy flat-weights path: a spacing_goal_{lo,hi}_m range enables a per-env target-spacing obs +
+    # the reward's spacing term reading that per-env goal. Norms are goal-independent (cache reused).
     goal_conditioned = de.get("spacing_goal_lo_m") is not None and de.get("spacing_goal_hi_m") is not None
     return reward_spec_from_campaign(
         de["campaign_h5"],
@@ -110,6 +133,7 @@ def build_env_fn(cfg: dict, flow_ckpt: str):
     standard (num_envs, device, seed, episode_length, stochastic_init, ...) kwargs."""
     de = cfg["params"]["diff_env"]
     spec = build_reward_spec(de)
+    goal_lo, goal_hi = _spacing_goal_range(de)
     # latent RF drift: an `rf_drift` block (physical units) builds a per-knob normalized-std
     # vector; otherwise fall back to the scalar `rf_drift_std` (CLI-overridable, 0 = off).
     rf = de.get("rf_drift", {})
@@ -125,8 +149,8 @@ def build_env_fn(cfg: dict, flow_ckpt: str):
         action_scale=de.get("action_scale", 0.05),
         rf_drift_std=drift,
         common_random_numbers=de.get("common_random_numbers", False),
-        spacing_goal_lo=de.get("spacing_goal_lo_m"),
-        spacing_goal_hi=de.get("spacing_goal_hi_m"),
+        spacing_goal_lo=goal_lo,
+        spacing_goal_hi=goal_hi,
     )
 
 
