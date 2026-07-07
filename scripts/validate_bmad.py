@@ -51,6 +51,17 @@ def _bmad_metrics(pent: dict, drive_full: float, witness_full: float) -> dict:
     }
 
 
+def _beam_sigma_z(pent_h5) -> tuple[float, float]:
+    """(drive, witness) full RMS z [m] from a saved PENT beam -- matches the surrogate's std-of-z
+    `sigma_z` metric (NOT the getBeamSpecs 90%-core `sigmaSI90_z`). drive = higher-weight subset."""
+    from pmd_beamphysics import ParticleGroup
+    P = ParticleGroup(str(pent_h5))
+    w = np.unique(P.weight)
+    drive = float(P[P.weight == w[-1]].z.std())
+    witness = float(P[P.weight == w[0]].z.std()) if len(w) >= 2 else float("nan")
+    return drive, witness
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--setpoints-dir", default="results/rl/bptt_gc_combined/setpoints")
@@ -98,6 +109,10 @@ def main():
         tracked = rs._track_and_collect(qs, item)
         pent = tracked["specs"].get("PENT", {})
         bmad = _bmad_metrics(pent, drive_full, witness_full)
+        pent_h5 = outdir / f"sample_{int(round(g_um)):05d}_PENT.h5"   # saved by _track_and_collect
+        if pent_h5.exists():                                         # full std(z), matches surrogate
+            dz, wz = _beam_sigma_z(pent_h5)
+            bmad["drive_sigma_z_um"], bmad["witness_sigma_z_um"] = dz * 1e6, wz * 1e6
         surr = rec["surrogate_metrics"]
 
         cmp = {}

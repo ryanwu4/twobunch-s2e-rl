@@ -47,6 +47,8 @@ _METRICS = [
     ("witness_norm_emit_y", "witness_emit_y_um_rad", 1e6),
     ("transverse_offset", "transverse_offset_um", 1e6),
     ("angular_misalignment", "angular_misalignment_urad", 1e6),
+    ("drive_sigma_z", "drive_sigma_z_um", 1e6),        # bunch length (matches validate_bmad std-of-z)
+    ("witness_sigma_z", "witness_sigma_z_um", 1e6),
 ]
 
 

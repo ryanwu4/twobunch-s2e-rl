@@ -1,0 +1,80 @@
+# Goal-conditioned BPTT (26-knob combined surrogate), TIGHTENED KNOB BOX + sigma_z MATCHING.
+# This is bptt_gc_tightbox.yaml plus a bunch-length (sigma_z) objective on BOTH bunches, each
+# matched to its GOLDEN two-bunch baseline value at PENT. Without this term the tightbox policy has
+# no length control and sigma_z drifts far from golden while chasing spacing (Bmad @ PENT: witness
+# balloons to ~43 um at 100 um spacing vs golden 10 um; drive stretches to ~104 um at 300 um vs
+# golden 27 um). Anchoring to golden is a length *matching* objective (same philosophy as the BMAG
+# matching terms) -- and the safest sigma_z reward, because golden is in-distribution and Bmad
+# reproduces it. It also delivers the "reduce bunch length" intent (current 21-43 um witness /
+# 36-104 um drive -> golden 10 / 27 um).
+# Why `kind: target`, not `minimize`: a minimize-sigma_z reward is the most caustic-gameable term --
+# a leading-edge density spike itself looks like a short bunch (see the spike/knob-attribution study).
+# A target at golden pulls length toward the good value without that unbounded exploitation; the
+# tightbox knob box (transverse knobs clamped near golden, sextupoles below the caustic threshold)
+# is what keeps even this safe -- so tightbox is the REQUIRED base for enabling sigma_z.
+# Golden sigma_z @ PENT measured from data/tightbox_v2_full/sample_06000_PENT.h5 (baseline-repeat).
+# Run with: --flow-ckpt trained/twobunch_combined_ft/checkpoints/best-epoch=493-val_loss=0.5126.ckpt
+params:
+  diff_env:
+    name: TwoBunchFlowEnv
+    episode_length: 64
+    stochastic_env: true
+    action_scale: 0.05
+    rf_drift_std: 0.0
+    common_random_numbers: false
+    n_particles: 512
+    knob_box: tightbox        # <-- clamp each knob to its tightbox bounds (in the union frame)
+    # ---- reward inputs ----
+    campaign_h5: processed/twobunch_combined.h5
+    reward_norms_json: results/rl/_shared/norms/metric_norms_sigmaz.json   # distinct: objective set changed
+    surv_T_min: 0.9
+    surv_margin: 0.05
+    floor_pct: 10.0
+    emit_below_weight: 1.0
+    emit_gate_band: 0.2
+    objectives:
+      - {key: bunch_spacing,        kind: target,         weight: 1.0, goal: [1.0e-4, 3.0e-4]}
+      - {key: T_drive,              kind: hinge,          weight: 2.0, hinge_at: 0.98}
+      - {key: T_witness,            kind: hinge,          weight: 2.0, hinge_at: 0.98}
+      - {key: drive_norm_emit_x,    kind: minimize_floor, weight: 1.0, floor_pct: 2}
+      - {key: drive_norm_emit_y,    kind: minimize_floor, weight: 1.0, floor_pct: 2}
+      - {key: witness_norm_emit_x,  kind: minimize_floor, weight: 0.5, floor_pct: 10}
+      - {key: witness_norm_emit_y,  kind: minimize_floor, weight: 0.5, floor_pct: 10}
+      - {key: transverse_offset,    kind: minimize,       weight: 0.5}
+      - {key: angular_misalignment, kind: minimize,       weight: 0.5}
+      - {key: knobs,                kind: boundary,       weight: 0.5, margin: 0.05}
+      # ---- bunch length (sigma_z) matched to the golden baseline @ PENT --------------------------
+      # target (not minimize): a minimize-sigma_z reward is caustic-gameable (spike looks short);
+      # the tightbox knob box keeps the sextupoles in-distribution so this is safe. Weights < spacing
+      # (1.0) / survival (2.0) so spacing tracking is preserved; witness > drive (witness is the
+      # beam-quality-critical bunch). Targets in meters -> log10-normalized internally.
+      - {key: witness_sigma_z,      kind: target,         weight: 0.5, target: 0.8e-5}   # golden 10.2 um @ PENT
+      - {key: drive_sigma_z,        kind: target,         weight: 0.3, target: 2e-5}   # golden 27.3 um @ PENT
+  general:
+    seed: 0
+    device: cuda:0
+    render: false
+    train: true
+    logdir: logs/bptt_gc_sigmaz
+  config:
+    name: TwoBunchBPTT
+    num_actors: 32
+    steps_num: 32
+    max_epochs: 200
+    actor_learning_rate: 5e-4
+    lr_schedule: linear
+    gamma: 0.99
+    obs_rms: true
+    truncate_grads: true
+    grad_norm: 1.0
+    rew_scale: 1.0
+    save_interval: 50
+    betas: [0.7, 0.95]
+    player:
+      games_num: 64
+      deterministic: false
+  network:
+    actor_mlp:
+      units: [128, 128]
+      activation: elu
+    actor_logstd_init: -1.0

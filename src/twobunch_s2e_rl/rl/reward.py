@@ -285,7 +285,8 @@ class TwoBunchRewardSpec:
 
     def _report_keys(self) -> tuple[str, ...]:
         return ("bunch_spacing", "energy_difference", "transverse_offset",
-                "angular_misalignment", "p_surv", "T_drive", "T_witness") + EMIT_KEYS
+                "angular_misalignment", "p_surv", "T_drive", "T_witness",
+                "drive_sigma_z", "witness_sigma_z") + EMIT_KEYS
 
     def obs_scaled(self, obs: dict[str, torch.Tensor]) -> torch.Tensor:
         """(B, len(obs_keys)) z-scored achieved observables for the policy obs. Detached by the
