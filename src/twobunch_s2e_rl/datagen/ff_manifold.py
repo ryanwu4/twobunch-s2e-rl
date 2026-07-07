@@ -18,7 +18,7 @@ _EPICS_FF = np.array([(-256.0, 0.0), (-446.0, 0.0), (0.0, 457.0),
                       (0.0, 167.0), (-257.0, 0.0), (0.0, 167.0)])
 
 # Matched beta*->FF-quad curve: the feasible rows of
-# FACET2-S2E/analysis/2026-06-19_ff-quad-range/results_beta_sweep.csv
+# results/ff_quad_range/results_beta_sweep.csv
 # columns: beta_m, Q5FF, Q4FF, Q3FF, Q2FF, Q1FF, Q0FF  (kG.m)
 FF_MATCHED_CURVE = np.array([
     [0.5000, -72.043, -81.473, 99.353, 126.438, -234.626, 126.394],

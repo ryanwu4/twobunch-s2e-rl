@@ -60,7 +60,7 @@ BASELINE_KNOBS = {k: SWEEP_PARAMS[k][2] for k in PARAM_KEYS}
 # Range provenance:
 # - FF quads (Q5FF..Q0FF, kG.m): symmetric about golden by the per-quad excursion from the
 #   2026-06-19 PENT beta-matching solve (golden beta*=0.5 m -> ~7.6 cm round-waist floor;
-#   FACET2-S2E/analysis/2026-06-19_ff-quad-range/), mirrored to both sides and clipped to the
+#   results/ff_quad_range/), mirrored to both sides and clipped to the
 #   EPICS bounds (none clip at present). baseline = golden. Dogleg Q0D/Q1D/Q2D excluded
 #   (downstream of PENT). NOTE: independent box-LHS over these lands mostly off the matched
 #   manifold -> mostly mismatched PENT beams; the pilot gates whether to switch to a
