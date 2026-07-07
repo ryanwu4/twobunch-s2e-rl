@@ -178,7 +178,7 @@ def render_sweep_plots(frames, artdir, name, fps=2.0):
     written = []
     if len(frames) >= 2:                                 # a GIF needs >=2 sweep points
         for kind, stack in (("corner", corner_rgba), ("lps", lps_rgba)):
-            gif = artdir / f"{kind}_{name}_sweep.gif"
+            gif = artdir / (f"{kind}_{name}_sweep.gif" if name else f"{kind}_sweep.gif")
             _save_gif(stack, gif, fps=fps)
             written.append(gif)
             print(f"  wrote {gif}")

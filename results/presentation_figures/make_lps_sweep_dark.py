@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Re-render the goal-sweep LPS GIF in the dark presentation theme.
 
-Reuses the CACHED Bmad clouds (results/rl/openloop/clouds_bptt_gc_goal*um.npz, the exact
+Reuses the CACHED Bmad clouds (results/rl/bptt_gc/openloop/clouds_goal*um.npz, the exact
 bmad_drive_0/bmad_witness_0 plotted in the original lps_bptt_gc_sweep.gif) and the title values
 (bunch spacing, T_w) from eval_bmad_bptt_gc_openloop.json -- so nothing needs re-running.
 
@@ -24,8 +24,8 @@ from PIL import Image
 
 # ---- paths -------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parents[2]            # twobunch-s2e-rl/
-CLOUD_DIR = ROOT / "results/rl/openloop"
-EVAL_JSON = CLOUD_DIR / "eval_bmad_bptt_gc_openloop.json"
+CLOUD_DIR = ROOT / "results/rl/bptt_gc/openloop"
+EVAL_JSON = CLOUD_DIR / "eval_bmad.json"
 OUT_DIR = Path(__file__).resolve().parent             # presentation_figures/
 GOALS = [100, 150, 200, 250, 300]
 FPS = 1.5
@@ -51,7 +51,7 @@ def load_frames():
     meta = json.load(open(EVAL_JSON))["by_goal"]
     frames = []
     for g in GOALS:
-        d = np.load(CLOUD_DIR / f"clouds_bptt_gc_goal{g}um.npz")
+        d = np.load(CLOUD_DIR / f"clouds_goal{g}um.npz")
         gap = meta[f"goal{g}um"]["gap"]
         sp_um = gap["bunch_spacing"]["bmad_med"] * 1e6
         tw = gap["T_witness"]["bmad_med"]

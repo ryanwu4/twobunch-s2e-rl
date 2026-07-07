@@ -115,6 +115,8 @@ class TwoBunchFlowEnv:
         common_random_numbers: bool = False,
         spacing_goal_lo: float | None = None,
         spacing_goal_hi: float | None = None,
+        knob_box_lo=None,
+        knob_box_hi=None,
     ):
         del MM_caching_frequency, render
         if reward_spec is None:
@@ -137,6 +139,14 @@ class TwoBunchFlowEnv:
         self._flow = flow
         # knob count = surrogate conditioning dim (8 for original8, 26 for the combined union set)
         self.n_knob = int(getattr(flow.hparams, "condition_dim", N_KNOB))
+        # per-knob commandable box in the normalized [0,1] frame (default full box). A tightened box
+        # (e.g. sextupoles restricted near golden) keeps the policy on-distribution so it can't rail a
+        # knob into the surrogate's extrapolation/caustic regime; reset samples in it, actions clamp to it.
+        def _box(v, default):
+            if v is None:
+                return torch.full((self.n_knob,), default, device=self.device)
+            return torch.as_tensor(v, dtype=torch.float32, device=self.device)
+        self._klo, self._khi = _box(knob_box_lo, 0.0), _box(knob_box_hi, 1.0)
 
         self._drift_std = self._build_drift_std(rf_drift_std)   # (n_knob,) normalized, or None
         self.common_random_numbers = bool(common_random_numbers)
@@ -205,7 +215,7 @@ class TwoBunchFlowEnv:
     def _observe(self, knobs_cmd: torch.Tensor):
         """Run the flow at the actual (drifted) knobs -> (reward (B,), obs_extra (B,k) detached,
         achieved dict detached). Keeps grad on `reward` iff knobs_cmd has grad and not no_grad."""
-        knobs_act = torch.clamp(knobs_cmd + self._drift, 0.0, 1.0)
+        knobs_act = torch.minimum(torch.maximum(knobs_cmd + self._drift, self._klo), self._khi)
         obs_dict = self._flow.observables(knobs_act, n=self._n)
         obs_dict["knobs"] = knobs_act          # for the trust-region (boundary) reward term
         if self._goal_conditioned:             # per-env target spacing (detached constant)
@@ -228,9 +238,9 @@ class TwoBunchFlowEnv:
             return self._compute_obs()
 
         if self.stochastic_init:
-            new_knobs = self._uniform(n)
+            new_knobs = self._klo + self._uniform(n) * (self._khi - self._klo)   # uniform in the box
         else:
-            new_knobs = torch.full((n, self.n_knob), 0.5, device=self.device)
+            new_knobs = (0.5 * (self._klo + self._khi)).expand(n, -1)            # box midpoint
         new_drift = self._sample_drift(n)
         new_goal = self._sample_goal(n)
 
@@ -278,7 +288,8 @@ class TwoBunchFlowEnv:
         if action.shape != (self.num_envs, self.n_knob):
             raise ValueError(f"action shape {tuple(action.shape)} != "
                              f"({self.num_envs}, {self.n_knob})")
-        knobs_next = torch.clamp(self._knobs + self.action_scale * action, 0.0, 1.0)
+        knobs_next = torch.minimum(torch.maximum(self._knobs + self.action_scale * action,
+                                                 self._klo), self._khi)
 
         if self.no_grad:
             with torch.no_grad():

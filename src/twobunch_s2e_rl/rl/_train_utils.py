@@ -9,11 +9,16 @@ from __future__ import annotations
 import argparse
 import csv
 import glob
+import json
 import os
 from functools import partial
 
+import numpy as np
+
 from .diff_env import TwoBunchFlowEnv, rf_drift_std_vector
 from .reward import reward_spec_from_campaign
+from ..datagen.paths import repo_root
+from ..datagen.sweep_params import resolve_sweep_set
 
 
 def add_args(p: argparse.ArgumentParser) -> None:
@@ -128,12 +133,37 @@ def build_reward_spec(de: dict):
     )
 
 
+def _knob_box_bounds(de: dict):
+    """Resolve a `knob_box: <sweep_set>` config into per-knob [lo,hi] in the surrogate's normalized
+    frame: each knob is clamped to that set's bounds (e.g. `tightbox` -> transverse knobs confined
+    near golden, longitudinal unchanged), keeping the policy on-distribution. Returns (None, None)
+    if unset. The frame is the surrogate's own knob_low/high (from its `_norm.json`)."""
+    name = de.get("knob_box")
+    if not name:
+        return None, None
+    nj = str(repo_root() / de["campaign_h5"]).replace(".h5", "_norm.json")
+    with open(nj) as f:
+        norm = json.load(f)
+    keys = norm["knob_keys"]
+    nlo, nhi = np.array(norm["knob_low"], float), np.array(norm["knob_high"], float)
+    span = np.where(nhi > nlo, nhi - nlo, 1.0)
+    tk, tlo, thi, _ = resolve_sweep_set(name)
+    klo, khi = np.zeros(len(keys)), np.ones(len(keys))
+    for i, k in enumerate(keys):
+        if k in tk:
+            j = tk.index(k)
+            klo[i] = (tlo[j] - nlo[i]) / span[i]
+            khi[i] = (thi[j] - nlo[i]) / span[i]
+    return np.clip(klo, 0, 1).tolist(), np.clip(khi, 0, 1).tolist()
+
+
 def build_env_fn(cfg: dict, flow_ckpt: str):
     """Bind the flow + reward spec into TwoBunchFlowEnv so the trainer can call it with the
     standard (num_envs, device, seed, episode_length, stochastic_init, ...) kwargs."""
     de = cfg["params"]["diff_env"]
     spec = build_reward_spec(de)
     goal_lo, goal_hi = _spacing_goal_range(de)
+    box_lo, box_hi = _knob_box_bounds(de)
     # latent RF drift: an `rf_drift` block (physical units) builds a per-knob normalized-std
     # vector; otherwise fall back to the scalar `rf_drift_std` (CLI-overridable, 0 = off).
     rf = de.get("rf_drift", {})
@@ -151,6 +181,8 @@ def build_env_fn(cfg: dict, flow_ckpt: str):
         common_random_numbers=de.get("common_random_numbers", False),
         spacing_goal_lo=goal_lo,
         spacing_goal_hi=goal_hi,
+        knob_box_lo=box_lo,
+        knob_box_hi=box_hi,
     )
 
 

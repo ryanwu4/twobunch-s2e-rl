@@ -60,6 +60,21 @@ _TRANSFORM = {
     **{k: "log10" for k in EMIT_KEYS},
 }
 
+# strictly-positive, right-skewed metric families that should be normalized in log10 (like the
+# emittances) so a target/minimize term isn't swamped by a tail-dominated std -- matters for the
+# BMAG / slice-BMAG matching+chromatic terms and sigma_z, whose campaign spread is heavy-tailed.
+_LOG10_SUBSTR = ("bmag", "sigma_x", "sigma_y", "sigma_z", "energy_spread", "beta_x", "beta_y",
+                 "norm_emit")
+
+
+def _transform_for(key: str) -> str:
+    """log10 for the positive right-skewed families (BMAG, slice-BMAG, sigmas, betas, emit,
+    energy-spread); explicit _TRANSFORM entry wins; else identity (signed/bounded quantities)."""
+    if key in _TRANSFORM:
+        return _TRANSFORM[key]
+    return "log10" if any(s in key for s in _LOG10_SUBSTR) else "identity"
+
+
 # which transmission head gates each emittance term (survival-gating, fix #1)
 _GATE_FOR = {k: ("T_drive" if k.startswith("drive") else "T_witness") for k in EMIT_KEYS}
 
@@ -132,7 +147,7 @@ def compute_metric_norms(h5_path: str, keys=None, chunk: int = 256) -> dict[str,
     for k in keys:
         if k not in metrics:
             continue
-        transform = _TRANSFORM.get(k, "identity")
+        transform = _transform_for(k)
         a = metrics[k]
         a = a[np.isfinite(a)]
         if a.size == 0:

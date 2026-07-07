@@ -2,8 +2,8 @@
 """Dark-theme version of the baseline-vs-optimized 6D corner plot.
 
 Reuses cached Bmad clouds (no re-run):
-  baseline  -> results/rl/openloop/clouds_baseline.npz   (bmad_drive / bmad_witness)
-  optimized -> results/rl/openloop/clouds_bptt_gc_goal200um.npz (bmad_drive_0 / bmad_witness_0)
+  baseline  -> results/rl/baseline/openloop/clouds.npz   (bmad_drive / bmad_witness)
+  optimized -> results/rl/bptt_gc/openloop/clouds_goal200um.npz (bmad_drive_0 / bmad_witness_0)
 
 Layout mirrors src/twobunch_s2e_rl/rl/_eval_plots.py::_corner_figure (lower-triangle scatter,
 diagonal 1-D step histograms, shared per-coord limits), restyled black-background with large
@@ -28,7 +28,8 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
-CLOUD_DIR = ROOT / "results/rl/openloop"
+BASELINE_NPZ = ROOT / "results/rl/baseline/openloop/clouds.npz"
+OPT_NPZ = ROOT / "results/rl/bptt_gc/openloop/clouds_goal200um.npz"
 OUT = Path(__file__).resolve().parent / "corner_baseline_vs_opt_dark.png"
 
 # (col, label, unit, display-scale) on (x,y,z,px,py,pz)
@@ -50,8 +51,8 @@ plt.rcParams.update({
 
 
 def load_series():
-    bl = np.load(CLOUD_DIR / "clouds_baseline.npz")
-    op = np.load(CLOUD_DIR / "clouds_bptt_gc_goal200um.npz")
+    bl = np.load(BASELINE_NPZ)
+    op = np.load(OPT_NPZ)
     return [
         ("baseline driver", BL_DRIVE, bl["bmad_drive"]),
         ("baseline witness", BL_WIT, bl["bmad_witness"]),

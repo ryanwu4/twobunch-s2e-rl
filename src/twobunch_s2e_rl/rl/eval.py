@@ -9,7 +9,7 @@ pass --rf-drift-std to probe robustness.
 
 With --goal-sweep (a goal-conditioned policy), it also renders -- from surrogate-sampled clouds at
 each goal's representative operating point -- a 6D corner plot (both bunches overlaid) and a combined
-z-pz LPS, stitched across the sweep into corner_<run>_surr_sweep.gif / lps_<run>_surr_sweep.gif under
+z-pz LPS, stitched across the sweep into corner_surr_sweep.gif / lps_surr_sweep.gif under
 results/rl/ (mirrors eval_bmad's plots; --no-plot to skip).
 
   PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.rl.eval --logdir logs/shac \
@@ -26,10 +26,11 @@ import torch
 import torch.nn as nn
 import yaml
 
-from .diff_env import N_KNOB, TwoBunchFlowEnv
+from .diff_env import TwoBunchFlowEnv
 from .diffrl.utils import RunningMeanStd
 from ._eval_plots import render_sweep_plots
-from ._train_utils import build_reward_spec, resolve_ckpt
+from ._train_utils import build_reward_spec, resolve_ckpt, _knob_box_bounds
+from ..datagen.paths import rl_dir
 
 
 def _load_policy(path: str, device: str):
@@ -78,6 +79,7 @@ def evaluate(logdir, flow_ckpt, policy="best", num_rollouts=256, rf_drift_std=0.
                         spacing_goal_hi=de.get("spacing_goal_hi_m"))
     else:
         env_goal = {}
+    box_lo, box_hi = _knob_box_bounds(de)   # MUST match training: same knob box or the policy is off-frame
     env = TwoBunchFlowEnv(
         num_rollouts, device=device, seed=seed,
         episode_length=int(de.get("episode_length", 64)), stochastic_init=True, no_grad=True,
@@ -85,6 +87,7 @@ def evaluate(logdir, flow_ckpt, policy="best", num_rollouts=256, rf_drift_std=0.
         n_particles=int(de.get("n_particles", 2048)),
         action_scale=float(de.get("action_scale", 0.05)),
         rf_drift_std=float(rf_drift_std),
+        knob_box_lo=box_lo, knob_box_hi=box_hi,
         **env_goal,
     )
     actor, obs_rms = _load_policy(str(logdir / f"{policy}_policy.pt"), device)
@@ -97,7 +100,7 @@ def evaluate(logdir, flow_ckpt, policy="best", num_rollouts=256, rf_drift_std=0.
         a = torch.tanh(actor(o, deterministic=True))
         obs, rew, done, info = env.step(a)
         achieved = info["achieved"]
-        knobs_pre = info["obs_before_reset"][:, :N_KNOB]
+        knobs_pre = info["obs_before_reset"][:, :env.n_knob]
 
     def arr(k):
         return achieved[k].detach().cpu().numpy()
@@ -115,8 +118,8 @@ def evaluate(logdir, flow_ckpt, policy="best", num_rollouts=256, rf_drift_std=0.
         rep = int(np.argmin(np.abs(spacing_um - np.median(spacing_um))))
         kr = knobs_pre[rep:rep + 1]
         gstr = f"goal {goal_um:.0f} um" if goal_um is not None else logdir.name
-        slug = (f"{logdir.name}_surr_goal{int(round(goal_um))}um" if goal_um is not None
-                else f"{logdir.name}_surr")
+        slug = (f"surr_goal{int(round(goal_um))}um" if goal_um is not None
+                else "surr")
         frame = {"goal_um": goal_um, "slug": slug,
                  "title": f"{gstr} (surrogate)  |  spacing {spacing_um[rep]:.0f} um  |  T_w {Tw[rep]:.2f}",
                  "drive": env._flow.sample_bunch(kr, 0, n_cloud)[0].detach().cpu().numpy(),
@@ -139,7 +142,7 @@ def evaluate(logdir, flow_ckpt, policy="best", num_rollouts=256, rf_drift_std=0.
         "emittance_um_rad_median": {k: float(np.median(arr(k) * 1e6)) for k in
                                     ("drive_norm_emit_x", "drive_norm_emit_y",
                                      "witness_norm_emit_x", "witness_norm_emit_y")},
-        "knob_median": [float(np.median(kn[:, j])) for j in range(N_KNOB)],   # diagnostic for sweeps
+        "knob_median": [float(np.median(kn[:, j])) for j in range(env.n_knob)],   # diagnostic for sweeps
         "knob_boundary_pin_frac": pin,
         "reward_mean": float(np.mean(arr("reward"))),
     }
@@ -172,8 +175,8 @@ def main():
 
     common = dict(policy=args.policy, num_rollouts=args.num_rollouts, rf_drift_std=args.rf_drift_std,
                   device=args.device, seed=args.seed, make_frame=not args.no_plot)
-    artdir = Path("results/rl/goal_sweep")
-    name = f"{Path(args.logdir).name}_surr"
+    artdir = rl_dir(Path(args.logdir).name) / "goal_sweep"
+    name = "surr"
     if args.goal_sweep is not None:
         goals = [float(x) for x in args.goal_sweep.split(",") if x.strip()]
         results = [evaluate(args.logdir, args.flow_ckpt, goal_um=g, **common) for g in goals]

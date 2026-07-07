@@ -52,6 +52,20 @@ def surrogate_dir(model: str) -> Path:
     return d
 
 
+def rl_dir(run: str) -> Path:
+    """Per-run RL eval/analysis output folder, e.g. results/rl/bptt_dr/ (run = logdir basename)."""
+    d = results_dir() / "rl" / run
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def rl_shared_dir() -> Path:
+    """Cross-run / shared RL area (reward-norm caches, compare, particle_study): results/rl/_shared/."""
+    d = results_dir() / "rl" / "_shared"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def tables_dir() -> Path:
     """Non-figure data outputs (dataset.pkl/csv, etc.)."""
     d = results_dir() / "tables"

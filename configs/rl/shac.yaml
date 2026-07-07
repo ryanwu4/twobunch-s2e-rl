@@ -16,7 +16,7 @@ params:
                                   # Bump to 1024 (~2x mem) if you want tighter value noise.
     # ---- reward ----
     campaign_h5: processed/twobunch_flow_v4.h5
-    reward_norms_json: results/rl/norms/metric_norms.json   # cache of per-metric z-scores + floors
+    reward_norms_json: results/rl/_shared/norms/metric_norms.json   # cache of per-metric z-scores + floors
     spacing_target_m: 2.0e-4      # 200 um (campaign median ~212 um -> reachable)
     surv_T_min: 0.9               # survival hinge floor on T_drive / T_witness
     surv_margin: 0.05             # hinge at T_min+margin (~witness head MAE) -> off the cliff

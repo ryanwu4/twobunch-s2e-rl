@@ -14,7 +14,7 @@ Two modes:
 With --goal-sweep / --spacing-goal-um, a goal-conditioned policy is evaluated at each target
 spacing. Openloop additionally renders, from the Bmad clouds, a per-goal 6D corner plot (both
 bunches overlaid) and a combined longitudinal-phase-space plot (both bunches on one z-pz axes),
-and stitches them across the sweep into corner_<run>_sweep.gif / lps_<run>_sweep.gif -- so you can
+and stitches them across the sweep into corner_sweep.gif / lps_sweep.gif -- so you can
 watch the witness slide relative to the drive as the target spacing changes.
 
 Bmad fidelity defaults match the campaign that trained the surrogate (CSR + transverse wakes,
@@ -38,6 +38,7 @@ import numpy as np
 import torch
 import yaml
 
+from ..datagen.paths import rl_dir
 from ..datagen.sweep_params import BOUNDS_HIGH, BOUNDS_LOW
 from ._eval_plots import plot_closedloop_trajectory, render_sweep_plots
 from ._train_utils import build_reward_spec, resolve_ckpt
@@ -166,12 +167,12 @@ def main():
     flow_ckpt = resolve_ckpt(args.flow_ckpt)
     drive_full, witness_full = _full_charges(de["campaign_h5"])
     actor, rms = _load_policy(str(logdir / f"{args.policy}_policy.pt"), device)
-    # neat output layout: per-mode results/plots under results/rl/<mode>/, goal-sweep GIFs/PNGs
-    # under results/rl/goal_sweep/.
-    art_root = Path("results/rl")
-    artdir = art_root / args.mode
+    # per-run layout: results/rl/<run>/<mode>/ (run = logdir basename), goal-sweep under
+    # results/rl/<run>/goal_sweep/. Folder carries the run, so filenames drop the run token.
+    run = logdir.name
+    artdir = rl_dir(run) / args.mode
     artdir.mkdir(parents=True, exist_ok=True)
-    sweep_dir = art_root / "goal_sweep"
+    sweep_dir = rl_dir(run) / "goal_sweep"
 
     goal_conditioned = "spacing_goal" in spec.obs_keys
     if args.goal_sweep is not None:
@@ -209,7 +210,7 @@ def main():
     # corner + combined-LPS GIFs over the Bmad sweep (per-goal static PNGs always; GIF if >=2 goals)
     if not args.no_plot and frames:
         sweep_dir.mkdir(parents=True, exist_ok=True)
-        render_sweep_plots(frames, sweep_dir, logdir.name, fps=args.gif_fps)
+        render_sweep_plots(frames, sweep_dir, "", fps=args.gif_fps)
 
     if goal_conditioned and len([g for g in goals if g is not None]) > 1:
         print(f"\n{'goal_um':>8s} {'surr_um':>9s} {'bmad_um':>9s} {'T_w_bmad':>9s}")
@@ -219,7 +220,7 @@ def main():
             print(f"{r.get('goal_um', float('nan')):8.0f} {(g.get('surr_med') or float('nan'))*1e6:9.1f} "
                   f"{(g.get('bmad_med') or float('nan'))*1e6:9.1f} {tw.get('bmad_med', float('nan')):9.2f}")
 
-    out_json = artdir / f"eval_bmad_{logdir.name}_{args.mode}.json"
+    out_json = artdir / "eval_bmad.json"
     json.dump(out, open(out_json, "w"), indent=2)
     print(f"\nWrote {out_json}")
 
@@ -228,7 +229,8 @@ def _run_one_goal(args, de, spec, flow_ckpt, actor, rms, bridge, artdir, device,
                   goal_um, env_goal, bmad_goal, logdir):
     """One eval at a single (or absent) spacing goal. Returns (summary dict, sweep-frame | None).
     The frame carries subsampled Bmad clouds for the corner/LPS GIFs (openloop only)."""
-    tag = f"{logdir.name}_goal{int(round(goal_um))}um" if goal_um is not None else logdir.name
+    tag = f"goal{int(round(goal_um))}um" if goal_um is not None else logdir.name  # label (title/slug)
+    sfx = f"_goal{int(round(goal_um))}um" if goal_um is not None else ""          # filename suffix (folder carries run)
     out = {"goal_um": goal_um}
     frame = None
     if args.mode == "openloop":
@@ -293,7 +295,7 @@ def _run_one_goal(args, de, spec, flow_ckpt, actor, rms, bridge, artdir, device,
                  "drive": _ss(bd[0], 3000) if len(bd[0]) > 1 else None,
                  "witness": _ss(bw[0], 3000) if len(bw[0]) > 1 else None}
 
-        np.savez(artdir / f"clouds_{tag}.npz", knobs=knobs.cpu().numpy(),
+        np.savez(artdir / f"clouds{sfx}.npz", knobs=knobs.cpu().numpy(),
                  phys=phys, surr_drive=sd, surr_witness=sw,
                  **{f"bmad_drive_{i}": bd[i] for i in range(args.n_points)},
                  **{f"bmad_witness_{i}": bw[i] for i in range(args.n_points)})
@@ -307,7 +309,7 @@ def _run_one_goal(args, de, spec, flow_ckpt, actor, rms, bridge, artdir, device,
                          f"|  T_witness surr {g(surr_ach,'T_witness'):.2f} / "
                          f"bmad {g(bmad_ach,'T_witness'):.2f}   "
                          f"T_drive surr {g(surr_ach,'T_drive'):.2f} / bmad {g(bmad_ach,'T_drive'):.2f}")
-                png = artdir / f"phasespace_{tag}_pt{i}.png"
+                png = artdir / f"phasespace{sfx}_pt{i}.png"
                 _plot_phase_space(sd[i], sw[i], bd[i], bw[i], surr_ach, bmad_ach, title, png)
                 print(f"  wrote {png}")
     else:
@@ -334,7 +336,7 @@ def _run_one_goal(args, de, spec, flow_ckpt, actor, rms, bridge, artdir, device,
         out["trajectory"] = traj   # full per-step series (persisted so plots don't need the log)
         if not args.no_plot:
             target_um = goal_um if goal_um is not None else de.get("spacing_target_m", 2e-4) * 1e6
-            png = artdir / f"trajectory_{tag}.png"
+            png = artdir / f"trajectory{sfx}.png"
             plot_closedloop_trajectory({logdir.name: traj}, png, spacing_target_um=target_um,
                                        title=f"{tag} closed-loop on Bmad ({ep} steps, {args.num_macro} macro)")
             print(f"  wrote {png}")
