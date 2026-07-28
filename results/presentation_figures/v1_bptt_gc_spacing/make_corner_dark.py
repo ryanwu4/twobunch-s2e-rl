@@ -27,10 +27,12 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
+HERE = Path(__file__).resolve().parent
+# repo root by marker, not by index -- survives moving this script between figure subfolders
+ROOT = next(p for p in HERE.parents if (p / "pyproject.toml").exists())
 BASELINE_NPZ = ROOT / "results/rl/baseline/openloop/clouds.npz"
 OPT_NPZ = ROOT / "results/rl/bptt_gc/openloop/clouds_goal200um.npz"
-OUT = Path(__file__).resolve().parent / "corner_baseline_vs_opt_dark.png"
+OUT = HERE / "corner_baseline_vs_opt_dark_v1.png"
 
 # (col, label, unit, display-scale) on (x,y,z,px,py,pz)
 COORDS = [(0, "x", "mm", 1e3), (1, "y", "mm", 1e3), (2, "z", "mm", 1e3),

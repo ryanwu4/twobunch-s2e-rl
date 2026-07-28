@@ -1,5 +1,10 @@
 #!/usr/bin/env python
-"""Re-render the goal-sweep LPS GIF in the dark presentation theme.
+"""Goal-sweep LPS GIF in the dark presentation theme -- CONTROLLER v1 (spacing-only).
+
+v1 = the `bptt_gc` run: 8-knob action space over the twobunch_flow_v4 surrogate, reward targets
+bunch spacing with no bunch-length term. The v2 counterpart (26-knob `bptt_gc_sigmaz`, spacing +
+sigma_z matched to golden) is ../v2_bptt_gc_sigmaz/make_lps_sweep_dark.py -- same layout and
+palette, so the two GIFs can be shown back to back.
 
 Reuses the CACHED Bmad clouds (results/rl/bptt_gc/openloop/clouds_goal*um.npz, the exact
 bmad_drive_0/bmad_witness_0 plotted in the original lps_bptt_gc_sweep.gif) and the title values
@@ -9,7 +14,7 @@ Layout mirrors src/twobunch_s2e_rl/rl/_eval_plots.py::_lps_figure (top z-density
 scatter, dashed per-bunch z-centroids, shared axes across the sweep), restyled black-background
 with the presentation palette (drive = blue, witness = rose-red).
 
-Output: presentation_figures/lps_gc_sweep_dark.gif + per-goal PNGs.
+Output: lps_sweep_dark_v1.gif + per-goal lps_goal<g>um_dark_v1.png (beside this script).
 """
 from __future__ import annotations
 
@@ -23,10 +28,11 @@ import numpy as np
 from PIL import Image
 
 # ---- paths -------------------------------------------------------------------
-ROOT = Path(__file__).resolve().parents[2]            # twobunch-s2e-rl/
+OUT_DIR = Path(__file__).resolve().parent             # .../presentation_figures/v1_bptt_gc_spacing
+# repo root by marker, not by index -- survives moving this script between figure subfolders
+ROOT = next(p for p in OUT_DIR.parents if (p / "pyproject.toml").exists())   # twobunch-s2e-rl/
 CLOUD_DIR = ROOT / "results/rl/bptt_gc/openloop"
 EVAL_JSON = CLOUD_DIR / "eval_bmad.json"
-OUT_DIR = Path(__file__).resolve().parent             # presentation_figures/
 GOALS = [100, 150, 200, 250, 300]
 FPS = 1.5
 
@@ -117,10 +123,10 @@ def main():
     for g, fr in zip(GOALS, frames):
         fig = render(fr, zlim, pzlim)
         rgb.append(fig_to_rgb(fig))
-        fig.savefig(OUT_DIR / f"lps_gc_goal{g}um_dark.png", dpi=100)
+        fig.savefig(OUT_DIR / f"lps_goal{g}um_dark_v1.png", dpi=100)
         plt.close(fig)
     imgs = [Image.fromarray(f) for f in rgb]
-    gif = OUT_DIR / "lps_gc_sweep_dark.gif"
+    gif = OUT_DIR / "lps_sweep_dark_v1.gif"
     imgs[0].save(gif, save_all=True, append_images=imgs[1:],
                  duration=int(1000.0 / FPS), loop=0)
     print(f"wrote {gif}  ({len(imgs)} frames, {imgs[0].size[0]}x{imgs[0].size[1]})")

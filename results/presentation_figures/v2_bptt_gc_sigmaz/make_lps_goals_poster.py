@@ -32,8 +32,9 @@ from pmd_beamphysics import ParticleGroup
 from twobunch_s2e_rl.surrogate import COORD_KEYS
 from twobunch_s2e_rl.surrogate.model import TwoBunchFlow
 
-HERE = Path(__file__).resolve().parent                  # presentation_figures/
-ROOT = HERE.parents[1]                                  # twobunch-s2e-rl/
+HERE = Path(__file__).resolve().parent                  # .../presentation_figures/v2_bptt_gc_sigmaz
+# repo root by marker, not by index -- survives moving this script between figure subfolders
+ROOT = next(p for p in HERE.parents if (p / "pyproject.toml").exists())   # twobunch-s2e-rl/
 VAL = ROOT / "results/rl/bptt_gc_sigmaz/bmad_validation"
 SETP = ROOT / "results/rl/bptt_gc_sigmaz/setpoints"
 CKPT = ROOT / "trained/twobunch_combined_ft/checkpoints/best-epoch=493-val_loss=0.5126.ckpt"
@@ -138,8 +139,8 @@ def main():
             ax.tick_params(labelleft=False)
 
     for ext, dpi in (("png", 220), ("pdf", 220)):
-        fig.savefig(HERE / f"lps_gc_goals_poster.{ext}", dpi=dpi)
-    print(f"wrote lps_gc_goals_poster.png/.pdf to {HERE}")
+        fig.savefig(HERE / f"lps_goals_poster_v2.{ext}", dpi=dpi)
+    print(f"wrote lps_goals_poster_v2.png/.pdf to {HERE}")
 
 
 if __name__ == "__main__":

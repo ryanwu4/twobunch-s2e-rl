@@ -34,8 +34,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pmd_beamphysics import ParticleGroup
 
-HERE = Path(__file__).resolve().parent                  # presentation_figures/
-ROOT = HERE.parents[1]                                  # twobunch-s2e-rl/
+HERE = Path(__file__).resolve().parent                  # .../presentation_figures/v2_bptt_gc_sigmaz
+# repo root by marker, not by index -- survives moving this script between figure subfolders
+ROOT = next(p for p in HERE.parents if (p / "pyproject.toml").exists())   # twobunch-s2e-rl/
 VAL = ROOT / "results/rl/bptt_gc_sigmaz/bmad_validation"
 BASELINE_H5 = ROOT / "data/tightbox_v2_full/sample_06000_PENT.h5"
 GOALS = [100, 150, 200, 250, 300]
@@ -127,8 +128,8 @@ def main():
                  fontweight="regular", pad=12)
 
     for ext in ("png", "pdf"):
-        fig.savefig(HERE / f"transverse_goals_poster.{ext}", dpi=220)
-    print(f"wrote transverse_goals_poster.png/.pdf to {HERE}")
+        fig.savefig(HERE / f"transverse_goals_poster_v2.{ext}", dpi=220)
+    print(f"wrote transverse_goals_poster_v2.png/.pdf to {HERE}")
 
 
 if __name__ == "__main__":

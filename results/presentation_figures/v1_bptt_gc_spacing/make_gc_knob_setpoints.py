@@ -17,8 +17,9 @@ from matplotlib import font_manager
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
-ROOT = Path(__file__).resolve().parents[2]          # twobunch-s2e-rl/
-OUT = Path(__file__).resolve().parent               # .../presentation_figures
+OUT = Path(__file__).resolve().parent               # .../presentation_figures/v1_bptt_gc_spacing
+# repo root by marker, not by index -- survives moving this script between figure subfolders
+ROOT = next(p for p in OUT.parents if (p / "pyproject.toml").exists())   # twobunch-s2e-rl/
 GOALS = [100, 150, 200, 250, 300]
 STAR_GOAL = 200
 
@@ -129,8 +130,8 @@ for t in leg.get_texts():
 fig.tight_layout(rect=[0, 0, 1, 0.90])
 fig.subplots_adjust(hspace=0.32, wspace=0.28)
 
-png = OUT / "gc_knob_setpoints.png"
-pdf = OUT / "gc_knob_setpoints.pdf"
+png = OUT / "gc_knob_setpoints_v1.png"
+pdf = OUT / "gc_knob_setpoints_v1.pdf"
 fig.savefig(png, dpi=300)
 fig.savefig(pdf)
 print("wrote", png, "and", pdf)
