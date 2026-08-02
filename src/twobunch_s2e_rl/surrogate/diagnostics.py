@@ -23,7 +23,6 @@ import numpy as np
 import torch
 
 from ..datagen.paths import repo_root
-from ..datagen.sweep_params import PARAM_KEYS
 from .dataset import TwoBunchFlowDataset
 from .model import TwoBunchFlow
 
@@ -170,6 +169,10 @@ def beam_matrix(items, path):
 
 # ---- knob -> observable response (the learned differentiable surface) -------
 def knob_response(bundle, path, ngrid=40):
+    # Knob list from the dataset's own norm frame — NOT the original-8 PARAM_KEYS
+    # (which silently dropped every dim past column 8 on the 23/26-dim tables;
+    # the xtcav23 mover/kicker gate depends on these panels).
+    knob_keys = bundle.ds.norm["knob_keys"]
     med = bundle.ds.knobs.median(0).values.numpy()
     grid = np.linspace(0.02, 0.98, ngrid)
     obs_defs = [("witness_norm_emit_x", 1e6, "witness ε_n,x [µm]"),
@@ -177,14 +180,14 @@ def knob_response(bundle, path, ngrid=40):
                 ("transverse_offset", 1e6, "transv offset [µm]"),
                 ("p_surv", 1.0, "witness p_surv")]
     # build all (knob, gridpoint) conditions in one batch
-    K = np.tile(med, (len(PARAM_KEYS) * ngrid, 1))
-    for jk in range(len(PARAM_KEYS)):
+    K = np.tile(med, (len(knob_keys) * ngrid, 1))
+    for jk in range(len(knob_keys)):
         K[jk * ngrid:(jk + 1) * ngrid, jk] = grid
     out = bundle.observables(K, n=512)
-    fig, ax = plt.subplots(len(obs_defs), len(PARAM_KEYS), figsize=(2.1 * len(PARAM_KEYS), 9), sharex=True)
+    fig, ax = plt.subplots(len(obs_defs), len(knob_keys), figsize=(2.1 * len(knob_keys), 9), sharex=True)
     for oi, (okey, sc, olab) in enumerate(obs_defs):
         y = out[okey].cpu().numpy() * sc
-        for jk, kk in enumerate(PARAM_KEYS):
+        for jk, kk in enumerate(knob_keys):
             a = ax[oi, jk]
             seg = y[jk * ngrid:(jk + 1) * ngrid]
             a.plot(grid, seg, color="#333", lw=1.4)
@@ -271,8 +274,10 @@ def main():
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--processed", default=str(repo_root() / "processed" / "twobunch_flow.h5"))
     ap.add_argument("--out", default="results/surrogate/default/diagnostics")
-    ap.add_argument("--samples", type=int, nargs="+", default=[693, 4778],
-                    help="processed-row indices (default: an intact + a scraped witness)")
+    ap.add_argument("--samples", type=int, nargs="+", default=None,
+                    help="processed-row indices (default: auto — the most-intact and the "
+                         "most-scraped viable witness rows; the old hardcoded [693, 4778] "
+                         "crashed on tables smaller than 4779 rows)")
     ap.add_argument("--dark", action="store_true",
                     help="black-background, large-font slideshow styling for slices.")
     ap.add_argument("--suffix", default="",
@@ -284,6 +289,13 @@ def main():
     out = repo_root() / args.out
     out.mkdir(parents=True, exist_ok=True)
     b = Bundle(ckpt, args.processed)
+
+    if args.samples is None:
+        wf = np.asarray(b.ds.witness_frac)
+        dens = np.asarray(b.ds.witness_density, dtype=bool)
+        intact = int(np.argmax(np.where(dens, wf, -1.0)))
+        scraped = int(np.argmin(np.where(dens, wf, np.inf)))
+        args.samples = [intact] if intact == scraped else [intact, scraped]
 
     sfx = args.suffix
     rep = args.samples[0]

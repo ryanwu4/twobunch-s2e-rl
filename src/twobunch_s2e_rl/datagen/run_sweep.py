@@ -169,7 +169,10 @@ def _make_tao(qs):
 
 
 def _track_and_collect(qs, item):
-    merged = {**_BASELINE, **item["knobs"]}
+    # fixed_overrides: campaign-constant setLattice/trackBeam settings that are NOT sweep
+    # dims (e.g. Q19851kG/Q19871kG at recorded BACTs, trackEnd) — applied between the
+    # baseline config and the per-sample knobs.
+    merged = {**_BASELINE, **_CFG.get("fixed_overrides", {}), **item["knobs"]}
     t0 = time.perf_counter()
     qs.setLattice(_TAO, **merged)
     qs.trackBeam(_TAO, str(_S2E_ROOT), **merged)
@@ -177,7 +180,7 @@ def _track_and_collect(qs, item):
 
     n_in = int(_CFG["num_macro_particles"])
     record = {"wall_s": wall_s, "specs": {}}
-    for ele in TREATY_POINTS:
+    for ele in _CFG.get("treaty_points", TREATY_POINTS):
         P = qs.getBeamAtElement(_TAO, ele)
 
         # Save the beam before computing specs: degenerate beams (a fully-scraped
@@ -191,7 +194,11 @@ def _track_and_collect(qs, item):
             specs["n_live_drive"] = len(PDrive.x)
             specs["n_live_witness"] = len(PWitness.x)
         try:
-            specs.update(qs.getBeamSpecs(P, targetTwiss=ele) or {})
+            # getBeamSpecs only knows golden Twiss at these elements; any other name
+            # falls into an undefined-variable path (its abort `return` is commented
+            # out upstream) -> pass None so specs still compute, just without BMAG.
+            twiss = ele if ele in ("PR10571", "BEGBC20", "MFFF", "PENT") else None
+            specs.update(qs.getBeamSpecs(P, targetTwiss=twiss) or {})
         except Exception as e:
             specs["specs_error"] = f"{type(e).__name__}: {e}"
         record["specs"][ele] = specs
@@ -207,6 +214,7 @@ def run_sample(item):
     result = {
         "idx": item["idx"],
         "knobs": item["knobs"],
+        "fixed_overrides": _CFG.get("fixed_overrides", {}),
         "is_baseline_repeat": item["is_baseline_repeat"],
         "num_macro_particles": int(_CFG["num_macro_particles"]),
         "csrTF": _CFG["csrTF"],

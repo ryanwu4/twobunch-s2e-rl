@@ -1,0 +1,26 @@
+# XTCAV-entrance surrogate FULL campaign (GPSR Stage B) — run only after the xtcav23_pilot
+# gates pass (failure/scrape rates in the new longitudinal box; flow knob-response on the
+# mover/kicker dims). Same box/settings as the pilot; independent LHS draw (different seed).
+# ~10k samples: the 23-D box is much tighter per-dim than the 26-D campaigns — that density
+# is what buys response accuracy on the mover/kicker dims (plan: ~1.5–2x the 9008-sample
+# combined campaign's cost; ~165 samples/h on ~100–120 workers from prior campaigns).
+#
+# Preprocess: --subdir xtcav23_full --sweep-set xtcav23 --treaty-point XTCAVF
+#   (or merge with the pilot: --subdir xtcav23_full,xtcav23_pilot — same box, same frame)
+name: xtcav23_full
+sweep_set: xtcav23
+n_samples: 5000
+n_baseline_repeats: 8
+num_macro_particles: 100000
+n_workers: 120
+seed: 20260801
+csrTF: true
+transverseWakes: true
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/xtcav23_full
+treaty_points: [BEGBC20, MFFF, XTCAVF, PENT]
+save_beams_at: [XTCAVF]
+fixed_overrides:
+  Q19851kG: -63.76368742523523
+  Q19871kG: 42.49972197426665
+  trackEnd: PENT

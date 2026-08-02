@@ -188,15 +188,77 @@ _TIGHTBOX_OVERRIDE = {
 }
 TIGHTBOX_PARAMS = {**EXPANDED_PARAMS, **_TIGHTBOX_OVERRIDE}
 
+# ----------------------------------------------------------------------------------------
+# XTCAV-entrance 23-D set (GPSR knob-delta fitting, Stage B — plan 2026-07-30): conditioning
+# knobs for the surrogate retrained to emit at the XTCAVF handoff plane (saved at XTCAVF,
+# element EXIT with V=0 ≡ entrance + exact 1.0334 m drift; back-drifted at fit time).
+#
+# Key differences vs the 26-D sets:
+# - Q2FF/Q1FF/Q0FF are EXCLUDED: they sit DOWNSTREAM of XTCAVF (between it and PENT) and are
+#   modeled exactly in the differentiable Cheetah segment (xtcav-gpsr-tuning), carrying zero
+#   surrogate error. Same for Q0D/Q1D/Q2D, B5D36, XTCAV voltage.
+# - Movers + kickers are IN (23 = 8 longitudinal + Q5/Q4/Q3FF + 4 kickers + 8 movers): mover
+#   centering is a known major sim2real error class and FF kicker settings move eta_y(DTOTR)
+#   by ~17-20% via spurious vertical dispersion — they must be fittable δ DOFs. The fit is
+#   MAP-regularized toward recorded settings, so the box only needs to cover plausible
+#   setting error + δ headroom, not an exploration range.
+# - Data-grounded longitudinal box: covers the real E300/TEST L2 phase scans (2026-04-15)
+#   that the old boxes failed to contain (L1 real −26.5…−19.3 vs old box [−22.8,−17.8];
+#   L2 = L2_ref + 0…8° sweeps to −29.9 vs old edge −34.0).
+#
+# Range provenance:
+# - L1PhaseSet [−27.5,−18.5]: real anchors+feedback deltas span −26.53…−19.27 + margin.
+# - L2PhaseSet [−41.5,−29.5]: real L2_ref fits −38.4/−40.4/−37.9 + scan 0…8° + margin.
+# - LxEnergyOffset: unchanged from the 8-D set (real values unrecorded; centered on baseline).
+# - S1/S2/S3ELkG: golden ±10% (real scans ran golden; box = readback error + δ headroom).
+# - Q5/Q4/Q3FFkG: recorded LGPS BACTs ±10% (E300_15671 machine_config.json, value_match
+#   mapping — the machine ran ≈golden FF optics that day; baseline = recorded).
+# - Kickers: golden tuned values ±0.005 kG·m (same envelope as expanded_anchored; the real
+#   kicker settings were not recorded in the DAQ configs — golden is the sim assumption).
+# - Movers: golden ±0.75 mm (plan band 0.5–1 mm: covers plausible centering error at several
+#   σ_j of the MAP prior while staying denser than the ±1.5 mm expanded box).
+# Frozen per campaign config via fixed_overrides (NOT dims): Q19851kG/Q19871kG at the
+# recorded BACTs (−63.764/+42.500; the −5.4% Q19871 trim was a latent mismatch in the old
+# campaign frame), trackEnd: PENT.
+# ----------------------------------------------------------------------------------------
+XTCAV23_PARAMS = {
+    "L1PhaseSet":     (-27.5,           -18.5,           -20.2889213421),
+    "L2PhaseSet":     (-41.5,           -29.5,           -35.5447801603),
+    "L1EnergyOffset": (-2.1e6,           2.1e6,           0.0),
+    "L2EnergyOffset": (-48.5e6,          34.9e6,         -6.817565553821569e6),
+    "L3EnergyOffset": (-43.3e6,          66.7e6,          1.1703527144314773e7),
+    "S1ELkG":         (1880.5361804688,  2298.4331094618, 2089.4846449653),
+    "S2ELkG":         (-4349.8119064433, -3558.9370143627, -3954.374460403),
+    "S3ELkG":         (-1196.7525695935, -979.1611933037, -1087.9568814486),
+    "Q5FFkG":         (-79.4074249268,   -64.9697113037,  -72.1885681152),
+    "Q4FFkG":         (-89.3678749084,   -73.1191703796,  -81.2435226440),
+    "Q3FFkG":         ( 89.3107727051,   109.1576110840,   99.2341918945),
+    "XC1FFkG":        (-0.0026017781,     0.0073982219,    0.0023982219),
+    "XC3FFkG":        (-0.0034655786,     0.0065344214,    0.0015344214),
+    "YC1FFkG":        (-0.0103321184,    -0.0003321184,   -0.0053321184),
+    "YC2FFkG":        (-0.0085512385,     0.0014487615,   -0.0035512385),
+    "S1EL_xOffset":   ( 0.0001568268,     0.0016568268,    0.0009068268),
+    "S1EL_yOffset":   (-0.0006184246,     0.0008815754,    0.0001315754),
+    "S2EL_xOffset":   (-0.0011385830,     0.0003614170,   -0.0003885830),
+    "S2EL_yOffset":   (-0.0006334225,     0.0008665775,    0.0001165775),
+    "S2ER_xOffset":   (-0.0009179111,     0.0005820889,   -0.0001679111),
+    "S2ER_yOffset":   (-0.0022381668,    -0.0007381668,   -0.0014881668),
+    "S1ER_xOffset":   ( 0.0005823302,     0.0020823302,    0.0013323302),
+    "S1ER_yOffset":   (-0.0018682646,    -0.0003682646,   -0.0011182646),
+}
+
 # Named sweep sets, selectable per campaign config via the `sweep_set` key. run_sweep
 # defaults to "original8" so the existing 8-D campaign/configs/manifests reproduce exactly.
 # `expanded_anchored` additionally triggers manifold sampling (ff_manifold.MANIFOLD_SPECS);
 # `tightbox` is a plain box-LHS over the matched-region-tightened bounds (no manifold sampler).
+# `xtcav23` is the 23-D XTCAV-entrance set (plain box-LHS; its keys differ from the 26-D
+# family, so it cannot be "+"-unioned with them).
 SWEEP_SETS = {
     "original8": SWEEP_PARAMS,
     "expanded":  EXPANDED_PARAMS,
     "expanded_anchored": EXPANDED_ANCHORED_PARAMS,
     "tightbox": TIGHTBOX_PARAMS,
+    "xtcav23": XTCAV23_PARAMS,
 }
 
 

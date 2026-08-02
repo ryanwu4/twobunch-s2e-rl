@@ -68,9 +68,41 @@ def test_resolve_sweep_set():
     assert baseline == {k: EXPANDED_PARAMS[k][2] for k in keys}
 
     assert resolve_sweep_set() == resolve_sweep_set("original8")  # default
-    assert set(SWEEP_SETS) == {"original8", "expanded", "expanded_anchored", "tightbox"}
+    assert set(SWEEP_SETS) == {"original8", "expanded", "expanded_anchored", "tightbox",
+                               "xtcav23"}
     with pytest.raises(KeyError):
         resolve_sweep_set("nope")
+
+
+def test_xtcav23_set():
+    from twobunch_s2e_rl.datagen.sweep_params import XTCAV23_PARAMS
+
+    assert len(XTCAV23_PARAMS) == 23  # 8 longitudinal + Q5/Q4/Q3FF + 4 kickers + 8 movers
+    for k, (lo, hi, base) in XTCAV23_PARAMS.items():
+        assert lo < hi and lo <= base <= hi, f"{k} bounds/baseline"
+    # the downstream-of-XTCAVF knobs must NOT be dims (they live in the exact Cheetah segment)
+    assert not {"Q2FFkG", "Q1FFkG", "Q0FFkG"} & set(XTCAV23_PARAMS)
+    # key order: the 8 longitudinal first (same order as original8), then Q5/Q4/Q3FF
+    assert list(XTCAV23_PARAMS)[:8] == PARAM_KEYS
+    assert list(XTCAV23_PARAMS)[8:11] == ["Q5FFkG", "Q4FFkG", "Q3FFkG"]
+
+    keys, low, high, baseline = resolve_sweep_set("xtcav23")
+    assert keys == list(XTCAV23_PARAMS)
+
+    # Containment: the real 2026-04-15 E300/TEST scan operating points must be inside the
+    # box (the whole reason this set exists — the 26-D boxes failed this).
+    box = {k: (XTCAV23_PARAMS[k][0], XTCAV23_PARAMS[k][1]) for k in XTCAV23_PARAMS}
+    for l1 in (-26.53, -23.7, -22.35, -20.0, -19.27):   # anchors + feedback deltas + servo
+        assert box["L1PhaseSet"][0] <= l1 <= box["L1PhaseSet"][1], l1
+    for l2 in (-40.4, -38.4, -37.9, -29.9):             # L2_ref fits + 0..8 deg scan extremes
+        assert box["L2PhaseSet"][0] <= l2 <= box["L2PhaseSet"][1], l2
+    # recorded Q5/Q4/Q3 BACTs (value_match, E300_15671 machine_config) are the baselines
+    for k, v in (("Q5FFkG", -72.1886), ("Q4FFkG", -81.2435), ("Q3FFkG", 99.2342)):
+        assert abs(XTCAV23_PARAMS[k][2] - v) < 1e-3, k
+
+    # cannot union with the 26-D family (different keys)
+    with pytest.raises(ValueError):
+        resolve_sweep_set("xtcav23+expanded")
 
 
 def test_tightbox_set():

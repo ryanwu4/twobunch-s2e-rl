@@ -1,0 +1,33 @@
+# XTCAV-entrance surrogate pilot (GPSR knob-delta fitting, Stage B — plan 2026-07-30).
+# 23-D plain box-LHS (xtcav23: 8 longitudinal in a DATA-GROUNDED box covering the real
+# 2026-04-15 E300/TEST scans + Q5/Q4/Q3FF + 4 kickers + 8 movers; Q2FF/Q1FF/Q0FF and the
+# spectrometer live in the exact differentiable Cheetah segment, not the flow).
+#
+# Handoff plane: beams saved at XTCAVF (element EXIT, V=0 in the campaign ≡ entrance +
+# exact 1.0334 m drift, back-drifted at fit time — xtcav-gpsr-tuning convention).
+# trackEnd: PENT keeps the PENT treaty specs for cross-checks while stopping ~1 km of
+# dump-line tracking; Q19851/71 frozen at the recorded 2026-04-15 BACTs (the −5.4%
+# Q19871 trim was a latent mismatch in the 26-D campaign frame).
+#
+# Pilot gates (before xtcav23_full): overall failure/scrape rates in the new longitudinal
+# box; witness-resolved fraction at XTCAVF; and — after preprocess + a short train — the
+# flow's knob-response on the mover/kicker dims specifically (the M2-motivated additions).
+#
+# Preprocess: --subdir xtcav23_pilot --sweep-set xtcav23 --treaty-point XTCAVF
+name: xtcav23_pilot
+sweep_set: xtcav23
+n_samples: 512
+n_baseline_repeats: 8
+num_macro_particles: 100000
+n_workers: 100
+seed: 20260730
+csrTF: true
+transverseWakes: true  # campaign convention (coefficients still pending validation, 2026-06-10 audit)
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/xtcav23_pilot
+treaty_points: [BEGBC20, MFFF, XTCAVF, PENT]
+save_beams_at: [XTCAVF]
+fixed_overrides:
+  Q19851kG: -63.76368742523523   # recorded BACT, E300_15671 machine_config (2026-04-15)
+  Q19871kG: 42.49972197426665    # recorded BACT (golden is +44.936 — the −5.4% trim)
+  trackEnd: PENT

@@ -42,6 +42,8 @@ from ..datagen.paths import repo_root
 from ..datagen.sweep_params import resolve_sweep_set
 from . import COORD_KEYS, DEFAULT_P, ELECTRON_MC2_EV
 
+# Default treaty point; override with --treaty-point (e.g. "XTCAVF" for the Stage-B
+# GPSR campaign, where the surrogate hands off at the XTCAV exit plane, V=0).
 PENT = "PENT"
 
 
@@ -55,12 +57,13 @@ def _subsample(coords: np.ndarray, p: int, rng: np.random.Generator) -> np.ndarr
     return coords[idx]
 
 
-def parse_one(json_path: str, p: int, rng: np.random.Generator, keys: list) -> dict | None:
+def parse_one(json_path: str, p: int, rng: np.random.Generator, keys: list,
+              treaty_point: str = PENT) -> dict | None:
     with open(json_path) as f:
         d = json.load(f)
     if not d.get("success"):
         return None
-    spec = d.get("specs", {}).get(PENT, {})
+    spec = d.get("specs", {}).get(treaty_point, {})
     knobs = np.array([d["knobs"][k] for k in keys], dtype=np.float32)
 
     drive_present = spec.get("PDrive_norm_emit_x") is not None
@@ -86,7 +89,7 @@ def parse_one(json_path: str, p: int, rng: np.random.Generator, keys: list) -> d
     if not (drive_present or witness_viable):
         return rec  # specs_error: feasibility-only (no particles extracted)
 
-    h5_path = json_path.replace(".json", f"_{PENT}.h5")
+    h5_path = json_path.replace(".json", f"_{treaty_point}.h5")
     if not os.path.exists(h5_path):
         return rec
     try:
@@ -146,7 +149,8 @@ def _scaler(records, key_parts, key_density, mode="intrabunch"):
 
 
 def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
-               scaler="intrabunch", sweep_set="original8", verbose=True):
+               scaler="intrabunch", sweep_set="original8", treaty_point=PENT,
+               verbose=True):
     # subdir may be comma-separated to MERGE campaigns (e.g. "tightbox_v2_full,expanded_full").
     # When merging boxes with different bounds, pass a union sweep_set (e.g. "tightbox+expanded")
     # so every draw is normalized in one common frame; parse_one stores raw knobs, so the frame
@@ -164,11 +168,11 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
     rng = np.random.default_rng(seed)
     if verbose:
         print(f"Parsing {len(files)} samples from {subdirs} (P={p}, sweep_set={sweep_set}, "
-              f"{len(keys)} knobs)")
+              f"{len(keys)} knobs, treaty_point={treaty_point})")
 
     records = []
     for i, fp in enumerate(files):
-        rec = parse_one(fp, p, rng, keys)
+        rec = parse_one(fp, p, rng, keys, treaty_point=treaty_point)
         if rec is not None:
             records.append(rec)
         if verbose and (i + 1) % 500 == 0:
@@ -177,6 +181,16 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
             print(f"  {i+1}/{len(files)}: kept {len(records)} (drive-dens {nd}, witness-dens {nw})")
 
     n = len(records)
+    # Guard against the silent wrong---sweep-set footgun: a 23/26-dim campaign parsed
+    # with a smaller set's keys succeeds (key subset) but yields an out-of-frame table.
+    K = np.stack([r["knobs"] for r in records]).astype(np.float64)
+    lo, hi = np.array(knob_low, np.float64), np.array(knob_high, np.float64)
+    tol = 1e-6 * (hi - lo)
+    oob = ((K < lo - tol) | (K > hi + tol)).any(axis=1)
+    if oob.any():
+        print(f"WARNING: {int(oob.sum())}/{n} samples have knobs OUTSIDE the "
+              f"'{sweep_set}' bounds — wrong --sweep-set for this campaign?")
+
     drive_mean, drive_std = _scaler(records, "drive_parts", "drive_density", scaler)
     witness_mean, witness_std = _scaler(records, "witness_parts", "witness_density", scaler)
     drive_full = max((r["drive_charge"] for r in records), default=1.0) or 1.0
@@ -213,6 +227,7 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
         "drive_full_charge_nC": drive_full, "witness_full_charge_nC": witness_full,
         "coord_keys": list(COORD_KEYS), "electron_mc2_ev": ELECTRON_MC2_EV,
         "P": int(p), "n_records": n, "scaler": scaler, "sweep_set": sweep_set,
+        "treaty_point": treaty_point,
     }
     with open(out.replace(".h5", "_norm.json"), "w") as f:
         json.dump(norm, f, indent=2)
@@ -239,11 +254,15 @@ def main():
                     help="per-bunch std basis (v2 default 'intrabunch'; v1 used 'pooled')")
     ap.add_argument("--sweep-set", default="original8",
                     help="knob set (sweep_params.SWEEP_SETS): original8 | expanded | expanded_anchored "
-                         "| tightbox; a '+'-joined name (e.g. 'tightbox+expanded') uses the union "
-                         "bounds -- the common frame when merging boxes")
+                         "| tightbox | xtcav23; a '+'-joined name (e.g. 'tightbox+expanded') uses the "
+                         "union bounds -- the common frame when merging boxes")
+    ap.add_argument("--treaty-point", default=PENT,
+                    help="element whose specs/beams feed the table (default PENT; the Stage-B "
+                         "GPSR campaign uses XTCAVF = handoff at the XTCAV exit plane, V=0)")
     args = ap.parse_args()
     preprocess(subdir=args.subdir, p=args.P, max_samples=args.max_samples,
-               seed=args.seed, out=args.out, scaler=args.scaler, sweep_set=args.sweep_set)
+               seed=args.seed, out=args.out, scaler=args.scaler, sweep_set=args.sweep_set,
+               treaty_point=args.treaty_point)
 
 
 if __name__ == "__main__":
