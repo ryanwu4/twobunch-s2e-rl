@@ -276,12 +276,30 @@ class TwoBunchFlow(L.LightningModule):
         return -logp.mean() / self.hparams.nll_dim_norm
 
     # ---- sampling (reparameterized, differentiable wrt knobs) --------------
-    def sample_bunch(self, knobs, k, n, physical=True):
-        """(B,n,6) cloud for bunch k. Differentiable w.r.t. knobs."""
+    def sample_bunch(self, knobs, k, n, physical=True, generator=None, z=None):
+        """(B,n,6) cloud for bunch k. Differentiable w.r.t. knobs.
+
+        generator: optional torch.Generator for reproducible draws.
+        z: optional frozen base sample of shape (n, latent_dim), SHARED across the
+           batch (common random numbers — the GPSR frozen-buffer pattern): repeated
+           calls at different knobs give directly comparable clouds and a loss that
+           is deterministic in the conditioning. Default (None) keeps the fresh
+           per-call draw (unbiased reparameterized gradients for RL).
+        """
         b = knobs.shape[0]
         h = self._encode(knobs, k)
         h_flat = h.unsqueeze(1).expand(b, n, -1).reshape(b * n, -1)
-        z = torch.randn(b * n, self.latent_dim, device=knobs.device, dtype=knobs.dtype)
+        if z is None:
+            z = torch.randn(b * n, self.latent_dim, device=knobs.device,
+                            dtype=knobs.dtype, generator=generator)
+        else:
+            if z.shape != (n, self.latent_dim):
+                raise ValueError(f"z must be (n, latent_dim)=({n},{self.latent_dim}), "
+                                 f"got {tuple(z.shape)}")
+            # share the (n, ld) buffer across the batch (a naive reshape(b*n, ld)
+            # would crash for any b > 1 — the batched-scan fit case)
+            z = z.to(device=knobs.device, dtype=knobs.dtype)
+            z = z.unsqueeze(0).expand(b, n, self.latent_dim).reshape(b * n, self.latent_dim)
         w, _ = self._forward_enc(z, h_flat)
         w = w.reshape(b, n, self.latent_dim)
         mu, Lm = self._whiten(h, k)
@@ -297,12 +315,13 @@ class TwoBunchFlow(L.LightningModule):
         return s[:, 0], s[:, 1], s[:, 2]  # p_surv(witness), T_drive, T_witness
 
     # ---- MBRL-facing observables ------------------------------------------
-    def observables(self, knobs_norm, n=None):
+    def observables(self, knobs_norm, n=None, generator=None, z_drive=None, z_witness=None):
         """Differentiable dict of per-bunch + inter-bunch + feasibility observables.
-        knobs_norm: (B,8) in [0,1]."""
+        knobs_norm: (B,n_knob) in [0,1]. z_drive/z_witness: optional frozen (n,latent_dim)
+        base samples, one per bunch (see sample_bunch; CRN for deterministic fits)."""
         n = n or self.hparams.n_aux_particles
-        drive = self.sample_bunch(knobs_norm, 0, n)
-        witness = self.sample_bunch(knobs_norm, 1, n)
+        drive = self.sample_bunch(knobs_norm, 0, n, generator=generator, z=z_drive)
+        witness = self.sample_bunch(knobs_norm, 1, n, generator=generator, z=z_witness)
         p_surv, t_d, t_w = self.feasibility(knobs_norm)
         out = {}
         for name, parts in (("drive", drive), ("witness", witness)):

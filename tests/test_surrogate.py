@@ -282,3 +282,79 @@ def test_step_cov_term_and_rqs():
     m.log_dict = lambda *a, **k: None
     loss = m._step(_batch(), "train")
     assert torch.isfinite(loss) and loss.requires_grad
+
+
+# ---------------------------------------------------------------------------
+# CRN sampling (Stage-C, plan C0): generator/z kwargs on sample_bunch/observables
+# ---------------------------------------------------------------------------
+def _tiny_model():
+    import torch
+    from twobunch_s2e_rl.surrogate.model import TwoBunchFlow
+
+    torch.manual_seed(0)
+    return TwoBunchFlow(condition_dim=5, n_layers=2, hidden_dim=16, coupling="affine",
+                        drive_mean=[0.0] * 6, drive_std=[1.0] * 6,
+                        witness_mean=[0.0] * 6, witness_std=[1.0] * 6,
+                        knob_low=[0.0] * 5, knob_high=[1.0] * 5)
+
+
+def test_crn_generator_determinism():
+    import torch
+
+    m = _tiny_model().eval()
+    knobs = torch.rand(3, 5)
+    with torch.no_grad():
+        a = m.sample_bunch(knobs, 0, 64, generator=torch.Generator().manual_seed(7))
+        b = m.sample_bunch(knobs, 0, 64, generator=torch.Generator().manual_seed(7))
+        c = m.sample_bunch(knobs, 0, 64, generator=torch.Generator().manual_seed(8))
+    assert torch.equal(a, b)
+    assert not torch.equal(a, c)
+
+
+def test_crn_shared_z_across_batch():
+    """A frozen (n, latent_dim) buffer must broadcast over ANY batch size (the
+    batched 7-step x 2-sign fit case), and per-condition clouds must differ only
+    through the conditioning, not the noise."""
+    import torch
+
+    m = _tiny_model().eval()
+    z = torch.randn(32, m.latent_dim)
+    with torch.no_grad():
+        out3 = m.sample_bunch(torch.full((3, 5), 0.5), 0, 32, z=z)
+        out1 = m.sample_bunch(torch.full((1, 5), 0.5), 0, 32, z=z)
+    assert out3.shape == (3, 32, 6)
+    # identical conditioning + shared z => identical clouds across the batch
+    assert torch.allclose(out3[0], out3[1]) and torch.allclose(out3[0], out1[0])
+    # repeated call with the same z is deterministic
+    with torch.no_grad():
+        again = m.sample_bunch(torch.full((3, 5), 0.5), 0, 32, z=z)
+    assert torch.equal(out3, again)
+    # wrong z shape is rejected loudly
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        m.sample_bunch(torch.full((2, 5), 0.5), 0, 16, z=torch.randn(8, m.latent_dim))
+
+
+def test_crn_default_still_stochastic():
+    import torch
+
+    m = _tiny_model().eval()
+    knobs = torch.rand(2, 5)
+    with torch.no_grad():
+        a = m.sample_bunch(knobs, 0, 64)
+        b = m.sample_bunch(knobs, 0, 64)
+    assert not torch.equal(a, b)
+
+
+def test_crn_observables_two_frozen_buffers():
+    import torch
+
+    m = _tiny_model().eval()
+    knobs = torch.rand(2, 5)
+    zd = torch.randn(48, m.latent_dim)
+    zw = torch.randn(48, m.latent_dim)
+    with torch.no_grad():
+        o1 = m.observables(knobs, n=48, z_drive=zd, z_witness=zw)
+        o2 = m.observables(knobs, n=48, z_drive=zd, z_witness=zw)
+    for k in ("drive_sigma_z", "witness_sigma_z", "bunch_spacing"):
+        assert torch.equal(o1[k], o2[k]), k
