@@ -281,8 +281,10 @@ SWEEP_SETS = {
 # - "active" (move XTCAVF spacing / sigma_z / charge ratio by >= 1 um or the ratio itself):
 #   box = 1.5x the per-episode DR magnitude, so DR draws at the DR edge are interior to the data.
 #     laser_timing_ps    DR +-0.2 ps (DAQ; spec 200 fs)          -> +-0.30   (+-7.6 um spacing @0.2)
-#     GUNF amplitude     DR +-0.25% (assumed)                    -> +-0.375% (-+4 um)
-#     GUNF phase         DR +-0.25 deg (assumed)                 -> +-0.375 deg (+-1.3 um)
+#     GUNF amplitude     DAQ (KLYS 10-8 AACT) run-to-run sigma 0.06% (04-15) / 0.47% (05-01, likely
+#                        partly readback drift); per shot 0.03%     -> box +-0.5% (-+4 um per 0.25%)
+#     GUNF phase         DAQ (KLYS 10-8 PACT) run-to-run sigma 0.18 deg / 0.56 deg; per shot 0.03 deg
+#                                                                -> box +-0.5 deg (+-1.3 um per 0.25 deg)
 #     PSDL delay (d2 avg_t) DR +-0.2 ps (Ryan, 2026-10-14)       -> 9 +- 0.30 ps (+-4.6 um per 0.1 ps)
 #     drive_fraction     DAQ run means 0.69/0.71/0.73 (screen, energy-gated), design 0.75; RL DR =
 #                        per-episode nominal in 0.69-0.75 +- 0.02 -> box 0.66-0.80 (golden 0.75 inside)
@@ -299,8 +301,8 @@ _SOL = -0.39 / 1.6                  # SOL10111:solenoid_field_scale golden
 INJECTOR_PARAMS = {
     # active
     "laser_timing_ps":                      (-0.3,              0.3,               0.0),
-    "GUNF:rf_field_scale":                  (_GUN_AMP * (1 - 0.00375), _GUN_AMP * (1 + 0.00375), _GUN_AMP),
-    "GUNF:theta0_deg":                      (-60.7 - 0.375,    -60.7 + 0.375,     -60.7),
+    "GUNF:rf_field_scale":                  (_GUN_AMP * (1 - 0.005), _GUN_AMP * (1 + 0.005), _GUN_AMP),
+    "GUNF:theta0_deg":                      (-60.7 - 0.5,      -60.7 + 0.5,       -60.7),
     "distgen:t_dist:dists:d2:avg_t:value":  (8.70,              9.30,              9.0),
     "drive_fraction":                       (0.66,              0.80,              0.75),
     "distgen:total_charge:value":           (1600.0 * 0.991,    1600.0 * 1.009,    1600.0),

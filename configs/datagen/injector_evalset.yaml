@@ -25,14 +25,14 @@ design:
       - {laser_timing_ps: {abs: -0.2}}
       - {laser_timing_ps: {abs: 0.2}}
       - {laser_timing_ps: {abs: 0.3}}
-      - {"GUNF:rf_field_scale": {rel: -0.00375}}
+      - {"GUNF:rf_field_scale": {rel: -0.005}}
       - {"GUNF:rf_field_scale": {rel: -0.0025}}
       - {"GUNF:rf_field_scale": {rel: 0.0025}}
-      - {"GUNF:rf_field_scale": {rel: 0.00375}}
-      - {"GUNF:theta0_deg": {abs: -0.375}}
+      - {"GUNF:rf_field_scale": {rel: 0.005}}
+      - {"GUNF:theta0_deg": {abs: -0.5}}
       - {"GUNF:theta0_deg": {abs: -0.25}}
       - {"GUNF:theta0_deg": {abs: 0.25}}
-      - {"GUNF:theta0_deg": {abs: 0.375}}
+      - {"GUNF:theta0_deg": {abs: 0.5}}
       - {"distgen:t_dist:dists:d2:avg_t:value": {abs: -0.3}}
       - {"distgen:t_dist:dists:d2:avg_t:value": {abs: -0.2}}
       - {"distgen:t_dist:dists:d2:avg_t:value": {abs: 0.2}}
