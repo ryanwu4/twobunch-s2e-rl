@@ -40,7 +40,8 @@ def flow_plant(flow, n_particles: int):
 
 def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
                        tdc_voltage_V: float = 22e6, tdc_phase_deg: float = 0.0,
-                       resolution_m: float = 0.0, split: str = "energy"):
+                       resolution_m: float = 0.0, split: str = "energy",
+                       threshold: str = "midpoint", row_correct: bool = False):
     from xtcav_segment.convert import cloud_to_beam
     from xtcav_segment.features import FEATURE_KEYS, calibrate_streak, cloud_features, screen_features
     from xtcav_segment.segment import (back_drift, build_segment_from_spec, element_by_name,
@@ -81,7 +82,8 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
         xp, xm, y = track(torch.cat([drive, witness], -2), qpp)     # both bunches in one beam
         scr = screen_features(xp[:, :nd], xm[:, :nd], y[:, :nd], xp[:, nd:], xm[:, nd:], y[:, nd:],
                               q_d, q_w, streak=streak, eta_y=eta_y, ref_energy_eV=e_ref,
-                              resolution_m=resolution_m, split=split)
+                              resolution_m=resolution_m, split=split, threshold=threshold,
+                              row_correct=row_correct)
         cld = cloud_features(obs, q_d, q_w)
         for k in FEATURE_KEYS:
             obs[f"{k}_cloud"] = cld[k]

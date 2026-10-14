@@ -67,3 +67,49 @@ def test_features_differentiable():
 def test_calibrate_streak():
     z = torch.randn(1, 5000, dtype=torch.float64) * 30e-6
     assert abs(calibrate_streak(S * z + 1e-3, z) - S) < 1e-9
+
+
+def _lumpy_drive(n=20000, seed=1, **kw):
+    """Drive with a flat-top energy distribution and an internal dip deeper than the drive-witness
+    valley (what the flow surrogate produces): the two-most-prominent-peaks rule cuts inside the
+    drive; the nearest-peak valley rule must not."""
+    b = _bunches(n=n, seed=seed, **kw)
+    g = torch.Generator().manual_seed(seed + 7)
+    u = torch.rand(1, n, generator=g, dtype=torch.float64)
+    e = torch.where(u < 0.5, -60e6 + 50e6 * torch.rand(1, n, generator=g, dtype=torch.float64),
+                    20e6 + 80e6 * torch.rand(1, n, generator=g, dtype=torch.float64))   # dip at -10..20 MeV
+    b["y_d"] = ETA * e / E0
+    return b
+
+
+def test_valley_threshold_and_row_correction():
+    b = _lumpy_drive(dE=110e6)
+    mid = _feat(b, split="energy")
+    val = _feat(b, split="energy", threshold="valley")
+    assert float(val["screen_misassign"]) < 0.02 < float(mid["screen_misassign"])
+    assert float(val["screen_valid"]) == 1.0
+    torch.testing.assert_close(val["bunch_spacing"], torch.tensor([150e-6], dtype=torch.float64), rtol=0.02, atol=0)
+
+
+def test_row_correction_removes_x_of_energy_shear():
+    """A TCAV-off x proportional to energy (residual dispersion) inflates the measured sigma_z;
+    the off-shot row correction removes it (and leaves the spacing alone)."""
+    b = _bunches()
+    for s in ("d", "w"):
+        shear = 0.3 * b[f"y_{s}"] / ETA                    # x_off = R16_eff * delta, R16_eff = 0.3 m
+        b[f"xp_{s}"], b[f"xm_{s}"] = b[f"xp_{s}"] + shear, b[f"xm_{s}"] + shear
+    raw = _feat(b, split="energy", threshold="valley")
+    cor = _feat(b, split="energy", threshold="valley", row_correct=True)
+    assert float(raw["drive_sigma_z"]) > 1.1 * 30e-6
+    torch.testing.assert_close(cor["drive_sigma_z"], torch.tensor([30e-6], dtype=torch.float64), rtol=0.05, atol=0)
+    torch.testing.assert_close(cor["bunch_spacing"], raw["bunch_spacing"], rtol=1e-3, atol=0)
+
+
+def test_v2_features_differentiable():
+    b = _bunches(n=2000)
+    for k in ("xp_d", "xm_d", "xp_w", "xm_w", "y_d", "y_w"):
+        b[k] = b[k].clone().requires_grad_(True)
+    f = _feat(b, split="energy", threshold="valley", row_correct=True, resolution_m=15e-6)
+    (f["bunch_spacing"] + f["drive_sigma_z"] + f["drive_charge_fraction"]).sum().backward()
+    assert all(torch.isfinite(b[k].grad).all() and b[k].grad.abs().sum() > 0
+               for k in ("xp_d", "xm_d", "xp_w", "xm_w", "y_d", "y_w"))
