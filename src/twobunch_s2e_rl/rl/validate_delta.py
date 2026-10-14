@@ -32,11 +32,12 @@ CAMPAIGN_CFG = "configs/datagen/xtcav23_full.yaml"
 TARGETS = ("bunch_spacing", "drive_sigma_z", "energy_difference", "drive_charge_fraction")
 
 
-def _out(logdir) -> Path:
-    return repo_root() / "results" / "rl" / Path(logdir).name / "bmad_check"
+def _out(logdir, tag: str = "") -> Path:
+    name = "bmad_check" + (f"_{tag}" if tag else "")
+    return repo_root() / "results" / "rl" / Path(logdir).name / name
 
 
-def export(logdir, k=24, device="cuda", seed=777, policy="best"):
+def export(logdir, k=24, device="cuda", seed=777, policy="best", tag=""):
     import torch
     from ..artifacts import policy_flow_ckpt, write_run_json
     from ._train_utils import build_env_fn
@@ -66,8 +67,8 @@ def export(logdir, k=24, device="cuda", seed=777, policy="best"):
             if src is not None:
                 rec["surrogate"][key] = float(traj[src][-1, i])
         rows.append(rec)
-    out = _out(logdir)
-    write_run_json(out, "bmad_check", {"k": k, "seed": seed, "policy": policy},
+    out = _out(logdir, tag)
+    write_run_json(out, "bmad_check", {"k": k, "seed": seed, "policy": policy, "tag": tag},
                    parents=[str(logdir)], flow_ckpt=policy_flow_ckpt(logdir))
     (out / "setpoints.json").write_text(json.dumps(rows, indent=2))
     print(f"wrote {out / 'setpoints.json'} ({k} setpoints)")
@@ -107,9 +108,9 @@ def _track_one(row):
     return row["i"], "ok" if rec["ok"] else "fail"
 
 
-def track_all(logdir, num_macro=20000, workers=12):
+def track_all(logdir, num_macro=20000, workers=12, tag=""):
     import multiprocessing
-    out = _out(logdir)
+    out = _out(logdir, tag)
     rows = json.loads((out / "setpoints.json").read_text())
     camp = yaml.safe_load((repo_root() / CAMPAIGN_CFG).read_text())
     with multiprocessing.Pool(workers, initializer=_init, initargs=(camp, num_macro, str(out))) as pool:
@@ -118,8 +119,8 @@ def track_all(logdir, num_macro=20000, workers=12):
 
 
 # ---- compare -----------------------------------------------------------------------------------
-def compare(logdir):
-    out = _out(logdir)
+def compare(logdir, tag=""):
+    out = _out(logdir, tag)
     rows = json.loads((out / "setpoints.json").read_text())
     table = {k: {"surrogate": [], "bmad": [], "goal_cloud": []} for k in TARGETS}
     n_ok = 0
@@ -164,13 +165,14 @@ def main():
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--num-macro", type=int, default=20000)
     ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--tag", default="", help="output subdir suffix: bmad_check_<tag>")
     a = ap.parse_args()
     if a.cmd == "export":
-        export(a.logdir, a.k, a.device, a.seed)
+        export(a.logdir, a.k, a.device, a.seed, tag=a.tag)
     elif a.cmd == "track":
-        track_all(a.logdir, a.num_macro, a.workers)
+        track_all(a.logdir, a.num_macro, a.workers, tag=a.tag)
     else:
-        compare(a.logdir)
+        compare(a.logdir, tag=a.tag)
 
 
 if __name__ == "__main__":

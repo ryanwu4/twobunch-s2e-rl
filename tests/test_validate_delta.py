@@ -5,7 +5,7 @@ import twobunch_s2e_rl.rl.validate_delta as V
 
 
 def test_compare_tables(tmp_path, monkeypatch):
-    monkeypatch.setattr(V, "_out", lambda logdir: tmp_path)
+    monkeypatch.setattr(V, "_out", lambda logdir, tag="": tmp_path)
     rows = []
     for i in range(3):
         rows.append({"i": i, "knobs": {}, "goals": {"bunch_spacing": {"measured": 2e-4, "cloud": 2e-4}},
