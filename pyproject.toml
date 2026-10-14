@@ -38,3 +38,13 @@ surrogate = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+markers = [
+    "slow: long-running (minutes)",
+    "data: needs gitignored campaign data / trained artifacts (auto-skips when absent)",
+    "bmad: needs pytao + FACET2_S2E (bmad-qpad-dev env)",
+    "impact: needs lume-impact + ImpactTexe (bmad-qpad-dev env)",
+]
