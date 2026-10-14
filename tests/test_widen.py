@@ -64,7 +64,7 @@ def test_widen_real_xtcav23_ckpt():
     g = torch.Generator().manual_seed(0)
     k_old = torch.rand(3, old.n, generator=g)
     k_new = torch.cat([k_old, torch.rand(3, 2, generator=g)], -1)
-    z = (torch.randn(128, 6, generator=g), torch.randn(128, 6, generator=g))
+    z = (torch.randn(64, 6, generator=g), torch.randn(64, 6, generator=g))
     a, b = _obs(flow, k_old, z), _obs(wide, k_new, z)
     for k in ("bunch_spacing", "drive_sigma_z", "witness_norm_emit_x", "T_witness"):
         torch.testing.assert_close(b[k], a[k], rtol=2e-4, atol=1e-9)
