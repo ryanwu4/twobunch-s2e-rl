@@ -100,6 +100,10 @@ Started ~01:00 PDT; Ryan checks back ~09:00 PDT.
 | 02:10 | 4 | Surrogate YAML config + knob_keys/treaty_point hparams (`ae68b63`); campaign.json writer for new campaigns (`6ece2ae`). |
 | 02:19 | 3 | **Cloud delta controller Bmad check**: 24/24 setpoints tracked (20k particles), see Results. |
 
+| 02:23 | 3a | Injector sensitivity study finished (81 runs, 43 min); see Results. |
+| 03:13 | 3 | Screen seed 0 finished; eval above. 100k Bmad re-check of the cloud policy done. Valgate campaign complete (162/162). |
+| 03:15 | 3 | Started: screen + injector stand-in run on GPU 1 (`delta_xtcav23_screen_inj_s0`); Bmad check of screen seed 0 at 100k (24 workers); final PENT gate over all 162 valgate samples. |
+
 (Note: an earlier version of this table had wrong, estimated clock times; corrected from git at 01:58.)
 
 ## Results so far
@@ -114,6 +118,15 @@ only, hidden gain error U(0.8,1.2) + readback-scale jitter on the other 21 knobs
 - **Bmad open-loop check**, 24 setpoints, 20k particles (`results/rl/delta_xtcav23_cloud_s0/bmad_check/compare.json`):
   Bmad vs goal spacing **6.8 µm** median (4.9 %), drive σ_z **2.7 %**; surrogate vs Bmad spacing
   2.9 % median (p90 11 %), σ_z 5.0 % (p90 16 %), ΔE 4.2 %.
+- **Same check at 100k particles** (campaign fidelity, `bmad_check_N100000/`): Bmad vs goal spacing
+  **6.75 µm**, drive σ_z **3.2 %**; surrogate vs Bmad 3.1 % / 4.9 % — the 20k result holds.
+
+**Screen-mode delta controller** (`delta_xtcav23_screen_s0`; XTCAV ±V features, z-lobe split,
+streak-scale error U(0.8,1.2), shot noise M=50, invalid readings fall back to the cloud twin in the
+reward), surrogate eval 256 episodes: spacing error 53 → **6 µm measured / 5 µm true** (p90 17 µm),
+72 % within 10 µm, settles in ~23 steps (vs 4 in cloud mode: noisy, sometimes-invalid
+measurements); drive σ_z 23 % → **4.5 % measured / 8.1 % true**, 78 % within 10 %. Screen reading
+valid 66–71 % of the time. Survival unchanged (0.99 / 0.97).
 
 **Injector sensitivity (Impact-T → Bmad → XTCAVF, 2e4 particles, grid 32; `data/injector_sensitivity_2026-10-14/summary.md`)**,
 at the approved per-episode magnitudes, "absolute" arrival mode (the injector ⟨t⟩ shift kept —
