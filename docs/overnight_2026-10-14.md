@@ -20,7 +20,9 @@ for new campaigns, `widen_conditioning`, preprocess embed / merge checks / knob-
    the drive σ_z goal, cloud and screen modes alike, on 2 seeds each.
 3. **Screen mode** (realistic XTCAV ±V measurement, streak-calibration error, shot noise) works but
    settles slower (13–23 vs 4 steps) and leaves σ_z less tightly controlled (8–9 % true vs 4–5 %).
-4. **Injector noise** at DAQ-derived magnitudes acts mostly as ≤ 0.3° effective L1/L2 shifts
+4. Policies are **robust beyond training**: gain error U(0.6, 1.4), streak-scale ±30 %, 5× noisier
+   shots, unseen injector charge-ratio offsets leave the final errors nearly unchanged.
+5. **Injector noise** at DAQ-derived magnitudes acts mostly as ≤ 0.3° effective L1/L2 shifts
    (absorbed by a feedback delta controller) plus a direct charge-ratio change; the existing
    pipeline's input-beam time-centring **erases injector timing effects** (~6× too small).
 
@@ -138,6 +140,7 @@ B5D36 field convention, readback-offset semantics, v1 checkpoint, xtcav-gpsr-tun
 | 04:25 | 3 | Started screen+injector seed 1 (GPU 1) and a cloud σ_z-weight ablation (GPU 0) — a first launch at 04:23 silently failed (zsh word-splitting in my launch loop) and was redone. |
 | 04:44 | 3 | σ_z-weight ablation finished + eval (above). |
 | 04:49 | 3a | Injector grid-64 check finished; analysed (above). |
+| 05:05 | 3 | Screen+injector seed 1 finished + eval. All compute idle; overnight run complete. |
 
 (Note: an earlier version of this table had wrong, estimated clock times; corrected from git at 01:58.)
 
@@ -182,8 +185,10 @@ within) / 9.0 %; with the unseen injector charge-fraction offset: 6 µm / 10.2 %
 
 **Screen + injector stand-in in training** (`delta_xtcav23_screen_inj_s0`, hidden charge-fraction
 offset σ = 0.035): spacing 8 µm (63 % within 10 µm), σ_z 6.3 % measured / 12.3 % true — slightly
-*worse* than the plain screen policy evaluated with the same unseen offset (6 µm / 10.2 %). One seed:
-no evidence the offset helps; the plain policy is already robust to it. Seed 1 running.
+*worse* than the plain screen policy evaluated with the same unseen offset (6 µm / 10.2 %). Seed 1
+confirms: spacing 6 µm, σ_z 5.7 % / **12.6 %** true. Both injector-trained seeds control σ_z worse
+(12.3–12.6 % true vs 8.1–9.1 % for the plain screen seeds) at similar spacing. Recommendation: leave
+the charge-fraction offset out of training for now; the plain policy is already robust to it.
 
 **σ_z-weight ablation** (cloud, weight 0.5 → 1.0, `delta_xtcav23_cloud_wsz1_s0`, my exploration):
 σ_z within-10 % 78–81 → 84 %, p90 13–16 → 12 %, but spacing within-10 µm 97 → 88 %, p90 7 → 14 µm,
@@ -223,6 +228,17 @@ solenoid / spot / MTE / σ_t / L0A phase / charge ≤ 0.8 µm. Controller author
 **PENT gate (Cheetah segment vs Bmad)**: passes on all 162 valgate samples (120 controller-region +
 42 wide-box incl. Q2/Q1/Q0FF ±5 %): worst relative difference over every observable 4.5e-6
 (witness BMAG_y); spacing / σ_z / emittances ≤ 1e-6.
+
+## Not done (deliberately left for you)
+
+- `campaign.json` **backfill** for the existing campaigns (needs care: their frames come from
+  manifests / norm jsons, not today's tables) — so old campaigns can't yet be embedded into new
+  knob spaces; new campaigns write it automatically.
+- The injector **campaign** itself (plan phase 5); the wrapper, sensitivity study, grid choice
+  (≥ 64), `widen_conditioning` and preprocess merge machinery are in place.
+- Screen-mode ΔE fix (y-axis TCAV-off offsets) and witness σ_z (monitor-only).
+- The xtcav-gpsr-tuning re-export branch is unmerged; that repo's `main` is untouched.
+- Nothing pushed anywhere.
 
 ## Needs Ryan's review in the morning
 
