@@ -32,6 +32,17 @@ Started ~01:00 PDT; Ryan checks back ~09:00 PDT.
    xtcav23 box with Q2/Q1/Q0FF ±5% of golden + 2 baseline repeats. 100k particles, CSR + wakes,
    xtcav23 fixed_overrides, beams saved at XTCAVF and PENT. 56 workers, nice 10.
 4. **Kicker readback σ** = 5e-4 kG·m (~10% of golden; no readback spec available) — assumed.
+5. **Delta controller is a separate env class** (`rl/delta_env.py::DeltaControlEnv`) rather than new
+   options on `TwoBunchFlowEnv` (plan said extend diff_env). Reason: keeps the existing env — and
+   every policy trained on it — byte-identical, and keeps the delta logic readable in one place.
+   Same DiffRL API, so the vendored BPTT trains it unchanged.
+6. **The ±1° readback offset is invisible to a delta controller by construction.** With obs built
+   only from deltas and beam measurements, a constant offset between readback and truth cannot
+   change the dynamics or the obs (the true start point is randomized anyway). It is kept as the
+   readback offset (`cmd0 = start − offset`) for honest logs; the **gain error** U(0.8, 1.2) is
+   the misspecification the policy actually has to tolerate. Worth confirming this matches your
+   intent.
+7. **Default readback σ for phases = 0.3°** (other knobs per assumption 3) in `delta_env.readback_sigma`.
 
 ## Progress
 
