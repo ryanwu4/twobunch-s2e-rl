@@ -11,8 +11,12 @@ the goal in real physics?
 
 Output dir: results/rl/<run>/bmad_check/ (new; refuses to overwrite).
 
+Launch `track` with OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 in the environment: the parent's
+numpy starts a thread pool per worker before the pool initializer runs, and without them each
+worker spins ~128 threads (2026-10-14: 16 workers drove the node load to ~370).
+
   python -m twobunch_s2e_rl.rl.validate_delta export --logdir logs/overnight_2026-10-14/delta_xtcav23_cloud_s0
-  python -m twobunch_s2e_rl.rl.validate_delta track  --logdir ... --num-macro 20000 --workers 12
+  OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python -m twobunch_s2e_rl.rl.validate_delta track --logdir ... --num-macro 20000 --workers 12
   python -m twobunch_s2e_rl.rl.validate_delta compare --logdir ...
 """
 from __future__ import annotations
