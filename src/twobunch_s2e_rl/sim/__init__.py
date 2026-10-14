@@ -1,1 +1,2 @@
-"""Simulator wrappers (Impact-T injector; see injector.py). Run in the bmad-qpad-dev env."""
+"""Simulator wrappers: bmad.py (the one Bmad/Tao tracking path) and injector.py (Impact-T).
+Both run in the bmad-qpad-dev env."""
