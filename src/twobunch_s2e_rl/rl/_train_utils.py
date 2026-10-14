@@ -98,6 +98,7 @@ def build_reward_spec(de: dict):
     if objectives is not None:
         return reward_spec_from_campaign(
             de["campaign_h5"], cache_json=cache, objectives=objectives,
+            overwrite_cache=bool(de.get("reward_norms_overwrite", False)),
             floor_pct=de.get("floor_pct", 10.0),
             drive_floor_pct=de.get("drive_floor_pct"),
             witness_floor_pct=de.get("witness_floor_pct"),
@@ -112,6 +113,7 @@ def build_reward_spec(de: dict):
     return reward_spec_from_campaign(
         de["campaign_h5"],
         cache_json=cache,
+        overwrite_cache=bool(de.get("reward_norms_overwrite", False)),
         spacing_goal_key="spacing_goal" if goal_conditioned else None,
         floor_pct=de.get("floor_pct", 10.0),
         drive_floor_pct=de.get("drive_floor_pct"),

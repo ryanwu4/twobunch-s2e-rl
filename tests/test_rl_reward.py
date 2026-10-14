@@ -257,7 +257,11 @@ def test_reward_spec_from_campaign_cache_provenance(tmp_path):
     prov1, _, floors10 = load_norms(cache)
     assert prov1["floor"] == 10.0
     # re-run with a DIFFERENT floor_pct against the same cache path -> must recompute
-    s50 = reward_spec_from_campaign(p, cache_json=cache, floor_pct=50.0)
+    # a mismatched cache is never silently rewritten: it raises unless overwrite is explicit
+    with pytest.raises(ValueError, match="not overwritten"):
+        reward_spec_from_campaign(p, cache_json=cache, floor_pct=50.0)
+    assert load_norms(cache)[2] == floors10
+    s50 = reward_spec_from_campaign(p, cache_json=cache, floor_pct=50.0, overwrite_cache=True)
     prov2, _, floors50 = load_norms(cache)
     assert prov2["floor"] == 50.0
     f10 = {t.key: t.floor for t in s10.terms if t.mode == "minimize_floor"}

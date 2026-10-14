@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import os
+import warnings
 from dataclasses import dataclass, field
 
 import h5py
@@ -438,13 +439,19 @@ def reward_spec_from_campaign(h5_path: str, *, floor_pct: float = 10.0,
                               drive_floor_pct: float | None = None,
                               witness_floor_pct: float | None = None,
                               cache_json: str | None = None,
-                              objectives: list[dict] | None = None, **kwargs) -> TwoBunchRewardSpec:
+                              objectives: list[dict] | None = None,
+                              overwrite_cache: bool = False, **kwargs) -> TwoBunchRewardSpec:
     """Compute norms+floors from the campaign h5 (or load a provenance-matched cache) and build the
     spec. `floor_pct` is the default emittance-floor percentile; `drive_floor_pct`/`witness_floor_pct`
     override it per bunch (a lower drive percentile lets the policy chase a lower drive emittance,
     at the campaign tail's expense). With `objectives`, norms cover every objective metric and floors
     every minimize_floor key (per-entry `floor_pct` honored). The cache invalidates if the campaign
-    file, any floor, or the objective set changed."""
+    file, any floor, or the objective set changed.
+
+    A cache whose provenance no longer matches is never silently rewritten (it may belong to an
+    existing policy run, whose rewards it defines): the norms are recomputed in memory; if they
+    equal the cached values (e.g. only the h5 mtime changed) the cache is reused as-is with a
+    warning; otherwise this raises, unless `overwrite_cache=True`."""
     pct_by_key: dict[str, float] = {}
     if drive_floor_pct is not None:
         pct_by_key.update({k: float(drive_floor_pct) for k in DRIVE_EMIT_KEYS})
@@ -466,14 +473,28 @@ def reward_spec_from_campaign(h5_path: str, *, floor_pct: float = 10.0,
         floor_desc = ({"floor_pct": float(floor_pct), "pct_by_key": pct_by_key}
                       if pct_by_key else float(floor_pct))
 
+    want = _provenance(h5_path, floor_desc)
+    cached = None
     if cache_json is not None and os.path.exists(cache_json):
-        want = _provenance(h5_path, floor_desc)
         prov, norms, floors = load_norms(cache_json)
         if prov == want:
             return build_twobunch_reward_spec(norms, floors, objectives=objectives, **kwargs)
+        cached = (prov, norms, floors)
     norms = compute_metric_norms(h5_path, keys=norm_keys)
     floors = derive_floors_from_campaign(h5_path, pct=floor_pct, emit_keys=floor_keys,
                                          pct_by_key=pct_by_key)
+    if cached is not None and not overwrite_cache:
+        same = (json.loads(json.dumps(norms)) == cached[1]
+                and json.loads(json.dumps(floors)) == cached[2])
+        if not same:
+            raise ValueError(
+                f"reward-norms cache {cache_json} does not match this config/campaign "
+                f"(cached provenance {cached[0]} vs wanted {want}) and its values differ. It may "
+                f"define an existing run's rewards, so it is not overwritten: point "
+                f"reward_norms_json at a new file, or set reward_norms_overwrite: true.")
+        warnings.warn(f"reward-norms cache {cache_json}: provenance changed but values are "
+                      f"identical; reusing it unchanged")
+        return build_twobunch_reward_spec(cached[1], cached[2], objectives=objectives, **kwargs)
     if cache_json is not None:
-        save_norms(norms, floors, cache_json, _provenance(h5_path, floor_desc))
+        save_norms(norms, floors, cache_json, want)
     return build_twobunch_reward_spec(norms, floors, objectives=objectives, **kwargs)
