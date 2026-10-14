@@ -88,6 +88,10 @@ def parse_one(json_path: str, p: int, rng: np.random.Generator, keys: list,
         "witness_density": False,
         "n_drive": 0,
         "n_witness": 0,
+        # injected per-bunch charge (injector campaigns record it; NaN = not recorded, i.e. the
+        # golden beam's charge up to downsample noise). T = charge / full stays the training label.
+        "drive_q_in": float(d.get("injected_charge_nC", {}).get("drive", np.nan)),
+        "witness_q_in": float(d.get("injected_charge_nC", {}).get("witness", np.nan)),
     }
 
     if not (drive_present or witness_viable):
@@ -157,16 +161,23 @@ _MERGE_KEYS = ("baseline_config_sha256", "input_beam_sha256", "csrTF", "transver
                "num_macro_particles")
 
 
-def campaign_fill(camp: dict, keys, knob_low, knob_high, treaty_point: str) -> dict:
+def campaign_fill(camp: dict, keys, knob_low, knob_high, treaty_point: str,
+                  allow_drop=()) -> dict:
     """Values for the target knobs this campaign did NOT sweep (its recorded fixed settings), after
-    the knob-drop rule and the in-frame check. Raises ValueError on a violation."""
+    the knob-drop rule and the in-frame check. Raises ValueError on a violation.
+
+    `allow_drop`: swept knobs the caller explicitly marginalizes over (e.g. the "passive" injector
+    knobs, whose effect then becomes label noise) -- an opt-in exception to the knob-drop rule.
+    Injector knobs a campaign held fixed come from fixed["injector_settings"] (golden for every
+    golden-beam campaign; see datagen/injector_campaign.py)."""
     from ..datagen.sweep_params import DOWNSTREAM_OF
     swept = set(camp["swept"]["knob_keys"])
-    dropped = sorted(swept - set(keys) - set(DOWNSTREAM_OF.get(treaty_point, [])))
+    dropped = sorted(swept - set(keys) - set(DOWNSTREAM_OF.get(treaty_point, [])) - set(allow_drop))
     if dropped:
         raise ValueError(f"campaign {camp['name']!r} varied {dropped}, which the target model "
                          f"lacks and which are not downstream of {treaty_point}")
-    fixed = {**camp["fixed"]["baseline_settings"], **camp["fixed"]["fixed_overrides"]}
+    fixed = {**camp["fixed"]["baseline_settings"], **camp["fixed"]["fixed_overrides"],
+             **camp["fixed"].get("injector_settings", {})}
     fill = {}
     for k, lo, hi in zip(keys, knob_low, knob_high):
         if k in swept:
@@ -181,14 +192,41 @@ def campaign_fill(camp: dict, keys, knob_low, knob_high, treaty_point: str) -> d
     return fill
 
 
+def _beam_identity(camp: dict):
+    """What the campaign's input beam is, for merge checks. Golden-beam campaigns: the h5 sha.
+    Impact-T injector campaigns (fixed.injector.source == 'impact'): the sha of the golden beam
+    their injector-at-golden point stands in for -- so they merge with golden-beam campaigns
+    (embedded at injector = golden), and with each other only at identical injector fidelity."""
+    inj = camp["fixed"].get("injector")
+    if inj and inj.get("source") == "impact":
+        return inj.get("golden_equivalent_input_beam_sha256")
+    return camp["fixed"].get("input_beam_sha256")
+
+
+# injector-fidelity entries that must agree between merged Impact-T campaigns
+_INJ_MERGE_KEYS = ("n_particles", "grid", "code_version", "arrival", "hammersley_burnin",
+                   "l0af_reference")
+
+
 def check_mergeable(camps: list[dict], treaty_point: str) -> None:
     """Campaigns merged into one table must share every fixed setting that affects the beam at the
     treaty point (fixed_overrides other than downstream-only settings, plus _MERGE_KEYS)."""
     from ..datagen.sweep_params import DOWNSTREAM_OF, DOWNSTREAM_SETTINGS
     skip = set(DOWNSTREAM_SETTINGS) | set(DOWNSTREAM_OF.get(treaty_point, []))
     ref = camps[0]
+    inj_camps = [c for c in camps if (c["fixed"].get("injector") or {}).get("source") == "impact"]
+    for c in inj_camps[1:]:
+        for k in _INJ_MERGE_KEYS:
+            if c["fixed"]["injector"].get(k) != inj_camps[0]["fixed"]["injector"].get(k):
+                raise ValueError(f"cannot merge {inj_camps[0]['name']!r} and {c['name']!r}: "
+                                 f"injector {k} differs")
     for c in camps[1:]:
+        if _beam_identity(c) != _beam_identity(ref):
+            raise ValueError(f"cannot merge {ref['name']!r} and {c['name']!r}: fixed input beam "
+                             "(input_beam_sha256 / injector golden equivalent) differs")
         for k in _MERGE_KEYS:
+            if k == "input_beam_sha256":
+                continue
             if c["fixed"].get(k) != ref["fixed"].get(k):
                 raise ValueError(f"cannot merge {ref['name']!r} and {c['name']!r}: fixed {k} differs")
         fo_a, fo_b = ref["fixed"]["fixed_overrides"], c["fixed"]["fixed_overrides"]
@@ -200,7 +238,7 @@ def check_mergeable(camps: list[dict], treaty_point: str) -> None:
 
 def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
                scaler="intrabunch", sweep_set="original8", treaty_point=PENT,
-               verbose=True, data_root=None):
+               verbose=True, data_root=None, campaign_jsons=None, allow_drop=()):
     # subdir may be comma-separated to MERGE campaigns (e.g. "tightbox_v2_full,expanded_full").
     # When merging boxes with different bounds, pass a union sweep_set (e.g. "tightbox+expanded")
     # so every draw is normalized in one common frame; parse_one stores raw knobs, so the frame
@@ -219,11 +257,13 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
         file_campaign.extend([ci] * len(fs))
         # campaigns that recorded campaign.json can be embedded into a bigger knob space; older
         # campaigns (no campaign.json) are parsed exactly as before
-        cj = data_root / sd / "campaign.json"
+        # campaign_jsons: {subdir: path} -- a campaign record kept OUTSIDE its data dir (e.g. a
+        # backfill for a campaign that predates campaign.json; data/ stays untouched)
+        cj = Path((campaign_jsons or {}).get(sd, data_root / sd / "campaign.json"))
         if cj.exists():
             camp = json.loads(cj.read_text())
             camps.append(camp)
-            fills[ci] = campaign_fill(camp, keys, knob_low, knob_high, treaty_point)
+            fills[ci] = campaign_fill(camp, keys, knob_low, knob_high, treaty_point, allow_drop)
     if len(camps) > 1:
         check_mergeable(camps, treaty_point)
     rng = np.random.default_rng(seed)
@@ -277,6 +317,10 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
         h.create_dataset("n_drive", data=np.array([r["n_drive"] for r in records], np.int32))
         h.create_dataset("n_witness", data=np.array([r["n_witness"] for r in records], np.int32))
         h.create_dataset("idx", data=np.array([r["idx"] for r in records], np.int32))
+        for col in ("drive_q_in", "witness_q_in"):
+            v = np.array([r[col] for r in records], np.float32)
+            if np.isfinite(v).any():          # only injector campaigns record it
+                h.create_dataset(f"{col}_nC", data=v)
         # source campaign of every row (idx collides across merged campaigns)
         h.create_dataset("campaign", data=np.array([r["campaign"] for r in records], np.int16))
         h.attrs["campaigns"] = ",".join(subdirs)
@@ -324,10 +368,18 @@ def main():
     ap.add_argument("--treaty-point", default=PENT,
                     help="element whose specs/beams feed the table (default PENT; the Stage-B "
                          "GPSR campaign uses XTCAVF = handoff at the XTCAV exit plane, V=0)")
+    ap.add_argument("--campaign-json", action="append", default=[], metavar="SUBDIR=PATH",
+                    help="campaign record for SUBDIR kept outside data/<SUBDIR> (e.g. a backfill); "
+                         "repeatable")
+    ap.add_argument("--allow-drop", default="",
+                    help="comma-separated swept knobs to marginalize over (opt-in exception to the "
+                         "knob-drop rule)")
     args = ap.parse_args()
+    cjs = dict(s.split("=", 1) for s in args.campaign_json)
     preprocess(subdir=args.subdir, p=args.P, max_samples=args.max_samples,
                seed=args.seed, out=args.out, scaler=args.scaler, sweep_set=args.sweep_set,
-               treaty_point=args.treaty_point)
+               treaty_point=args.treaty_point, campaign_jsons=cjs,
+               allow_drop=[k for k in args.allow_drop.split(",") if k])
 
 
 if __name__ == "__main__":

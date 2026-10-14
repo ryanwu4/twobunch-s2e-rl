@@ -1,0 +1,46 @@
+# Injector + linac FULL campaign — DRAFT, NOT LAUNCHED (results/injector_pilot_2026-10-14/PLAN.md).
+# Nested design: 250 LHS injector points (inj12 box) x 10 independent xtcav23-box linac draws each,
+# + the 250 injector points (and golden) at the golden linac point (injector response surface),
+# + 10% of the nested rows re-run at injector = golden (exact paired differences), + 1 bridge row.
+#   rows: 251 crossed + 2500 nested + 250 paired_golden + 1 bridge = 3002 Bmad; 251 Impact-T.
+# Run (bmad-qpad-dev, repo root):
+#   PYTHONPATH=$PWD/src OMP_NUM_THREADS=1 nohup nice -n 10 \
+#     /home/rwu4/miniconda3/envs/bmad-qpad-dev/bin/python -u \
+#     -m twobunch_s2e_rl.datagen.injector_campaign configs/datagen/injector_full.yaml \
+#     > logs/injector_full/run.log 2>&1 &
+# Resumable: rerun the same command (finished rows / cached beams are skipped).
+name: injector_full
+output_dir: data/injector_full
+sweep_set: xtcav23_inj12
+linac_sweep_set: xtcav23
+injector_sweep_set: inj12
+n_workers: 64
+
+injector:
+  n_particles: 100000
+  grid: 64
+  arrival: absolute
+  hammersley_burnin: -1
+
+design:
+  seed: 20261020
+  injector:
+    golden: true
+    lhs: 250
+    box_scale: 1.0
+  linac:
+    shared: {baseline: true, lhs: 0}
+    per_injector_lhs: 10
+  pair_golden_frac: 0.1
+  bridge: true
+
+# = configs/datagen/xtcav23_full.yaml physics
+csrTF: true
+transverseWakes: true
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+treaty_points: [BEGBC20, MFFF, XTCAVF, PENT]
+save_beams_at: [XTCAVF]
+fixed_overrides:
+  Q19851kG: -63.76368742523523
+  Q19871kG: 42.49972197426665
+  trackEnd: PENT

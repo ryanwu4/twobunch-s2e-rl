@@ -1,0 +1,60 @@
+# Injector + linac PILOT (plan phase 5; results/injector_pilot_2026-10-14/PLAN.md).
+# Cathode -> Impact-T (1e5, grid 64) -> L0AFEND (absolute arrival) -> Bmad (xtcav23 settings,
+# CSR + wakes, 1e5) -> XTCAVF beam + specs at BEGBC20/MFFF/XTCAVF/PENT.
+#
+# Run (bmad-qpad-dev env, repo root; <= 64 single-thread processes, nice 10):
+#   PYTHONPATH=$PWD/src OMP_NUM_THREADS=1 nice -n 10 \
+#     /home/rwu4/miniconda3/envs/bmad-qpad-dev/bin/python -u \
+#     -m twobunch_s2e_rl.datagen.injector_campaign configs/datagen/injector_pilot_2026-10-14.yaml
+# Preprocess (slac-rl env):
+#   PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.preprocess \
+#     --subdir injector_pilot_2026-10-14 --sweep-set xtcav23_inj12 --treaty-point XTCAVF \
+#     --out processed/injector_pilot_2026-10-14.h5
+#
+# Design (62 Bmad rows, 16 Impact-T beams -> one wave on 64 workers):
+#   crossed: 16 injector points (golden + 4 OAT at the sensitivity-study magnitudes + 11 LHS over
+#            the inj12 box) x 3 shared linac points (xtcav23 baseline + 2 LHS over the xtcav23 box)
+#            = 48 rows -> exact paired injector effects at 3 linac points;
+#   nested:  1 independent xtcav23-box draw per LHS injector point = 11 rows (the full-campaign
+#            sampling path);
+#   bridge:  golden 2024-10-14 h5 beam at the 3 shared linac points = 3 rows (old-campaign offset).
+name: injector_pilot_2026-10-14
+output_dir: data/injector_pilot_2026-10-14
+sweep_set: xtcav23_inj12        # preprocess frame (linac keys then injector keys)
+linac_sweep_set: xtcav23
+injector_sweep_set: inj12
+n_workers: 64
+
+injector:
+  n_particles: 100000           # Impact-T AND Bmad (equal counts: no downsample)
+  grid: 64                      # >= 64 (grid 32 inflates emittance +16-21%; 64 -> +3-4%)
+  arrival: absolute             # keep the injector <t> shift (centring erases timing effects)
+  hammersley_burnin: -1         # distgen default = golden; common random numbers across points
+
+design:
+  seed: 20261014
+  injector:
+    golden: true
+    oat:                        # sensitivity-study OAT magnitudes (cross-check vs that study)
+      - {laser_timing_ps: {abs: 0.2}}
+      - {drive_fraction: {abs: 0.02}}
+      - {"GUNF:rf_field_scale": {rel: 0.0025}}
+      - {"distgen:t_dist:dists:d2:avg_t:value": {abs: 0.1}}
+    lhs: 11
+    box_scale: 1.0
+  linac:
+    shared: {baseline: true, lhs: 2}
+    per_injector_lhs: 1
+  pair_golden_frac: 0.0
+  bridge: true
+
+# = configs/datagen/xtcav23_full.yaml physics
+csrTF: true
+transverseWakes: true
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+treaty_points: [BEGBC20, MFFF, XTCAVF, PENT]
+save_beams_at: [XTCAVF]
+fixed_overrides:
+  Q19851kG: -63.76368742523523
+  Q19871kG: 42.49972197426665
+  trackEnd: PENT

@@ -34,12 +34,13 @@ import numpy as np
 import yaml
 from scipy.stats import qmc
 
-from .sweep_params import resolve_sweep_set
+from .sweep_params import injector_golden, resolve_sweep_set
 from .ff_manifold import MANIFOLD_SPECS, sample_anchored_ff
 from .paths import facet2_root, repo_root
 from ..sim.bmad import make_tao, merged_settings, track
 
 TREATY_POINTS = ["BEGBC20", "MFFF", "PENT"]
+GOLDEN_BEAM_SUFFIX = "/beams/2024-10-14_Impact_TwoBunch/2024-10-14_TwoBunch.h5"
 
 # Per-worker globals (set in _init_worker)
 _TAO = None
@@ -162,6 +163,10 @@ def write_campaign_json(cfg) -> Path:
             "csrTF": cfg["csrTF"], "transverseWakes": cfg.get("transverseWakes", False),
             "num_macro_particles": int(cfg["num_macro_particles"]),
             "treaty_points": cfg.get("treaty_points", TREATY_POINTS),
+            # the golden 2024-10-14 beam IS "injector at golden": recorded so this campaign embeds
+            # into a knob space with injector inputs (datagen/injector_campaign.py)
+            **({"injector_settings": injector_golden()}
+               if baseline.get("inputBeamFilePathSuffix") == GOLDEN_BEAM_SUFFIX else {}),
         },
         "facet2_s2e_hash": facet2_s2e_hash(), **git_state(),
     }

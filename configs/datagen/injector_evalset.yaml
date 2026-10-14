@@ -1,0 +1,64 @@
+# Held-out injector EVALUATION set — DRAFT, NOT LAUNCHED (PLAN.md "Evaluation").
+# One-at-a-time sweeps of the 6 active injector knobs (+-1x and +-1.5x DR) crossed with 6 linac
+# points (xtcav23 baseline + 5 LHS), every linac point also at injector = golden:
+#   (1 + 24) injector points x 6 linac points = 150 Bmad rows, 25 Impact-T beams (+6 bridge rows).
+# Gives Bmad-truth sensitivity curves / partial derivatives per injector knob per linac point.
+name: injector_evalset
+output_dir: data/injector_evalset
+sweep_set: xtcav23_inj12
+linac_sweep_set: xtcav23
+injector_sweep_set: inj12
+n_workers: 64
+
+injector:
+  n_particles: 100000
+  grid: 64
+  arrival: absolute
+  hammersley_burnin: -1
+
+design:
+  seed: 20261021
+  injector:
+    golden: true
+    oat:
+      - {laser_timing_ps: {abs: -0.3}}
+      - {laser_timing_ps: {abs: -0.2}}
+      - {laser_timing_ps: {abs: 0.2}}
+      - {laser_timing_ps: {abs: 0.3}}
+      - {"GUNF:rf_field_scale": {rel: -0.00375}}
+      - {"GUNF:rf_field_scale": {rel: -0.0025}}
+      - {"GUNF:rf_field_scale": {rel: 0.0025}}
+      - {"GUNF:rf_field_scale": {rel: 0.00375}}
+      - {"GUNF:theta0_deg": {abs: -0.375}}
+      - {"GUNF:theta0_deg": {abs: -0.25}}
+      - {"GUNF:theta0_deg": {abs: 0.25}}
+      - {"GUNF:theta0_deg": {abs: 0.375}}
+      - {"distgen:t_dist:dists:d2:avg_t:value": {abs: -0.15}}
+      - {"distgen:t_dist:dists:d2:avg_t:value": {abs: -0.1}}
+      - {"distgen:t_dist:dists:d2:avg_t:value": {abs: 0.1}}
+      - {"distgen:t_dist:dists:d2:avg_t:value": {abs: 0.15}}
+      - {drive_fraction: {abs: -0.03}}
+      - {drive_fraction: {abs: -0.02}}
+      - {drive_fraction: {abs: 0.02}}
+      - {drive_fraction: {abs: 0.03}}
+      - {"distgen:total_charge:value": {rel: -0.009}}
+      - {"distgen:total_charge:value": {rel: -0.006}}
+      - {"distgen:total_charge:value": {rel: 0.006}}
+      - {"distgen:total_charge:value": {rel: 0.009}}
+    lhs: 0
+  linac:
+    shared: {baseline: true, lhs: 5}
+    per_injector_lhs: 0
+  pair_golden_frac: 0.0
+  bridge: true
+
+# = configs/datagen/xtcav23_full.yaml physics
+csrTF: true
+transverseWakes: true
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+treaty_points: [BEGBC20, MFFF, XTCAVF, PENT]
+save_beams_at: [XTCAVF]
+fixed_overrides:
+  Q19851kG: -63.76368742523523
+  Q19871kG: 42.49972197426665
+  trackEnd: PENT

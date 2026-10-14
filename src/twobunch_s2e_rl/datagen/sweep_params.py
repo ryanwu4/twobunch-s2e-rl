@@ -271,6 +271,60 @@ SWEEP_SETS = {
 }
 
 
+# ----------------------------------------------------------------------------------------
+# Injector (Impact-T) knobs — phase 5 injector campaign (results/injector_pilot_2026-10-14/PLAN.md).
+# Keys are sim/injector.py settings keys (native lume-impact / distgen keys, or its convenience /
+# derived keys), so a manifest row's injector dict goes straight into injector_beam(). They are
+# surrogate inputs and RL hidden context (randomized per episode), never RL controls.
+#
+# Ranges (sensitivity study data/injector_sensitivity_2026-10-14/, absolute arrival mode):
+# - "active" (move XTCAVF spacing / sigma_z / charge ratio by >= 1 um or the ratio itself):
+#   box = 1.5x the per-episode DR magnitude, so DR draws at the DR edge are interior to the data.
+#     laser_timing_ps    DR +-0.2 ps (DAQ; spec 200 fs)          -> +-0.30   (+-7.6 um spacing @0.2)
+#     GUNF amplitude     DR +-0.25% (assumed)                    -> +-0.375% (-+4 um)
+#     GUNF phase         DR +-0.25 deg (assumed)                 -> +-0.375 deg (+-1.3 um)
+#     PSDL delay (d2 avg_t) DR +-0.1 ps (assumed)                -> 9 +- 0.15 ps (+-4.6 um)
+#     drive_fraction     DR +-0.02 (DAQ 0.69-0.73 measured)      -> 0.75 +- 0.03 (ratio -+0.035)
+#     total charge       DR 0.3% 1-sigma (DAQ)                   -> +-0.9% (3 sigma; -+0.4 um/0.3%)
+# - "passive" (< 0.05 deg equivalent L1/L2 phase; <= 1% transverse emittance): swept at 1x their
+#   (assumed) DR magnitude — costless in a nested LHS, lets the campaign measure the
+#   "negligible" claim away from the golden linac point, and keeps them available as inputs.
+#     L0AF phase +-0.25 deg, solenoid +-0.5%, spot sigma_xy +-2%, truncation radius +-2%,
+#     MTE +-10%, laser sigma_t (both pulses) +-2%.
+# Golden values = sim/injector.py GOLDEN_SETTINGS (the 2024-10-14 golden beam).
+# ----------------------------------------------------------------------------------------
+_GUN_AMP = 119e6 / 2.44885          # GUNF:rf_field_scale golden
+_SOL = -0.39 / 1.6                  # SOL10111:solenoid_field_scale golden
+INJECTOR_PARAMS = {
+    # active
+    "laser_timing_ps":                      (-0.3,              0.3,               0.0),
+    "GUNF:rf_field_scale":                  (_GUN_AMP * (1 - 0.00375), _GUN_AMP * (1 + 0.00375), _GUN_AMP),
+    "GUNF:theta0_deg":                      (-60.7 - 0.375,    -60.7 + 0.375,     -60.7),
+    "distgen:t_dist:dists:d2:avg_t:value":  (8.85,              9.15,              9.0),
+    "drive_fraction":                       (0.72,              0.78,              0.75),
+    "distgen:total_charge:value":           (1600.0 * 0.991,    1600.0 * 1.009,    1600.0),
+    # passive
+    "L0AF_phase_offset_deg":                (-0.25,             0.25,              0.0),
+    "SOL10111:solenoid_field_scale":        (_SOL * 1.005,      _SOL * 0.995,      _SOL),   # negative
+    "distgen:r_dist:sigma_xy:value":        (1.49 * 0.98,       1.49 * 1.02,       1.49),
+    "distgen:r_dist:truncation_radius:value": (2.52 * 0.98,     2.52 * 1.02,       2.52),
+    "distgen:start:MTE:value":              (360.0,             440.0,             400.0),
+    "sigma_t_ps":                           (1.17 * 0.98,       1.17 * 1.02,       1.17),
+}
+INJECTOR_ACTIVE_KEYS = list(INJECTOR_PARAMS)[:6]
+INJECTOR_KEYS = list(INJECTOR_PARAMS)
+
+# Kept OUT of SWEEP_SETS (whose membership is pinned by tests and by every existing artifact):
+# injector-only sets, and concatenated linac + injector sets (keys = linac keys then injector keys).
+INJECTOR_SWEEP_SETS = {"inj12": INJECTOR_PARAMS}
+CONCAT_SWEEP_SETS = {"xtcav23_inj12": ("xtcav23", "inj12")}
+
+
+def injector_golden(keys=None) -> dict:
+    """Golden value of each injector knob (what every golden-beam campaign was generated at)."""
+    return {k: INJECTOR_PARAMS[k][2] for k in (keys or INJECTOR_KEYS)}
+
+
 def resolve_sweep_set(name="original8"):
     """Return (keys, low, high, baseline) for a named sweep set.
 
@@ -292,8 +346,21 @@ def resolve_sweep_set(name="original8"):
         low = [min(r[1][i] for r in resolved) for i in range(len(keys0))]
         high = [max(r[2][i] for r in resolved) for i in range(len(keys0))]
         return keys0, low, high, resolved[0][3]
+    if name in CONCAT_SWEEP_SETS:
+        parts = [resolve_sweep_set(p) for p in CONCAT_SWEEP_SETS[name]]
+        keys = [k for p in parts for k in p[0]]
+        if len(set(keys)) != len(keys):
+            raise ValueError(f"concatenated sweep set {name} has duplicate keys")
+        return (keys, [v for p in parts for v in p[1]], [v for p in parts for v in p[2]],
+                {k: v for p in parts for k, v in p[3].items()})
+    if name in INJECTOR_SWEEP_SETS:
+        params = INJECTOR_SWEEP_SETS[name]
+        keys = list(params)
+        return (keys, [params[k][0] for k in keys], [params[k][1] for k in keys],
+                {k: params[k][2] for k in keys})
     if name not in SWEEP_SETS:
-        raise KeyError(f"unknown sweep_set {name!r}; choose from {list(SWEEP_SETS)}")
+        raise KeyError(f"unknown sweep_set {name!r}; choose from "
+                       f"{list(SWEEP_SETS) + list(INJECTOR_SWEEP_SETS) + list(CONCAT_SWEEP_SETS)}")
     params = SWEEP_SETS[name]
     keys = list(params)
     low = [params[k][0] for k in keys]
