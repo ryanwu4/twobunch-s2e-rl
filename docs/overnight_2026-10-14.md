@@ -187,6 +187,13 @@ solenoid / spot / MTE / σ_t / L0A phase / charge ≤ 0.8 µm. Controller author
   The part a feedback controller can't absorb this way is the direct charge-ratio change →
   added `measurement.feature_offset_sigma` (hidden per-episode offset on observed features, e.g.
   `drive_charge_fraction: 0.035`) for future runs; tonight's screen runs don't use it.
+- **Convergence:** rerun at 1e5 particles agrees with 2e4 to a few % (timing +0.2 ps abs: spacing
+  +7.57 vs +7.61 µm; proxy dL1 0.31 vs 0.29°); recommendations unchanged. Agent's per-variable
+  verdict (absolute mode): laser timing, gun phase/amplitude, bunch delay → **input-side L1/L2
+  phase-offset proxy** (≤ 0.31° / 0.16°; ΔE residual 0.02°); drive fraction → **output-side**
+  charge-ratio offset; charge, L0A phase, solenoid, spot, truncation, MTE, σ_t → negligible
+  (< 0.05° equivalent). A grid-64 check (attributing the +16–21 % emittance gap to the space-charge
+  grid) is still running (PID 1523234, ETA ~05:30; `runs_N100000_grid64/`).
 - **Pipeline finding:** in the legacy "centred" mode (FACET2-S2E time-centres the input beam) the
   timing effect is ~6× smaller (spacing ±1.3 µm): every existing campaign erases injector arrival-
   time jitter. The injector campaign should keep absolute timing.

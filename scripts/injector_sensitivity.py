@@ -136,8 +136,16 @@ def _baseline_linac_values(cfg):
 # ---------------------------------------------------------------------------------------
 
 
+def _suffix(cfg, n):
+    """'' at the config's (N, grid); else _N<n> and/or _grid<g>, so fidelities never mix."""
+    s = "" if n == int(cfg["n_particles"]) else f"_N{n}"
+    if cfg.get("_grid_override"):
+        s += f"_grid{cfg['impact_grid']}"
+    return s
+
+
 def run_dir(cfg, n):
-    d = Path(cfg["output_dir"]) / ("runs" if n == int(cfg["n_particles"]) else f"runs_N{n}")
+    d = Path(cfg["output_dir"]) / f"runs{_suffix(cfg, n)}"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -437,7 +445,7 @@ def analyze(cfg, n):
 
     out = Path(cfg["output_dir"])
     df = pd.DataFrame(load_results(cfg, n))
-    df.to_csv(out / f"runs{'' if n == cfg['n_particles'] else f'_N{n}'}.csv", index=False)
+    df.to_csv(out / f"runs{_suffix(cfg, n)}.csv", index=False)
     ok = df[df.success == True].set_index("name")  # noqa: E712
     if "baseline" not in ok.index:
         print("baseline missing; nothing to analyze")
@@ -501,7 +509,7 @@ def analyze(cfg, n):
                 row[f"proxy_resid_deg_{o}"] = abs(d[o] - pr) / A[o] if A[o] > 0 else np.nan
         eff_rows.append(row)
     E = pd.DataFrame(eff_rows)
-    E.to_csv(out / f"effects{'' if n == cfg['n_particles'] else f'_N{n}'}.csv", index=False)
+    E.to_csv(out / f"effects{_suffix(cfg, n)}.csv", index=False)
     write_summary(cfg, n, ok, obs, base, floor, gfloor, S, E)
 
 
@@ -579,7 +587,7 @@ def write_summary(cfg, n, ok, obs, base, floor, gfloor, S, E):
         rec = {m: _recommend(sub[sub.arrival == m], obs) if (sub.arrival == m).any() else ""
                for m in ("centred", "absolute")}
         L.append(f"| {var} | {rec['centred']} | {rec['absolute']} |")
-    with open(out / f"summary{'' if n == cfg['n_particles'] else f'_N{n}'}.md", "w") as f:
+    with open(out / f"summary{_suffix(cfg, n)}.md", "w") as f:
         f.write("\n".join(L) + "\n")
     print("\n".join(L))
 
@@ -643,8 +651,9 @@ def main():
     a = ap.parse_args()
     cfg = load_cfg(a.config)
     n = int(a.n_particles or cfg["n_particles"])
-    if a.grid:
+    if a.grid and int(a.grid) != int(cfg["impact_grid"]):
         cfg["impact_grid"] = int(a.grid)
+        cfg["_grid_override"] = True
     if a.baseline_check:
         baseline_check(cfg, n)
         return
