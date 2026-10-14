@@ -379,6 +379,7 @@ def build_twobunch_reward_spec(
     obs_keys=DEFAULT_OBS_KEYS,
     spacing_goal_key: str | None = None,
     objectives: list[dict] | None = None,
+    observe_keys: tuple[str, ...] = (),
 ) -> TwoBunchRewardSpec:
     """Assemble the composite spec.
 
@@ -397,6 +398,9 @@ def build_twobunch_reward_spec(
         # obs = objective metrics (knobs are already the obs prefix), then per-env goals appended
         # at the end so the obs prefix stays stable (mirrors the goal-append invariant below).
         obs_keys = tuple(dict.fromkeys(e["key"] for e in objectives if e["key"] != KNOBS_KEY))
+        # observe-only metrics (in obs, no reward term, e.g. the driven energy difference) follow
+        # the objective metrics; goals are still appended last
+        obs_keys = obs_keys + tuple(k for k in observe_keys if k not in obs_keys)
         obs_norms = {k: norms[k] for k in obs_keys if k in norms}
         for t in terms:
             if t.goal_key is not None and t.goal_key not in obs_keys:
@@ -454,6 +458,7 @@ def reward_spec_from_campaign(h5_path: str, *, floor_pct: float = 10.0,
                               witness_floor_pct: float | None = None,
                               cache_json: str | None = None,
                               objectives: list[dict] | None = None,
+                              observe_keys: tuple[str, ...] = (),
                               overwrite_cache: bool = False, **kwargs) -> TwoBunchRewardSpec:
     """Compute norms+floors from the campaign h5 (or load a provenance-matched cache) and build the
     spec. `floor_pct` is the default emittance-floor percentile; `drive_floor_pct`/`witness_floor_pct`
@@ -475,13 +480,15 @@ def reward_spec_from_campaign(h5_path: str, *, floor_pct: float = 10.0,
     # config-driven objectives: norms must cover every objective metric, floors every minimize_floor
     if objectives is not None:
         obj_keys = [e["key"] for e in objectives if e["key"] != KNOBS_KEY]
-        norm_keys = tuple(dict.fromkeys(_DEFAULT_NORM_KEYS + tuple(obj_keys)))
+        norm_keys = tuple(dict.fromkeys(_DEFAULT_NORM_KEYS + tuple(obj_keys) + tuple(observe_keys)))
         floor_keys = tuple(e["key"] for e in objectives if e.get("kind") == "minimize_floor")
         for e in objectives:
             if e.get("kind") == "minimize_floor" and "floor_pct" in e:
                 pct_by_key[e["key"]] = float(e["floor_pct"])
         floor_desc = {"floor_pct": float(floor_pct), "pct_by_key": pct_by_key,
                       "objectives": [[e["key"], e.get("kind")] for e in objectives]}
+        if observe_keys:                       # only new configs carry it -> old caches unchanged
+            floor_desc["observe"] = list(observe_keys)
     else:
         norm_keys, floor_keys = None, EMIT_KEYS
         floor_desc = ({"floor_pct": float(floor_pct), "pct_by_key": pct_by_key}
@@ -492,7 +499,7 @@ def reward_spec_from_campaign(h5_path: str, *, floor_pct: float = 10.0,
     if cache_json is not None and os.path.exists(cache_json):
         prov, norms, floors = load_norms(cache_json)
         if prov == want:
-            return build_twobunch_reward_spec(norms, floors, objectives=objectives, **kwargs)
+            return build_twobunch_reward_spec(norms, floors, objectives=objectives, observe_keys=observe_keys, **kwargs)
         cached = (prov, norms, floors)
     norms = compute_metric_norms(h5_path, keys=norm_keys)
     floors = derive_floors_from_campaign(h5_path, pct=floor_pct, emit_keys=floor_keys,
@@ -508,7 +515,8 @@ def reward_spec_from_campaign(h5_path: str, *, floor_pct: float = 10.0,
                 f"reward_norms_json at a new file, or set reward_norms_overwrite: true.")
         warnings.warn(f"reward-norms cache {cache_json}: provenance changed but values are "
                       f"identical; reusing it unchanged")
-        return build_twobunch_reward_spec(cached[1], cached[2], objectives=objectives, **kwargs)
+        return build_twobunch_reward_spec(cached[1], cached[2], objectives=objectives,
+                                          observe_keys=observe_keys, **kwargs)
     if cache_json is not None:
         save_norms(norms, floors, cache_json, want)
-    return build_twobunch_reward_spec(norms, floors, objectives=objectives, **kwargs)
+    return build_twobunch_reward_spec(norms, floors, objectives=objectives, observe_keys=observe_keys, **kwargs)

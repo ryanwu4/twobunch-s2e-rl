@@ -30,7 +30,7 @@ def main() -> None:
     cfg = override(cfg, args)
     Path(cfg["params"]["general"]["logdir"]).mkdir(parents=True, exist_ok=True)
 
-    env_fn = build_env_fn(cfg, args.flow_ckpt)
+    env_fn = build_env_fn(cfg, args.flow_ckpt or cfg["params"]["diff_env"]["flow_ckpt"])
     algo = SHAC(cfg, env_fn=env_fn)
     if cfg["params"]["general"]["train"]:
         attach_csv_hook(algo, cfg["params"]["general"]["logdir"])

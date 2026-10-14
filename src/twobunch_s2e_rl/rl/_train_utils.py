@@ -24,7 +24,8 @@ from ..datagen.sweep_params import resolve_sweep_set
 
 def add_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--cfg", required=True, type=str)
-    p.add_argument("--flow-ckpt", required=True, type=str, help="TwoBunchFlow checkpoint (glob ok).")
+    p.add_argument("--flow-ckpt", default=None, type=str,
+                   help="TwoBunchFlow checkpoint (glob ok); default: cfg diff_env.flow_ckpt")
     p.add_argument("--campaign-h5", default=None, type=str, help="override cfg diff_env.campaign_h5")
     p.add_argument("--logdir", default=None, type=str)
     p.add_argument("--seed", default=None, type=int)
@@ -108,6 +109,7 @@ def build_reward_spec(de: dict):
     if objectives is not None:
         return reward_spec_from_campaign(
             de["campaign_h5"], cache_json=cache, objectives=objectives,
+            observe_keys=tuple(de.get("observe", ())),
             overwrite_cache=bool(de.get("reward_norms_overwrite", False)),
             floor_pct=de.get("floor_pct", 10.0),
             drive_floor_pct=de.get("drive_floor_pct"),
@@ -169,9 +171,12 @@ def _knob_box_bounds(de: dict):
 
 
 def build_env_fn(cfg: dict, flow_ckpt: str):
-    """Bind the flow + reward spec into TwoBunchFlowEnv so the trainer can call it with the
-    standard (num_envs, device, seed, episode_length, stochastic_init, ...) kwargs."""
+    """Bind the flow + reward spec into TwoBunchFlowEnv (or DeltaControlEnv when
+    diff_env.name says so) so the trainer can call it with the standard
+    (num_envs, device, seed, episode_length, stochastic_init, ...) kwargs."""
     de = cfg["params"]["diff_env"]
+    if de.get("name") == "DeltaControlEnv":
+        return build_delta_env_fn(cfg, flow_ckpt)
     spec = build_reward_spec(de)
     box_lo, box_hi = _knob_box_bounds(de)
     # latent RF drift: an `rf_drift` block (physical units) builds a per-knob normalized-std
@@ -197,6 +202,41 @@ def build_env_fn(cfg: dict, flow_ckpt: str):
         knob_box_lo=box_lo,
         knob_box_hi=box_hi,
     )
+
+
+def build_delta_env_fn(cfg: dict, flow_ckpt: str):
+    """DeltaControlEnv over a plant chosen by diff_env.plant:
+      - "flow": the flow's own observables at its treaty point (cloud-mode ground truth)
+    The plant's knob frame and baseline come from the flow (stored frame) + the knob table of
+    its sweep set (baseline values only)."""
+    from .delta_env import DeltaControlEnv
+    de = cfg["params"]["diff_env"]
+    spec = build_reward_spec(de)
+    ckpt = resolve_ckpt(flow_ckpt)
+    plant = de.get("plant", "flow")
+    if plant != "flow":
+        raise ValueError(f"unknown delta-env plant {plant!r}")
+    frame = flow_knob_space(TwoBunchFlow.load_from_checkpoint(ckpt, map_location="cpu"))
+    baseline = dict(resolve_sweep_set(de["baseline_set"])[3])
+    baseline.update(de.get("baseline_override", {}))
+    n_particles = int(de.get("n_particles", 512))
+
+    def make(num_envs, device="cuda:0", seed=0, episode_length=32, no_grad=False, **_):
+        flow = TwoBunchFlow.load_from_checkpoint(ckpt, map_location=device).to(device).eval()
+        for p in flow.parameters():
+            p.requires_grad_(False)
+        ms = de.get("measurement", {})
+        return DeltaControlEnv(
+            num_envs, device=device, seed=seed, episode_length=episode_length, no_grad=no_grad,
+            observe_fn=lambda k: flow.observables(k, n=n_particles),
+            knob_space=frame, baseline=baseline, controls=de["controls"], reward_spec=spec,
+            action_step=de["action_step"], start_box={k: tuple(v) for k, v in de["start_box"].items()},
+            context_sigma=de.get("context_sigma"), offset_sigma=de.get("offset_sigma"),
+            gain_halfwidth=float(de.get("gain_halfwidth", 0.2)),
+            scale_error_keys=tuple(ms.get("scale_error_keys", ())),
+            scale_error_halfwidth=float(ms.get("scale_error_halfwidth", 0.0)),
+            shot_noise=ms.get("shot_noise"), shots_per_step=int(ms.get("shots_per_step", 50)))
+    return make
 
 
 def attach_csv_hook(algo, logdir: str) -> None:

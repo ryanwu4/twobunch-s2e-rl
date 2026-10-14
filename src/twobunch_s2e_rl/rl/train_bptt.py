@@ -18,7 +18,8 @@ from pathlib import Path
 import yaml
 
 from .diffrl import BPTT
-from ._train_utils import add_args, attach_csv_hook, build_env_fn, override
+from ..artifacts import write_run_json
+from ._train_utils import add_args, attach_csv_hook, build_env_fn, override, resolve_ckpt
 
 
 def main() -> None:
@@ -28,12 +29,19 @@ def main() -> None:
     with open(args.cfg) as f:
         cfg = yaml.safe_load(f)
     cfg = override(cfg, args)
-    Path(cfg["params"]["general"]["logdir"]).mkdir(parents=True, exist_ok=True)
+    logdir = cfg["params"]["general"]["logdir"]
+    Path(logdir).mkdir(parents=True, exist_ok=True)
+    flow_ckpt = args.flow_ckpt or cfg["params"]["diff_env"].get("flow_ckpt")
+    if not flow_ckpt:
+        raise SystemExit("pass --flow-ckpt or set diff_env.flow_ckpt in the config")
 
-    env_fn = build_env_fn(cfg, args.flow_ckpt)
+    env_fn = build_env_fn(cfg, flow_ckpt)
     algo = BPTT(cfg, env_fn=env_fn)
     if cfg["params"]["general"]["train"]:
-        attach_csv_hook(algo, cfg["params"]["general"]["logdir"])
+        de = cfg["params"]["diff_env"]
+        write_run_json(logdir, "policy", cfg, parents=[resolve_ckpt(flow_ckpt), de["campaign_h5"]],
+                       flow_ckpt=resolve_ckpt(flow_ckpt), algo="BPTT")
+        attach_csv_hook(algo, logdir)
         algo.train()
     else:
         algo.play(cfg)
