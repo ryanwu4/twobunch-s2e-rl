@@ -1,4 +1,4 @@
-# v3 = v2 + transmissions reward-only (not observed) + hidden 1% Q2/Q1/Q0FF strength errors.
+# v3 = v2 + transmissions reward-only (not observed) + hidden 1% Q2/Q1/Q0FF strength errors + no Delta E obs.
 # Delta-only controller on L1/L2 phase, SCREEN mode: xtcav23 flow at XTCAVF -> Cheetah segment with
 # the TCAV at +/-22 MV -> DTOTR -> particle-space XTCAV features (valley energy gate + row correction; +/-V centroid
 # half-difference; transverse-spot blur included). Measurement realism: hidden streak-scale error
@@ -44,7 +44,7 @@ params:
     reward_norms_json: results/rl/_shared/norms/metric_norms_delta_xtcav23_screen_v2.json
     surv_T_min: 0.9
     surv_margin: 0.05
-    observe: [energy_difference, drive_charge_fraction]        # observed, not targeted
+    observe: [drive_charge_fraction]        # observed, not targeted (Delta E dropped: energy-axis dispersion uncalibrated, physics review #1)
     objectives:
       - {key: bunch_spacing, kind: target, weight: 1.0, goal: [5.0e-5, 4.0e-4]}
       - {key: drive_sigma_z, kind: target, weight: 0.5, goal: [5.0e-6, 2.0e-4]}

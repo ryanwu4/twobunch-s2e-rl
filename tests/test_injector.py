@@ -175,3 +175,11 @@ def test_tiny_impact_run_tags_and_records_arrival(tmp_path):
     P2, info2 = inj.injector_beam({}, tmp_path / "run", 2000, grid=8, l0af_reference=ref,
                                   template_dir=FACET2_IMPACT)
     assert info2["cache_key"] == info["cache_key"] and np.allclose(P2.t, P.t)
+
+
+def test_grid_spec_isotropic_and_anisotropic():
+    assert inj._grid(64) == (64, 64, 64) and inj._grid((48, 48, 128)) == (48, 48, 128)
+    assert inj._grid_record(64) == 64                      # isotropic: cache keys unchanged
+    assert inj._grid_record((48, 48, 128)) == [48, 48, 128]
+    with pytest.raises(ValueError):
+        inj._grid((32, 32))

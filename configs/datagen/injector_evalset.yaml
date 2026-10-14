@@ -5,8 +5,8 @@
 # Gives Bmad-truth sensitivity curves / partial derivatives per injector knob per linac point.
 name: injector_evalset
 output_dir: data/injector_evalset
-sweep_set: xtcav23_inj12
-linac_sweep_set: xtcav23
+sweep_set: xtcav23_l0b2_inj12
+linac_sweep_set: xtcav23_l0b2
 injector_sweep_set: inj12
 n_workers: 64
 

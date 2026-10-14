@@ -41,7 +41,7 @@ OUT = REPO / "data" / "injector_convergence_2026-10-14"
 RES = REPO / "results" / "injector_convergence_2026-10-14"
 CONFIGS = [(10_000, 16), (10_000, 32), (20_000, 16), (20_000, 32), (20_000, 48),
            (50_000, 32), (50_000, 48), (50_000, 64), (100_000, 32), (100_000, 48), (100_000, 64),
-           (100_000, 100)]
+           (100_000, 100), (100_000, (48, 48, 128))]   # last: anisotropic (finer Nz; physics review)
 POINTS = {"golden": {}, "timing+0.2ps": {"laser_timing_ps": 0.2}, "dfrac0.80": {"drive_fraction": 0.80},
           "delay+0.2ps": {"distgen:t_dist:dists:d2:avg_t:value": 9.2},
           "gunamp+0.25%": {"GUNF:rf_field_scale": "rel+0.0025"}}
@@ -76,10 +76,14 @@ def _l0af_ref():
     return inj.pin_l0af_reference(OUT / "l0af_reference.json", OUT / "l0af_autophase")
 
 
+def _gtag(grid):
+    return "x".join(map(str, grid)) if isinstance(grid, tuple) else str(grid)
+
+
 def _beam_dir(point, n, grid, ref):
     from twobunch_s2e_rl.sim import injector as inj
     key = inj.cache_key(inj.resolve_settings(_settings(point)), n, grid, ref)
-    return OUT / "beams" / f"N{n}_g{grid}" / key
+    return OUT / "beams" / f"N{n}_g{_gtag(grid)}" / key
 
 
 def impact_task(args):
@@ -115,7 +119,7 @@ def bmad_task(args):
     """Track one L0AFEND beam (or the golden h5) to XTCAVF, Bmad count = Impact-T count."""
     point, n, grid, linac = args
     n_bmad = n                       # golden_h5: the golden 5e5 beam downsampled to n
-    tag = (f"golden_h5_N{n}" if point == "golden_h5" else f"N{n}_g{grid}_{point}") + f"_{linac}"
+    tag = (f"golden_h5_N{n}" if point == "golden_h5" else f"N{n}_g{_gtag(grid)}_{point}") + f"_{linac}"
     jpath = OUT / "bmad" / f"{tag}.json"
     if jpath.exists():
         return tag, "skip"
@@ -124,7 +128,7 @@ def bmad_task(args):
     from twobunch_s2e_rl.datagen.sweep_params import resolve_sweep_set
     from twobunch_s2e_rl.sim.bmad import cloud_metrics, merged_settings, track
     qs, root, base, camp, tao = _tao(n_bmad)
-    rec = {"tag": tag, "point": point, "n_impact": n, "grid": grid, "n_bmad": n_bmad, "linac": linac}
+    rec = {"tag": tag, "point": point, "n_impact": n, "grid": _gtag(grid), "n_bmad": n_bmad, "linac": linac}
     try:
         scratch = Path(tao.activeFilePath).parent
         if point == "golden_h5":
@@ -179,7 +183,8 @@ def run(workers):
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "bmad").mkdir(exist_ok=True)
     _l0af_ref()                                       # pin once before the pool
-    impact_jobs = [(p, n, g) for (n, g) in sorted(CONFIGS, key=lambda c: -c[0] * c[1] ** 2)
+    cells = lambda g: g[0] * g[1] * g[2] if isinstance(g, tuple) else g ** 3
+    impact_jobs = [(p, n, g) for (n, g) in sorted(CONFIGS, key=lambda c: -c[0] * cells(c[1]))
                    for p in POINTS]                    # longest first
     done_beams = {}
     ctx = mp.get_context("spawn")
@@ -187,7 +192,7 @@ def run(workers):
         pend = [pool.apply_async(bmad_task, (("golden_h5", n, 0, lin),))
                 for n in sorted({c[0] for c in CONFIGS}) for lin in LINAC]
         for (p, n, g), ok, dt in pool.imap_unordered(impact_task, impact_jobs):
-            print(f"impact {p} N={n} grid={g}: {'ok' if ok else 'FAIL'} {dt:.0f} s", flush=True)
+            print(f"impact {p} N={n} grid={_gtag(g)}: {'ok' if ok else 'FAIL'} {dt:.0f} s", flush=True)
             done_beams.setdefault((n, g), set()).add(p if ok else None)
             if done_beams[(n, g)] >= set(POINTS):     # all points of this resolution done
                 pend += [pool.apply_async(bmad_task, ((q, n, g, lin),)) for q in POINTS for lin in LINAC]
@@ -203,14 +208,14 @@ def analyze():
         for p in POINTS:
             wd = _beam_dir(p, n, g, ref)
             for lin in LINAC:
-                j = OUT / "bmad" / f"N{n}_g{g}_{p}_{lin}.json"
+                j = OUT / "bmad" / f"N{n}_g{_gtag(g)}_{p}_{lin}.json"
                 if not (wd / "beam_L0AFEND.h5").exists() or not j.exists():
                     continue
                 b = json.loads(j.read_text())
                 if not b.get("ok"):
                     continue
                 info = json.loads((wd / "injector_info.json").read_text())
-                rows.append({"N": n, "grid": g, "point": p, "linac": lin, "impact_wall_s": info["wall_s"],
+                rows.append({"N": n, "grid": _gtag(g), "point": p, "linac": lin, "impact_wall_s": info["wall_s"],
                              "bmad_wall_s": b.get("bmad_wall_s"),
                              **{f"L0_{k}": v for k, v in l0afend_metrics(wd / "beam_L0AFEND.h5").items()},
                              **{f"X_{k}": v for k, v in b["truth"].items()}})

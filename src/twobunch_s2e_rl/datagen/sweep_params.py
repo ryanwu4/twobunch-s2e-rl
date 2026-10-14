@@ -315,15 +315,29 @@ INJECTOR_PARAMS = {
 INJECTOR_ACTIVE_KEYS = list(INJECTOR_PARAMS)[:6]
 INJECTOR_KEYS = list(INJECTOR_PARAMS)
 
+# L0B (Bmad-side; the injector's last S-band section after L0AFEND) as PASSIVE linac knobs of the
+# injector campaign (physics review: not context anywhere yet). Golden = the 2024-10-14 baseline yml
+# (phase -15 deg "by eye"; energy offset -2.259 MeV so the beam leaves L0B at 125 MeV). Box: phase
+# +-0.5 deg, amplitude +-0.25% of the 59.5 MeV L0B gain (+-149 keV). On the machine the DL10 energy
+# feedback likely trims L0B amplitude, so the amplitude knob is a conservative (unfed-back) range.
+_L0B_E = -2259313.0
+L0B_PARAMS = {
+    "L0BPhaseSet":     (-15.5,                 -14.5,                 -15.0),
+    "L0BEnergyOffset": (_L0B_E - 0.0025 * 59.5e6, _L0B_E + 0.0025 * 59.5e6, _L0B_E),
+}
+
 # Kept OUT of SWEEP_SETS (whose membership is pinned by tests and by every existing artifact):
 # injector-only sets, and concatenated linac + injector sets (keys = linac keys then injector keys).
-INJECTOR_SWEEP_SETS = {"inj12": INJECTOR_PARAMS}
-CONCAT_SWEEP_SETS = {"xtcav23_inj12": ("xtcav23", "inj12")}
+INJECTOR_SWEEP_SETS = {"inj12": INJECTOR_PARAMS, "l0b2": L0B_PARAMS}
+CONCAT_SWEEP_SETS = {"xtcav23_inj12": ("xtcav23", "inj12"),
+                     "xtcav23_l0b2": ("xtcav23", "l0b2"),                       # campaign linac knobs
+                     "xtcav23_l0b2_inj12": ("xtcav23", "l0b2", "inj12")}        # campaign frame
 
 
 # Readback-error-scale 1-sigma per knob (physical units): the hidden per-episode context jitter of
 # the delta controller (rl/delta_env.py) and the "controller region" linac draws of campaigns.
-SECTION_GAIN_EV = {"L1EnergyOffset": 210e6, "L2EnergyOffset": 4.165e9, "L3EnergyOffset": 5.5e9}
+SECTION_GAIN_EV = {"L0BEnergyOffset": 59.5e6, "L1EnergyOffset": 210e6, "L2EnergyOffset": 4.165e9,
+                   "L3EnergyOffset": 5.5e9}
 
 
 def readback_sigma(key: str, baseline: float) -> float:

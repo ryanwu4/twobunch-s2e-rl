@@ -12,8 +12,8 @@
 # Resumable: rerun the same command (finished rows / cached beams are skipped).
 name: injector_full
 output_dir: data/injector_full
-sweep_set: xtcav23_inj12
-linac_sweep_set: xtcav23
+sweep_set: xtcav23_l0b2_inj12
+linac_sweep_set: xtcav23_l0b2
 injector_sweep_set: inj12
 n_workers: 64
 

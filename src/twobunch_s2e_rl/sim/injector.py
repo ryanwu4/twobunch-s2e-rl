@@ -157,12 +157,27 @@ def split_settings(resolved: dict) -> tuple[dict, dict]:
     return impact, dg
 
 
-def cache_key(resolved: dict, n_particles: int, grid: int, l0af_reference: dict) -> str:
+def _grid(grid):
+    """Space-charge grid as (Nx, Ny, Nz): an int means isotropic (the campaign default); a
+    3-sequence gives an anisotropic grid (e.g. finer Nz, since one grid spans both pulses)."""
+    g = (int(grid),) * 3 if isinstance(grid, (int, np.integer)) else tuple(int(v) for v in grid)
+    if len(g) != 3:
+        raise ValueError(f"grid must be an int or (Nx, Ny, Nz), got {grid!r}")
+    return g
+
+
+def _grid_record(grid):
+    """JSON form: int when isotropic (so existing cache keys are unchanged), else [Nx, Ny, Nz]."""
+    g = _grid(grid)
+    return g[0] if len(set(g)) == 1 else list(g)
+
+
+def cache_key(resolved: dict, n_particles: int, grid, l0af_reference: dict) -> str:
     """Deterministic hash of everything that defines an injector beam."""
     blob = {
         "settings": {k: resolved[k] for k in sorted(resolved)},
         "n_particles": int(n_particles),
-        "grid": int(grid),
+        "grid": _grid_record(grid),
         "l0af_reference": {k: float(l0af_reference[k]) for k in sorted(l0af_reference)},
         "code_version": CODE_VERSION,
     }
@@ -268,13 +283,11 @@ def split_drive_witness(P):
 # L0AF reference (pinned)
 # ---------------------------------------------------------------------------------------
 
-def _make_impact(inputs: Path, impact_settings: dict, grid: int, command=None):
+def _make_impact(inputs: Path, impact_settings: dict, grid, command=None):
     from impact import Impact  # noqa: PLC0415
 
     I = Impact.from_yaml(str(inputs / IMPACT_YAML))
-    I["header:Nx"] = int(grid)
-    I["header:Ny"] = int(grid)
-    I["header:Nz"] = int(grid)
+    I["header:Nx"], I["header:Ny"], I["header:Nz"] = _grid(grid)
     I["stop_1:s"] = STOP_S_M
     for key, val in impact_settings.items():
         I[key] = val
@@ -340,7 +353,7 @@ def _generate(inputs: Path, resolved: dict, n_particles: int):
     return G.particles
 
 
-def injector_beam(settings: dict | None, workdir, n_particles: int, grid: int = 32,
+def injector_beam(settings: dict | None, workdir, n_particles: int, grid=32,
                   l0af_reference: dict | None = None, template_dir=None, command=None):
     """Run distgen + Impact-T to L0AFEND for `settings` (see GOLDEN_SETTINGS / DERIVED_KEYS).
 
@@ -413,7 +426,7 @@ def injector_beam(settings: dict | None, workdir, n_particles: int, grid: int = 
         "l0af_reference": l0af_reference,
         "l0af_phase_used_deg": float(I["L0AF_phase"]["theta0_deg"]),
         "n_particles": int(n_particles),
-        "grid": int(grid),
+        "grid": _grid_record(grid),
         "n_cathode_drive": int(is_drive_cath.sum()),
         "n_cathode_witness": int((~is_drive_cath).sum()),
         "n_ambiguous": ambiguous_count(P_cath.t, resolved),
