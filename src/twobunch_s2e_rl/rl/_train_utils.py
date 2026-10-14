@@ -17,6 +17,7 @@ import numpy as np
 from ..artifacts import flow_knob_space, resolve_ckpt  # resolve_ckpt re-exported for eval/scripts
 from ..surrogate.model import TwoBunchFlow
 from .diff_env import TwoBunchFlowEnv, rf_drift_std_vector
+from .plants import flow_plant, xtcav_screen_plant
 from .reward import reward_spec_from_campaign
 from ..datagen.paths import repo_root
 from ..datagen.sweep_params import resolve_sweep_set
@@ -207,6 +208,8 @@ def build_env_fn(cfg: dict, flow_ckpt: str):
 def build_delta_env_fn(cfg: dict, flow_ckpt: str):
     """DeltaControlEnv over a plant chosen by diff_env.plant:
       - "flow": the flow's own observables at its treaty point (cloud-mode ground truth)
+      - "xtcav_screen": flow at XTCAVF + Cheetah TCAV +/-V to DTOTR, particle-space screen
+        features (screen mode; ground-truth twins kept as <key>_cloud)
     The plant's knob frame and baseline come from the flow (stored frame) + the knob table of
     its sweep set (baseline values only)."""
     from .delta_env import DeltaControlEnv
@@ -214,7 +217,7 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
     spec = build_reward_spec(de)
     ckpt = resolve_ckpt(flow_ckpt)
     plant = de.get("plant", "flow")
-    if plant != "flow":
+    if plant not in ("flow", "xtcav_screen"):
         raise ValueError(f"unknown delta-env plant {plant!r}")
     frame = flow_knob_space(TwoBunchFlow.load_from_checkpoint(ckpt, map_location="cpu"))
     baseline = dict(resolve_sweep_set(de["baseline_set"])[3])
@@ -226,9 +229,18 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
         for p in flow.parameters():
             p.requires_grad_(False)
         ms = de.get("measurement", {})
+        if plant == "flow":
+            observe_fn = flow_plant(flow, n_particles)
+        else:
+            sc = de.get("screen", {})
+            observe_fn = xtcav_screen_plant(
+                flow, n_particles, spec_path=str(repo_root() / sc.get("spec", "configs/segment/segment_baseline.json")),
+                norm_json=str(repo_root() / de["campaign_h5"]).replace(".h5", "_norm.json"), device=device,
+                tdc_voltage_V=float(sc.get("tdc_voltage_V", 22e6)), split=sc.get("split", "zlobe"),
+                resolution_m=float(sc.get("extra_resolution_m", 0.0)))
         return DeltaControlEnv(
             num_envs, device=device, seed=seed, episode_length=episode_length, no_grad=no_grad,
-            observe_fn=lambda k: flow.observables(k, n=n_particles),
+            observe_fn=observe_fn, fallback_keys=tuple(ms.get("fallback_keys", ())),
             knob_space=frame, baseline=baseline, controls=de["controls"], reward_spec=spec,
             action_step=de["action_step"], start_box={k: tuple(v) for k, v in de["start_box"].items()},
             context_sigma=de.get("context_sigma"), offset_sigma=de.get("offset_sigma"),

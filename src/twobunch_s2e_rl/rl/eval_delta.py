@@ -52,8 +52,12 @@ def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, o
     report = {"logdir": str(logdir), "policy": policy, "n_episodes": n_episodes, "seed": seed,
               "controls": env.controls, "targets": {}}
     for key, gkey, _ in env._goal_terms:
-        meas, true, goal = npy[key], npy[f"{key}_true"], npy[gkey]       # (T, B)
-        goal_true = goal / scale if key in env._scale_keys else goal
+        meas, goal = npy[key], npy[gkey]                                  # (T, B)
+        if f"{key}_cloud" in npy:                     # screen mode: true beam vs true goal point
+            true, goal_true = npy[f"{key}_cloud"], npy[f"{gkey}_cloud"]
+        else:
+            true = npy[f"{key}_true"]
+            goal_true = goal / scale if key in env._scale_keys else goal
         e_meas = _err(meas, goal, key)
         e_true = _err(true, goal_true, key)
         tol = TOL.get(key, ("rel", 0.1))[1]
@@ -72,6 +76,9 @@ def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, o
                                        if (settled >= 0).any() else None),
         }
     report["survival"] = {k: float(np.median(npy[k][-1])) for k in ("T_drive", "T_witness") if k in npy}
+    if "screen_valid" in npy:
+        report["screen_valid_frac"] = {"start": float(npy["screen_valid"][0].mean()),
+                                       "final": float(npy["screen_valid"][-1].mean())}
     report["reward_final_median"] = float(np.median(npy["reward"][-1]))
 
     out = Path(out) if out else repo_root() / "results" / "rl" / logdir.name / "delta_eval"

@@ -83,6 +83,7 @@ class DeltaControlEnv:
         scale_error_halfwidth: float = 0.0,
         shot_noise: dict[str, float] | None = None,      # per-feature single-shot 1-sigma
         shots_per_step: int = 50,
+        fallback_keys: tuple[str, ...] = (),   # screen features whose reward falls back to the cloud
     ):
         del MM_caching_frequency, render, stochastic_init   # starts are always random in start_box
         self.num_envs, self.episode_length = int(num_envs), int(episode_length)
@@ -115,6 +116,7 @@ class DeltaControlEnv:
         self._scale_keys, self._scale_hw = tuple(scale_error_keys), float(scale_error_halfwidth)
         self._shot = dict(shot_noise or {})
         self._m = int(shots_per_step)
+        self._fallback = tuple(fallback_keys)
 
         # goals: one per goal-conditioned target (metric key -> goal key), achievable sampling
         self._goal_terms = [(t.key, t.goal_key, t) for t in reward_spec.terms if t.goal_key]
@@ -132,6 +134,7 @@ class DeltaControlEnv:
         self._scale = torch.ones(B, **dev)
         self._goals = {g: z(B) for _, g, _ in self._goal_terms}
         self._goal_ctrl = z(B, n_ctrl)                            # true control point of the goal
+        self._goals_cloud = {g: z(B) for _, g, _ in self._goal_terms}   # ground truth at that point
         self._err, self._err_prev = z(B, n_goal), z(B, n_goal)
         self._last_action = z(B, n_ctrl)
         self._last_extra = z(B, reward_spec.n_obs_extra)
@@ -155,7 +158,7 @@ class DeltaControlEnv:
         """Evaluate the plant at (context + true controls); return measured features + `_true`."""
         knobs = self._context.index_copy(1, self._ci, true_ctrl)
         obs = self._observe_fn(self._ks.normalize(knobs))
-        for k in list(obs):
+        for k in [k for k in obs if not k.endswith("_cloud")]:
             obs[f"{k}_true"] = obs[k]
         for k in self._scale_keys:                     # streak-calibration error
             obs[k] = obs[k] * self._scale
@@ -171,10 +174,25 @@ class DeltaControlEnv:
                 for key, g, t in self._goal_terms]
         return torch.stack(cols, -1) if cols else torch.zeros(self.num_envs, 0, device=self.device)
 
+    def _reward_view(self, obs: dict) -> dict:
+        """Where a screen feature is invalid, the REWARD uses its ground-truth cloud twin
+        (privileged, training-only: never in the obs) so the policy keeps a gradient out of invalid
+        regions; the fixed penalty is a `screen_valid` hinge objective in the config."""
+        if not self._fallback or "screen_valid" not in obs:
+            return obs
+        ok = obs["screen_valid"] > 0.5
+        view = dict(obs)
+        for k in self._fallback:
+            view[k] = torch.where(ok, obs[k], obs[f"{k}_cloud"])
+        return view
+
     def _evaluate(self, cmd: torch.Tensor):
         obs = self._plant(self.true_controls(cmd), noise=True)
         obs.update(self._goals)
-        reward, achieved = self._spec(obs)
+        reward, achieved = self._spec(self._reward_view(obs))
+        achieved.update({k: v.detach() for k, v in obs.items() if k.endswith("_cloud")})
+        if "screen_valid" in obs:
+            achieved["screen_valid"] = obs["screen_valid"].detach()
         achieved.update({k: v.detach() for k, v in obs.items() if k.endswith("_true")})
         achieved["true_controls"] = self.true_controls(cmd).detach()
         extra = self._spec.obs_scaled(obs).detach()
@@ -222,8 +240,11 @@ class DeltaControlEnv:
             # achievable goals: measured features at a random true control point (noise-free)
             self._goal_ctrl = torch.where(mc, goal_ctrl, self._goal_ctrl)
             g_obs = self._plant(goal_ctrl, noise=False)
+            g_view = self._reward_view(g_obs)          # invalid goal reading -> cloud value
             for key, g, _ in self._goal_terms:
-                self._goals[g] = torch.where(m, g_obs[key].detach(), self._goals[g])
+                self._goals[g] = torch.where(m, g_view[key].detach(), self._goals[g])
+                truth = g_obs.get(f"{key}_cloud", g_obs[f"{key}_true"])
+                self._goals_cloud[g] = torch.where(m, truth.detach(), self._goals_cloud[g])
             _, extra, err, achieved = self._evaluate(self._cmd.detach())
         self._last_extra = torch.where(mc, extra, self._last_extra)
         self._err = torch.where(mc, err, self._err)
@@ -260,6 +281,7 @@ class DeltaControlEnv:
         obs_pre = self._compute_obs().detach()
         achieved_info = {k: v.clone() for k, v in achieved.items()}
         achieved_info.update({g: v.clone() for g, v in self._goals.items()})
+        achieved_info.update({f"{g}_cloud": v.clone() for g, v in self._goals_cloud.items()})
         done_ids = done.nonzero(as_tuple=False).squeeze(-1)
         if done_ids.numel() > 0:
             self.reset(done_ids)
