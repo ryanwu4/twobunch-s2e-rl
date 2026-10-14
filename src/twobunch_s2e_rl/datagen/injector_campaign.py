@@ -119,7 +119,7 @@ def build_manifest(cfg) -> list[dict]:
         return json.loads(path.read_text())
     rows = make_rows(cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(rows, indent=1))
+    atomic_write(path, json.dumps(rows, indent=1))
     return rows
 
 
@@ -178,6 +178,7 @@ def make_rows(cfg) -> list[dict]:
     for s_i, knobs in enumerate(shared):
         for tag, inj in inj_pts:
             add("crossed", "impact", inj, knobs, s_i, tag)
+            rows[-1]["linac_region"] = "shared"
     lid = len(shared)
     # nested: k independent linac draws per LHS injector point
     k = int(des["linac"].get("per_injector_lhs", 0))
@@ -208,10 +209,12 @@ def make_rows(cfg) -> list[dict]:
         for j in sorted(pick):
             r = nested[j]
             add("paired_golden", "impact", golden, r["knobs"], r["linac_id"], "golden")
+            rows[-1]["linac_region"] = r["linac_region"]
     # bridge: the golden h5 beam at the shared linac points
     if des.get("bridge", False):
         for s_i, knobs in enumerate(shared):
             add("bridge", "golden_h5", golden, knobs, s_i, "golden_h5")
+            rows[-1]["linac_region"] = "shared"
     return rows
 
 
@@ -224,6 +227,26 @@ def injector_points(rows) -> dict:
     return out
 
 
+def atomic_write(path, text: str) -> None:
+    """Write via a temp file + rename, so a crash never leaves a truncated json behind."""
+    path = Path(path)
+    tmp = path.with_name(f".{path.name}.tmp{os.getpid()}")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+
+
+def config_hash(cfg) -> str:
+    """Hash of everything that changes the DATA (n_workers excluded)."""
+    c = {k: v for k, v in cfg.items() if k != "n_workers"}
+    return hashlib.sha256(json.dumps(c, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def bmad_seed(cfg, row) -> int:
+    """Tao random seed of a row (radiation fluctuations): fixed per row and SHARED by the rows of a
+    pair (same linac_id), so paired differences cancel the radiation draws exactly."""
+    return int(cfg["design"]["seed"]) * 10007 + int(row["linac_id"]) + 1
+
+
 def absolute_time_shift(info: dict, ref_info: dict) -> float:
     """Seconds to ADD to a centred injector beam so its <t> keeps the shift vs the golden beam."""
     return float(info["mean_t_l0afend_s"]) - float(ref_info["mean_t_l0afend_s"])
@@ -234,11 +257,21 @@ def row_json_path(out_dir, row) -> Path:
     return Path(out_dir) / f"{stem}_{row['idx']:05d}.json"
 
 
-def _is_done(path) -> bool:
+MAX_ATTEMPTS = 3
+
+
+def _is_done(path, retry_failed: bool = False) -> bool:
+    """A row is done when its json records an outcome; with retry_failed, a failed row is retried
+    until it has MAX_ATTEMPTS recorded attempts."""
     try:
-        return "success" in json.loads(Path(path).read_text())
+        d = json.loads(Path(path).read_text())
     except (OSError, json.JSONDecodeError):
         return False
+    if "success" not in d:
+        return False
+    if retry_failed and not d["success"]:
+        return int(d.get("attempts", 1)) >= MAX_ATTEMPTS
+    return True
 
 
 # ---------------------------------------------------------------------------------------
@@ -403,10 +436,17 @@ def bmad_task(args):
               "fixed_overrides": _CFG.get("fixed_overrides", {}),
               "num_macro_particles": n, "csrTF": _CFG["csrTF"],
               "transverseWakes": _CFG.get("transverseWakes", False),
-              "pid": os.getpid(), "timestamp": time.time()}
+              "pid": os.getpid(), "timestamp": time.time(),
+              "bmad_random_seed": bmad_seed(_CFG, row), "git_hash": _CFG.get("_git_hash")}
+    try:
+        prev = json.loads(jpath.read_text())
+        result["attempts"] = int(prev.get("attempts", 1)) + 1
+    except (OSError, json.JSONDecodeError):
+        result["attempts"] = 1
     for attempt in range(2):
         try:
             tao = _get_tao()
+            tao.cmd(f"set global random_seed = {result['bmad_random_seed']}")
             scratch = Path(tao.activeFilePath).parent
             if row["beam"] == "golden_h5":
                 src = golden_downsample(n, int(_CFG["design"]["seed"]))
@@ -432,16 +472,20 @@ def bmad_task(args):
             result["injected_charge_nC"] = {
                 "drive": float(np.sum(P_in.weight[P_in.weight == w[-1]])) * 1e9,
                 "witness": float(np.sum(P_in.weight[P_in.weight == w[0]])) * 1e9}
-            # equal counts -> random.sample is a pure permutation (no downsample)
-            modifyAndSaveInputBeam(str(src), numMacroParticles=n, timeCenterTF=centre,
-                                   outputBeamFilePath=tao.activeFilePath)
+            # no downsample when the counts already match (avoids the unseeded random.sample
+            # permutation, and a loss before L0AFEND no longer fails the row: n_in = len(P_in))
+            n_in = len(P_in.x)
+            modifyAndSaveInputBeam(str(src), numMacroParticles=None if n_in <= n else n,
+                                   timeCenterTF=centre, outputBeamFilePath=tao.activeFilePath)
+            n_in = min(n_in, n)
+            result["n_in"] = n_in
             if row["beam"] != "golden_h5":
                 os.remove(src)
             merged = merged_settings(_BASELINE, _CFG.get("fixed_overrides", {}), row["knobs"])
             t0 = time.perf_counter()
             stem = jpath.with_suffix("")
             rec = track(qs, tao, facet2_root(), merged, _CFG.get("treaty_points", TREATY_POINTS),
-                        n_in=n, save_beams_at=_CFG.get("save_beams_at", ["XTCAVF"]),
+                        n_in=n_in, save_beams_at=_CFG.get("save_beams_at", ["XTCAVF"]),
                         out_prefix=str(stem))
             result["wall_s"] = time.perf_counter() - t0
             result.update(rec)
@@ -452,7 +496,7 @@ def bmad_task(args):
             result["success"] = False
             result["error"] = f"attempt {attempt}: {traceback.format_exc()}"
             _TAO = None
-    jpath.write_text(json.dumps(result, indent=2, default=float))
+    atomic_write(jpath, json.dumps(result, indent=2, default=float))
     return row["idx"], result["success"], result.get("wall_s")
 
 
@@ -460,15 +504,75 @@ def bmad_task(args):
 # Driver
 # ---------------------------------------------------------------------------------------
 
-def run(cfg, workers: int):
+def software_versions() -> dict:
+    import importlib.metadata as md
+    import shutil as sh
+    v = {}
+    for pkg in ("pytao", "lume-impact", "distgen", "openpmd-beamphysics", "numpy", "torch"):
+        try:
+            v[pkg] = md.version(pkg)
+        except md.PackageNotFoundError:
+            v[pkg] = None
+    exe = sh.which("ImpactTexe")
+    v["ImpactTexe"] = {"path": exe, "sha256": _sha(exe) if exe else None}
+    v["conda_prefix"] = os.environ.get("CONDA_PREFIX") or sys.prefix
+    return v
+
+
+def _check_resume(cfg, out: Path, force: bool) -> None:
+    """Refuse to resume a campaign whose data-defining config changed (mixed fidelities)."""
+    meta = out / "manifest_meta.json"
+    h = config_hash(cfg)
+    if meta.exists():
+        old = json.loads(meta.read_text()).get("config_hash")
+        if old != h and not force:
+            raise SystemExit(f"{out}: config changed since this campaign started ({old[:12]} -> "
+                             f"{h[:12]}); refusing to mix fidelities (--force-resume to override)")
+    else:
+        atomic_write(meta, json.dumps({"config_hash": h, "config": cfg}, indent=1, default=str))
+
+
+def _lock(out: Path) -> Path:
+    lock = out / "RUNNING.lock"
+    if lock.exists():
+        pid = int(lock.read_text().split()[0] or 0)
+        try:
+            os.kill(pid, 0)
+            raise SystemExit(f"{out} is already being run by pid {pid} ({lock})")
+        except ProcessLookupError:
+            pass                                          # stale lock from a dead run
+    lock.write_text(f"{os.getpid()} {time.time()}\n")
+    return lock
+
+
+def run(cfg, workers: int, retry_failed: bool = False, force_resume: bool = False,
+        idle_timeout_s: float = 3 * 3600):
     from ..sim import injector as sim_inj
+    from ..artifacts import facet2_s2e_hash, git_state
     out = Path(cfg["output_dir"])
     out.mkdir(parents=True, exist_ok=True)
+    _check_resume(cfg, out, force_resume)
+    lock = _lock(out)
+    gs = git_state()
+    with open(out / "runs.jsonl", "a") as f:                    # one provenance entry per launch
+        f.write(json.dumps({"start": time.time(), "pid": os.getpid(), "workers": workers,
+                            "retry_failed": retry_failed, **gs,
+                            "facet2_s2e": {"hash": facet2_s2e_hash(),
+                                           "dirty": git_state(facet2_root())["git_dirty"]},
+                            "versions": software_versions()}, default=str) + "\n")
+    cfg = {**cfg, "_git_hash": gs.get("git_hash")}
+    try:
+        _run(cfg, workers, out, retry_failed, idle_timeout_s, sim_inj)
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _run(cfg, workers, out, retry_failed, idle_timeout_s, sim_inj):
     rows = build_manifest(cfg)
     ref = sim_inj.pin_l0af_reference(out / "l0af_reference.json", out / "l0af_autophase")
     golden_key = json.dumps(injector_golden(resolve_sweep_set(cfg["injector_sweep_set"])[0]),
                             sort_keys=True)
-    todo = [r for r in rows if not _is_done(row_json_path(out, r))]
+    todo = [r for r in rows if not _is_done(row_json_path(out, r), retry_failed)]
     points = injector_points(rows)
     points.setdefault(golden_key, json.loads(golden_key))     # reference beam always needed
     _init_worker(cfg)                                          # parent uses _beam_dir too
@@ -486,7 +590,7 @@ def run(cfg, workers: int):
         failed = set()
         for k, p in need.items():
             pool.apply_async(impact_task, ((p, ref),), callback=lambda r: events.put(("impact", r)),
-                             error_callback=lambda e: events.put(("crash", e)))
+                             error_callback=lambda e, k=k: events.put(("impact_crash", (k, e))))
         pending = {r["idx"]: r for r in todo}
         submitted = set()
         n_done = n_fail = 0
@@ -504,7 +608,7 @@ def run(cfg, workers: int):
                     submitted.add(idx)
                     pool.apply_async(bmad_task, ((r, ref, ref_info),),
                                      callback=lambda res: events.put(("bmad", res)),
-                                     error_callback=lambda e: events.put(("crash", e)))
+                                     error_callback=lambda e, idx=idx: events.put(("crash", (idx, e))))
                 elif key in failed or (golden_key in failed):
                     submitted.add(idx)
                     pending.pop(idx)
@@ -512,10 +616,27 @@ def run(cfg, workers: int):
 
         submit_ready()
         while pending:
-            kind, res = events.get()
+            try:
+                kind, res = events.get(timeout=idle_timeout_s)
+            except queue.Empty:
+                # a worker died without a callback (segfault / OOM kill loses the task): exit, a
+                # rerun resumes exactly the missing rows
+                print(f"  [stall] nothing finished for {idle_timeout_s / 3600:.1f} h; "
+                      f"{len(pending)} rows pending -> exiting (rerun to resume)", flush=True)
+                break
             el = (time.perf_counter() - t_start) / 60
-            if kind == "crash":
-                print(f"  [crash] {res!r}", flush=True)
+            if kind == "crash":                       # raised outside bmad_task's own try
+                idx, e = res
+                pending.pop(idx, None)
+                n_done += 1
+                n_fail += 1
+                print(f"  [crash] idx={idx:05d} {e!r}", flush=True)
+                continue
+            if kind == "impact_crash":
+                k, e = res
+                failed.add(k)
+                print(f"  [crash] impact {e!r}", flush=True)
+                submit_ready()
                 continue
             if kind == "impact":
                 key, ok, wall, info = res
@@ -544,6 +665,10 @@ def main():
     ap.add_argument("config")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--retry-failed", action="store_true",
+                    help=f"rerun rows whose json records a failure (up to {MAX_ATTEMPTS} attempts)")
+    ap.add_argument("--force-resume", action="store_true",
+                    help="resume although the data-defining config changed (mixes fidelities!)")
     a = ap.parse_args()
     cfg = load_cfg(a.config)
     workers = min(int(a.workers or cfg["n_workers"]), MAX_WORKERS)
@@ -553,7 +678,7 @@ def main():
         print(f"{len(rows)} rows; blocks {dict(Counter(r['block'] for r in rows))}; "
               f"{len(injector_points(rows))} Impact-T beams")
         return
-    run(cfg, workers)
+    run(cfg, workers, retry_failed=a.retry_failed, force_resume=a.force_resume)
 
 
 if __name__ == "__main__":

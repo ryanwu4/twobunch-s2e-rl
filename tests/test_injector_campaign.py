@@ -2,6 +2,7 @@
 campaign.json, and how injector campaigns embed / merge with golden-beam campaigns in preprocess.
 Pure (no Impact-T / Bmad): synthetic sample jsons, feasibility-only rows."""
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -148,7 +149,8 @@ FIXED = {"Q19851kG": -63.76, "trackEnd": "PENT"}
 
 def _write_samples(d, rows, q_in=False):
     for r in rows:
-        rec = {"idx": r["idx"], "knobs": r["knobs"], "success": True, "specs": {"XTCAVF": {}}}
+        rec = {"idx": r["idx"], "knobs": r["knobs"], "success": True,
+               "specs": {"XTCAVF": {}, "BEGBC20": {"PDrive_charge_nC": 1.2, "PWitness_charge_nC": 0.4}}}
         if q_in:
             rec["injected_charge_nC"] = {"drive": 1.2 * r["knobs"].get("drive_fraction", 0.75) / 0.75,
                                          "witness": 0.4}
@@ -189,10 +191,11 @@ def _injector_campaign(root, name="inj", grid=64, n=4):
     return d, rec
 
 
-def _run(root, subdir, sweep_set, cjs=None, allow_drop=()):
+def _run(root, subdir, sweep_set, cjs=None, allow_drop=(), transmission="per_sample"):
     out = root / "out.h5"
     preprocess(subdir=subdir, p=16, sweep_set=sweep_set, treaty_point="XTCAVF", out=str(out),
-               verbose=False, data_root=root, campaign_jsons=cjs, allow_drop=allow_drop)
+               verbose=False, data_root=root, campaign_jsons=cjs, allow_drop=allow_drop,
+               transmission=transmission)
     with h5py.File(out) as h:
         return {k: h[k][...] for k in h}
 
@@ -246,3 +249,27 @@ def test_knob_drop_rule_for_injector_knobs(tmp_path):
         _run(tmp_path, "inj", "xtcav23")
     H = _run(tmp_path, "inj", "xtcav23", allow_drop=INJECTOR_KEYS)   # explicit marginalization
     assert H["knobs"].shape == (4, 23)
+
+
+def test_resume_guard_lock_retry_and_pair_seeds(tmp_path):
+    cfg = _cfg(tmp_path)
+    out = Path(cfg["output_dir"]); out.mkdir(parents=True)
+    ic._check_resume(cfg, out, force=False)                       # first launch records the hash
+    ic._check_resume({**cfg, "n_workers": 64}, out, force=False)  # worker count is not data
+    with pytest.raises(SystemExit, match="config changed"):
+        ic._check_resume({**cfg, "injector": {**cfg["injector"], "grid": 48}}, out, force=False)
+    lock = ic._lock(out)
+    with pytest.raises(SystemExit, match="already being run"):
+        ic._lock(out)
+    lock.unlink()
+    j = out / "sample_00000.json"
+    j.write_text(json.dumps({"success": False, "attempts": 1}))
+    assert ic._is_done(j) and not ic._is_done(j, retry_failed=True)
+    j.write_text(json.dumps({"success": False, "attempts": ic.MAX_ATTEMPTS}))
+    assert ic._is_done(j, retry_failed=True)
+    rows = ic.make_rows(cfg)
+    for p in (r for r in rows if r["block"] == "paired_golden"):
+        nested = next(r for r in rows if r["block"] == "nested" and r["linac_id"] == p["linac_id"])
+        assert ic.bmad_seed(cfg, p) == ic.bmad_seed(cfg, nested)          # pair shares radiation draws
+        assert p["linac_region"] == nested["linac_region"]
+    assert all("linac_region" in r for r in rows)

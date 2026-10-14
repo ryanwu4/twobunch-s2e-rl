@@ -32,6 +32,9 @@ import yaml
 def check_knob_frame(state: dict, norm: dict, ckpt) -> None:
     """A warm start must condition in the processed table's knob frame (else the inputs are
     silently re-scaled)."""
+    keys = state.get("_knob_keys")
+    if keys is not None and list(keys) != list(norm.get("knob_keys", keys)):
+        raise SystemExit(f"{ckpt}: knob names differ from the processed table")
     lo, hi = state["knob_low"].numpy(), state["knob_high"].numpy()
     if lo.shape[0] != len(norm["knob_low"]) or not (
             np.allclose(lo, norm["knob_low"], rtol=1e-6, atol=0) and
@@ -113,7 +116,8 @@ def main():
                                 num_workers=args.num_workers, scaler=scaler, split=args.split)
     dm.setup()
     if init_state is not None:
-        check_knob_frame(init_state, dm.norm, ck)
+        hp = torch.load(ck, map_location="cpu", weights_only=False).get("hyper_parameters", {})
+        check_knob_frame({**init_state, "_knob_keys": hp.get("knob_keys")}, dm.norm, ck)
     Path(args.out).mkdir(parents=True, exist_ok=True)
     (Path(args.out) / "norm.json").write_text(json.dumps(dm.norm, indent=2))   # plant charges etc.
     bunches = {"both": (0, 1), "drive": (0,), "witness": (1,)}[args.bunches]
@@ -126,7 +130,9 @@ def main():
     if init_state is not None:
         # warm-start weights only (new hparams + fresh optimizer/LR schedule); not a full resume
         missing, unexpected = model.load_state_dict(init_state, strict=False)
-        print(f"warm-started weights from {ck} (missing={len(missing)}, unexpected={len(unexpected)})")
+        if missing or unexpected:
+            raise SystemExit(f"warm start from {ck} incomplete: missing={missing} unexpected={unexpected}")
+        print(f"warm-started all weights from {ck}")
 
     ckpt = ModelCheckpoint(dirpath=f"{args.out}/checkpoints", monitor="val_loss",
                            mode="min", save_top_k=1,

@@ -211,8 +211,11 @@ def flow_norm_json(ckpt, campaign_h5) -> str:
     """The processed norm the flow was TRAINED on (train.py writes <out>/norm.json next to
     <out>/checkpoints/): full charges etc. must come from it, not from the reward campaign. Older
     checkpoints have none -> the reward campaign's norm (they were trained on it)."""
-    own = Path(ckpt).resolve().parent.parent / "norm.json"
-    return str(own) if own.exists() else str(campaign_h5).replace(".h5", "_norm.json")
+    here = Path(ckpt).resolve().parent
+    for own in (here / "norm.json", here.parent / "norm.json"):     # <out>/checkpoints/x.ckpt or <dir>/x.ckpt
+        if own.exists():
+            return str(own)
+    return str(campaign_h5).replace(".h5", "_norm.json")
 
 
 def build_delta_env_fn(cfg: dict, flow_ckpt: str):

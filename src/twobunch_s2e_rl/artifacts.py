@@ -57,12 +57,17 @@ def _git(*args, cwd=None) -> str | None:
 
 def git_state(path=None) -> dict:
     path = str(path or repo_root())
+    # tracked changes only: untracked result folders don't change the code that ran
     return {"git_hash": _git("rev-parse", "HEAD", cwd=path),
-            "git_dirty": bool(_git("status", "--porcelain", cwd=path))}
+            "git_dirty": bool(_git("status", "--porcelain", "--untracked-files=no", cwd=path))}
 
 
 def facet2_s2e_hash() -> str | None:
-    root = repo_root().parent / "FACET2-S2E"
+    from .datagen.paths import facet2_root
+    try:
+        root = Path(facet2_root())
+    except Exception:  # noqa: BLE001 - no checkout configured
+        return None
     return _git("rev-parse", "HEAD", cwd=root) if root.exists() else None
 
 

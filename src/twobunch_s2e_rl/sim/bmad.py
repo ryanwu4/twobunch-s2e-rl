@@ -45,7 +45,15 @@ def track(qs, tao, s2e_root, settings: dict, points, *, n_in: int, save_beams_at
             P.write(f"{out_prefix}_{ele}.h5")
         specs = {"n_live_total": len(P.x), "transmission_total": len(P.x) / n_in}
         if len(P.x):
-            specs["sigma_z_rms_total"] = float(np.std(P.z))          # what a BLEN monitor integrates
+            # whole-beam moments (a BPM reads the charge-weighted centroid; mean energy = what the
+            # energy BPMs / feedbacks see); sigma_z_rms_total is NOT the BLEN signal (coherent
+            # radiation ~ form factors of both bunches) -- save beams at the BLEN points for that
+            w = np.asarray(P.weight, float)
+            specs["sigma_z_rms_total"] = float(np.std(P.z))
+            specs["mean_energy_eV"] = float(np.average(P.energy, weights=w))
+            specs["mean_x_m"] = float(np.average(P.x, weights=w))
+            specs["mean_y_m"] = float(np.average(P.y, weights=w))
+            specs["charge_C"] = float(w.sum())
         if len(np.unique(P.weight)) == 2:
             PDrive, PWitness = qs.getDriverAndWitness(P)
             specs["n_live_drive"] = len(PDrive.x)

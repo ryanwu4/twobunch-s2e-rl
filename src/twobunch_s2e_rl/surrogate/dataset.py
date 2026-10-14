@@ -73,6 +73,7 @@ class TwoBunchFlowDataset(Dataset):
                 groups = np.asarray(h["group"][...])
         # split groups: rows that must stay on the same side of train/val (preprocess `group`);
         # default = every row its own group (plain random split, as before)
+        self.has_groups = groups is not None
         self.groups = groups if groups is not None else np.arange(len(knobs))
 
         lo = np.array(norm["knob_low"], np.float32)
@@ -128,6 +129,8 @@ class TwoBunchFlowDataModule(L.LightningDataModule):
                 self.full, [n_train, n_val],
                 generator=torch.Generator().manual_seed(self.hparams.split_seed))
         elif self.hparams.split == "group":
+            if not self.full.has_groups:
+                raise ValueError(f"{self.hparams.processed_h5} has no 'group' column (re-run preprocess)")
             tr, va = group_split(self.full.groups, self.hparams.val_fraction, self.hparams.split_seed)
             self.train, self.val = Subset(self.full, tr), Subset(self.full, va)
         else:

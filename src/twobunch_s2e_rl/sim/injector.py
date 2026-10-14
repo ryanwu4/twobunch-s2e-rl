@@ -448,7 +448,9 @@ def injector_beam(settings: dict | None, workdir, n_particles: int, grid=32,
     P.t[:] -= mean_t
     info["wall_s"] = time.perf_counter() - t_start
     P.write(str(beam_path))
-    with open(info_path, "w") as f:
+    tmp = info_path.with_name(f".{info_path.name}.tmp{os.getpid()}")   # atomic: a truncated
+    with open(tmp, "w") as f:                                           # info would pass exists()
         json.dump(info, f, indent=2, default=float)
+    os.replace(tmp, info_path)
     shutil.rmtree(I.path, ignore_errors=True)   # lume temp dir (fort files); beam is saved
     return P, info

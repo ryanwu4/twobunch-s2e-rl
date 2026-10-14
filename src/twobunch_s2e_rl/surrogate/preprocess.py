@@ -339,6 +339,9 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
 
     drive_mean, drive_std = _scaler(records, "drive_parts", "drive_density", scaler)
     witness_mean, witness_std = _scaler(records, "witness_parts", "witness_density", scaler)
+    if transmission == "max" and any(np.isfinite(r["drive_q_in"]) for r in records):
+        raise ValueError("rows record injected charges (an injector campaign): transmission='max' "
+                         "would fold the drive-fraction/charge variation into T; use per_sample")
     if transmission == "max":
         drive_full = max((r["drive_charge"] for r in records), default=1.0) or 1.0
         witness_full = max((r["witness_charge"] for r in records), default=1.0) or 1.0

@@ -7,6 +7,8 @@ from twobunch_s2e_rl.sim.bmad import merged_settings, split_bunches, track
 class _P:
     def __init__(self, n, weights, z=None):
         self.x = np.zeros(n)
+        self.y = np.zeros(n)
+        self.energy = np.full(n, 1e10)
         self.z = np.linspace(0.0, 1e-4, n) if z is None else z
         self.weight = np.asarray(weights, float)
         self.written = []

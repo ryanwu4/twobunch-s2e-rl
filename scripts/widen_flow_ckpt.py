@@ -76,8 +76,10 @@ def main():
     new = KnobSpace.from_sweep_set(a.sweep_set) if a.sweep_set else KnobSpace.from_norm_json(a.norm)
     if a.norm:   # baselines for the verification only (golden injector / linac baseline)
         try:
+            import json as _json
+            sweep = _json.load(open(a.norm)).get("sweep_set", "xtcav23_inj12")
             new = KnobSpace.from_lists(new.keys, new.low, new.high,
-                                       KnobSpace.from_sweep_set("xtcav23_inj12").baseline)
+                                       KnobSpace.from_sweep_set(sweep).baseline)
         except KeyError:
             pass
     wide = widen_conditioning(old, new)
