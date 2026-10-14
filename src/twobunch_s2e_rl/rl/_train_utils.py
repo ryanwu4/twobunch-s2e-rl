@@ -241,6 +241,7 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
         return DeltaControlEnv(
             num_envs, device=device, seed=seed, episode_length=episode_length, no_grad=no_grad,
             observe_fn=observe_fn, fallback_keys=tuple(ms.get("fallback_keys", ())),
+            feature_offset_sigma=ms.get("feature_offset_sigma"),
             knob_space=frame, baseline=baseline, controls=de["controls"], reward_spec=spec,
             action_step=de["action_step"], start_box={k: tuple(v) for k, v in de["start_box"].items()},
             context_sigma=de.get("context_sigma"), offset_sigma=de.get("offset_sigma"),

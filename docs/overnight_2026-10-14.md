@@ -115,6 +115,24 @@ only, hidden gain error U(0.8,1.2) + readback-scale jitter on the other 21 knobs
   Bmad vs goal spacing **6.8 µm** median (4.9 %), drive σ_z **2.7 %**; surrogate vs Bmad spacing
   2.9 % median (p90 11 %), σ_z 5.0 % (p90 16 %), ΔE 4.2 %.
 
+**Injector sensitivity (Impact-T → Bmad → XTCAVF, 2e4 particles, grid 32; `data/injector_sensitivity_2026-10-14/summary.md`)**,
+at the approved per-episode magnitudes, "absolute" arrival mode (the injector ⟨t⟩ shift kept —
+physically complete): laser timing ±0.2 ps → spacing ±7.6–7.9 µm, drive σ_z ∓1.1 µm (≈ 0.31° L1 /
+0.16° L2 equivalent); gun amplitude ±0.25 % → ∓4 µm; bunch delay ±0.1 ps → ±4.6 µm; drive
+fraction ±0.02 → ±2.4 µm and the charge ratio itself ±0.035; gun phase ±0.25° → ±1.3 µm;
+solenoid / spot / MTE / σ_t / L0A phase / charge ≤ 0.8 µm. Controller authority: 47 µm/° (L1),
+−44 µm/° (L2). Noise floor 0.02 µm (Hammersley burnin pair), so all effects are resolved.
+- **Implication for the delta controller:** these act mainly as ≤ 0.3° common shifts of the
+  effective L1/L2 phases, which random true starts already cover (3× below the readback offset).
+  The part a feedback controller can't absorb this way is the direct charge-ratio change →
+  added `measurement.feature_offset_sigma` (hidden per-episode offset on observed features, e.g.
+  `drive_charge_fraction: 0.035`) for future runs; tonight's screen runs don't use it.
+- **Pipeline finding:** in the legacy "centred" mode (FACET2-S2E time-centres the input beam) the
+  timing effect is ~6× smaller (spacing ±1.3 µm): every existing campaign erases injector arrival-
+  time jitter. The injector campaign should keep absolute timing.
+- Baseline reproduction (2e4 / grid 32 vs the golden 5e5 / grid 100 beam): charge, charge ratio,
+  energies, bunch separation reproduce; transverse sizes +4–7 %, emittance +6–19 % (fidelity).
+
 **PENT gate (Cheetah segment vs Bmad)**: passes at ≤ 8e-7 relative on 56/56 valgate samples (all
 controller-region block so far; the wide block is still tracking).
 

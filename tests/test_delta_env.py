@@ -166,3 +166,16 @@ def test_rollout_shapes_and_obs_dim_guard():
     assert traj["bunch_spacing"].shape == (4, 3) and traj["true_controls"].shape == (4, 3, 2)
     with pytest.raises(ValueError, match="obs-dim mismatch"):
         rollout(env, _Actor(env.num_obs + 1), None)
+
+
+def test_feature_offset_is_per_episode_and_hidden():
+    flat = lambda k: {"bunch_spacing": torch.full((k.shape[0],), 2e-4),
+                      "drive_sigma_z": torch.full((k.shape[0],), 3e-5),
+                      "T_witness": torch.ones(k.shape[0]), "T_drive": torch.ones(k.shape[0])}
+    env = _env(num_envs=2048, observe_fn=flat, feature_offset_sigma={"bunch_spacing": 5e-6})
+    _, _, _, info = env.step(torch.zeros(2048, 2))
+    d = info["achieved"]["bunch_spacing"] - info["achieved"]["bunch_spacing_true"]
+    assert abs(float(d.std()) - 5e-6) / 5e-6 < 0.08            # one draw per episode
+    _, _, _, info2 = env.step(torch.zeros(2048, 2))
+    d2 = info2["achieved"]["bunch_spacing"] - info2["achieved"]["bunch_spacing_true"]
+    assert torch.allclose(d, d2)                               # constant within the episode

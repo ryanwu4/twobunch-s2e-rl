@@ -84,6 +84,7 @@ class DeltaControlEnv:
         shot_noise: dict[str, float] | None = None,      # per-feature single-shot 1-sigma
         shots_per_step: int = 50,
         fallback_keys: tuple[str, ...] = (),   # screen features whose reward falls back to the cloud
+        feature_offset_sigma: dict[str, float] | None = None,   # hidden per-episode additive offset
     ):
         del MM_caching_frequency, render, stochastic_init   # starts are always random in start_box
         self.num_envs, self.episode_length = int(num_envs), int(episode_length)
@@ -117,6 +118,10 @@ class DeltaControlEnv:
         self._shot = dict(shot_noise or {})
         self._m = int(shots_per_step)
         self._fallback = tuple(fallback_keys)
+        # output-side stand-in for injector variation the plant does not model (e.g. the drive charge
+        # fraction moves directly with the laser charge ratio): one hidden offset per episode
+        self._fo_keys = tuple((feature_offset_sigma or {}).keys())
+        self._fo_sigma = torch.tensor([feature_offset_sigma[k] for k in self._fo_keys], **dev)
 
         # goals: one per goal-conditioned target (metric key -> goal key), achievable sampling
         self._goal_terms = [(t.key, t.goal_key, t) for t in reward_spec.terms if t.goal_key]
@@ -132,6 +137,7 @@ class DeltaControlEnv:
         self._start, self._offset, self._gain = z(B, n_ctrl), z(B, n_ctrl), torch.ones(B, n_ctrl, **dev)
         self._context = self._base.expand(B, -1).clone()
         self._scale = torch.ones(B, **dev)
+        self._fo = z(B, len(self._fo_keys))
         self._goals = {g: z(B) for _, g, _ in self._goal_terms}
         self._goal_ctrl = z(B, n_ctrl)                            # true control point of the goal
         self._goals_cloud = {g: z(B) for _, g, _ in self._goal_terms}   # ground truth at that point
@@ -160,6 +166,8 @@ class DeltaControlEnv:
         obs = self._observe_fn(self._ks.normalize(knobs))
         for k in [k for k in obs if not k.endswith("_cloud")]:
             obs[f"{k}_true"] = obs[k]
+        for j, k in enumerate(self._fo_keys):          # hidden per-episode feature offsets
+            obs[k] = obs[k] + self._fo[:, j]
         for k in self._scale_keys:                     # streak-calibration error
             obs[k] = obs[k] * self._scale
         if noise:
@@ -222,12 +230,14 @@ class DeltaControlEnv:
                                               self._lo), self._hi)
         scale = 1.0 + (2 * self._rand(B) - 1) * self._scale_hw
         goal_ctrl = self._start_lo + self._rand(B, n_ctrl) * (self._start_hi - self._start_lo)
+        fo = self._randn(B, len(self._fo_keys)) * self._fo_sigma
 
         self._start = torch.where(mc, start, self._start)
         self._offset = torch.where(mc, offset, self._offset)
         self._gain = torch.where(mc, gain, self._gain)
         self._context = torch.where(mc, context, self._context)
         self._scale = torch.where(m, scale, self._scale)
+        self._fo = torch.where(mc, fo, self._fo)
         # commanded start = true start minus the offset (what the operator's readback would say);
         # the policy only ever sees cmd - cmd0, which is 0 here
         cmd0 = (start - offset).detach()
