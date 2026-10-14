@@ -247,6 +247,15 @@ XTCAV23_PARAMS = {
     "S1ER_yOffset":   (-0.0018682646,    -0.0003682646,   -0.0011182646),
 }
 
+# Knobs that sit DOWNSTREAM of a treaty point cannot affect the beam there, so a campaign that
+# varied them can still train a model at that point which lacks them (preprocess knob-drop rule).
+DOWNSTREAM_OF = {
+    "XTCAVF": ["Q2FFkG", "Q1FFkG", "Q0FFkG"],
+    "PENT": [],
+}
+# fixed settings that only affect the beam downstream of every treaty point used for training
+DOWNSTREAM_SETTINGS = {"trackEnd"}
+
 # Named sweep sets, selectable per campaign config via the `sweep_set` key. run_sweep
 # defaults to "original8" so the existing 8-D campaign/configs/manifests reproduce exactly.
 # `expanded_anchored` additionally triggers manifold sampling (ff_manifold.MANIFOLD_SPECS);

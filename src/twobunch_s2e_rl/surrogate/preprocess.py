@@ -33,6 +33,7 @@ import argparse
 import glob
 import json
 import os
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -58,13 +59,16 @@ def _subsample(coords: np.ndarray, p: int, rng: np.random.Generator) -> np.ndarr
 
 
 def parse_one(json_path: str, p: int, rng: np.random.Generator, keys: list,
-              treaty_point: str = PENT) -> dict | None:
+              treaty_point: str = PENT, fill: dict | None = None) -> dict | None:
     with open(json_path) as f:
         d = json.load(f)
     if not d.get("success"):
         return None
     spec = d.get("specs", {}).get(treaty_point, {})
-    knobs = np.array([d["knobs"][k] for k in keys], dtype=np.float32)
+    # knobs this campaign did not sweep come from what it held them at (`fill`, from its
+    # campaign.json); missing from both -> KeyError, never a silent default
+    knobs = np.array([d["knobs"][k] if k in d["knobs"] else fill[k] for k in keys]
+                     if fill else [d["knobs"][k] for k in keys], dtype=np.float32)
 
     drive_present = spec.get("PDrive_norm_emit_x") is not None
     witness_viable = spec.get("PWitness_norm_emit_x") is not None
@@ -148,32 +152,90 @@ def _scaler(records, key_parts, key_density, mode="intrabunch"):
     return mean.astype(np.float32), np.maximum(std, 1e-12).astype(np.float32)
 
 
+# fixed-block entries that must agree between merged campaigns (unless downstream)
+_MERGE_KEYS = ("baseline_config_sha256", "input_beam_sha256", "csrTF", "transverseWakes",
+               "num_macro_particles")
+
+
+def campaign_fill(camp: dict, keys, knob_low, knob_high, treaty_point: str) -> dict:
+    """Values for the target knobs this campaign did NOT sweep (its recorded fixed settings), after
+    the knob-drop rule and the in-frame check. Raises ValueError on a violation."""
+    from ..datagen.sweep_params import DOWNSTREAM_OF
+    swept = set(camp["swept"]["knob_keys"])
+    dropped = sorted(swept - set(keys) - set(DOWNSTREAM_OF.get(treaty_point, [])))
+    if dropped:
+        raise ValueError(f"campaign {camp['name']!r} varied {dropped}, which the target model "
+                         f"lacks and which are not downstream of {treaty_point}")
+    fixed = {**camp["fixed"]["baseline_settings"], **camp["fixed"]["fixed_overrides"]}
+    fill = {}
+    for k, lo, hi in zip(keys, knob_low, knob_high):
+        if k in swept:
+            continue
+        if k not in fixed:
+            raise ValueError(f"campaign {camp['name']!r} records no fixed value for {k!r}")
+        v = float(fixed[k])
+        if not (lo - 1e-9 * abs(hi - lo) <= v <= hi + 1e-9 * abs(hi - lo)):
+            raise ValueError(f"campaign {camp['name']!r} held {k}={v}, outside the target frame "
+                             f"[{lo}, {hi}] -- use a frame that contains it (e.g. a union set)")
+        fill[k] = v
+    return fill
+
+
+def check_mergeable(camps: list[dict], treaty_point: str) -> None:
+    """Campaigns merged into one table must share every fixed setting that affects the beam at the
+    treaty point (fixed_overrides other than downstream-only settings, plus _MERGE_KEYS)."""
+    from ..datagen.sweep_params import DOWNSTREAM_OF, DOWNSTREAM_SETTINGS
+    skip = set(DOWNSTREAM_SETTINGS) | set(DOWNSTREAM_OF.get(treaty_point, []))
+    ref = camps[0]
+    for c in camps[1:]:
+        for k in _MERGE_KEYS:
+            if c["fixed"].get(k) != ref["fixed"].get(k):
+                raise ValueError(f"cannot merge {ref['name']!r} and {c['name']!r}: fixed {k} differs")
+        fo_a, fo_b = ref["fixed"]["fixed_overrides"], c["fixed"]["fixed_overrides"]
+        for k in (set(fo_a) | set(fo_b)) - skip:
+            if fo_a.get(k) != fo_b.get(k):
+                raise ValueError(f"cannot merge {ref['name']!r} and {c['name']!r}: fixed_overrides "
+                                 f"{k} = {fo_a.get(k)} vs {fo_b.get(k)}")
+
+
 def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
                scaler="intrabunch", sweep_set="original8", treaty_point=PENT,
-               verbose=True):
+               verbose=True, data_root=None):
     # subdir may be comma-separated to MERGE campaigns (e.g. "tightbox_v2_full,expanded_full").
     # When merging boxes with different bounds, pass a union sweep_set (e.g. "tightbox+expanded")
     # so every draw is normalized in one common frame; parse_one stores raw knobs, so the frame
     # lives entirely in norm.json (knob_low/high) -- the RL env must resolve the same union name.
     subdirs = [s.strip() for s in str(subdir).split(",") if s.strip()]
-    files = []
-    for sd in subdirs:
-        fs = sorted(glob.glob(str(repo_root() / "data" / sd / "sample_*.json")))
+    data_root = Path(data_root) if data_root else repo_root() / "data"
+    keys, knob_low, knob_high, _ = resolve_sweep_set(sweep_set)
+    files, file_campaign, fills, camps = [], [], {}, []
+    for ci, sd in enumerate(subdirs):
+        fs = sorted(glob.glob(str(data_root / sd / "sample_*.json")))
         if max_samples:
             fs = fs[:max_samples]
         if not fs:
             raise SystemExit(f"No sample_*.json under data/{sd}")
         files.extend(fs)
-    keys, knob_low, knob_high, _ = resolve_sweep_set(sweep_set)
+        file_campaign.extend([ci] * len(fs))
+        # campaigns that recorded campaign.json can be embedded into a bigger knob space; older
+        # campaigns (no campaign.json) are parsed exactly as before
+        cj = data_root / sd / "campaign.json"
+        if cj.exists():
+            camp = json.loads(cj.read_text())
+            camps.append(camp)
+            fills[ci] = campaign_fill(camp, keys, knob_low, knob_high, treaty_point)
+    if len(camps) > 1:
+        check_mergeable(camps, treaty_point)
     rng = np.random.default_rng(seed)
     if verbose:
         print(f"Parsing {len(files)} samples from {subdirs} (P={p}, sweep_set={sweep_set}, "
               f"{len(keys)} knobs, treaty_point={treaty_point})")
 
     records = []
-    for i, fp in enumerate(files):
-        rec = parse_one(fp, p, rng, keys, treaty_point=treaty_point)
+    for i, (fp, ci) in enumerate(zip(files, file_campaign)):
+        rec = parse_one(fp, p, rng, keys, treaty_point=treaty_point, fill=fills.get(ci))
         if rec is not None:
+            rec["campaign"] = ci
             records.append(rec)
         if verbose and (i + 1) % 500 == 0:
             nd = sum(r["drive_density"] for r in records)
@@ -215,6 +277,9 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
         h.create_dataset("n_drive", data=np.array([r["n_drive"] for r in records], np.int32))
         h.create_dataset("n_witness", data=np.array([r["n_witness"] for r in records], np.int32))
         h.create_dataset("idx", data=np.array([r["idx"] for r in records], np.int32))
+        # source campaign of every row (idx collides across merged campaigns)
+        h.create_dataset("campaign", data=np.array([r["campaign"] for r in records], np.int16))
+        h.attrs["campaigns"] = ",".join(subdirs)
         h.attrs["P"] = p
         h.attrs["coord_order"] = ",".join(COORD_KEYS)
 
