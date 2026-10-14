@@ -83,16 +83,19 @@ Started ~01:00 PDT; Ryan checks back ~09:00 PDT.
 
 | Time (PDT) | Phase | What happened |
 |---|---|---|
-| 00:55 | plan | Plan committed (`f9ff67a`). |
-| 01:05 | 0 | Compatibility guards + goldens committed (`b1d2459`): 153 pass + 1 strict xfail (L2 drift bug). |
+| 00:58 | plan | Plan committed (`f9ff67a`). |
+| 01:05 | 0 | Compatibility guards + goldens (`b1d2459`): 153 pass + 1 strict xfail (L2 drift bug). |
 | 01:07 | 2 | Validation-gate Bmad campaign launched (`data/xtcav23_valgate_2026-10-14/`, log `logs/overnight_2026-10-14/valgate_sweep.log`). |
-| 01:07 | 3a, 2 | Two parallel agents started: injector wrapper + Impact-T sensitivity study; xtcav_segment port + Cheetah 0.8.4 + Stage-A re-validation. |
-| 01:20 | 1a | KnobSpace, artifacts, L2 frame fix, glob→resolve_ckpt (`c73ac37`); loud norms cache (`cdf5fc0`). |
-| 01:30 | 1b | Generic goals (`15d4f73`). |
-| 01:45 | 3 | DeltaControlEnv (`662506e`); training wiring + cloud config (`dbf7870`). |
-| 02:40 | 2 | xtcav_segment port committed (`51d05c0`): Stage A on 0.8.4 bit-identical to the clone; Cheetah vs Bmad at PENT ≤ 2.3e-7 rel. on 8 valgate samples. |
-| 03:05 | 3 | Screen-mode plant + features + fallback committed (`36768b5`); screen training started on GPU 1 (`delta_xtcav23_screen_s0`). |
-| 01:55 | 3 | Cloud-mode delta controller training: seed 0 on GPU 0, seed 1 on GPU 1 (`logs/overnight_2026-10-14/delta_xtcav23_cloud_s{0,1}`). First attempt OOM'd (2 runs × 64 actors on one GPU); fixed to 1 run/GPU, 32 actors. |
+| 01:07 | 3a, 2 | Two parallel agents: injector wrapper + Impact-T sensitivity study; xtcav_segment port + Cheetah 0.8.4 + Stage-A re-validation. |
+| 01:15–01:21 | 1a, 1b | KnobSpace, artifacts, L2 frame fix, glob → resolve_ckpt (`c73ac37`); loud norms cache (`cdf5fc0`); generic goals (`15d4f73`). |
+| 01:24–01:37 | 3 | DeltaControlEnv (`662506e`); training wiring + cloud config (`dbf7870`); rollout + eval_delta (`7e46f8c`). |
+| 01:32 | 3 | Cloud-mode training seed 0 on GPU 0 (seed 1 on GPU 1 at 01:35). First attempt OOM'd (2 runs × 64 actors on one GPU) → 1 run/GPU, 32 actors. |
+| 01:37 | 2 | xtcav_segment port (`51d05c0`): Stage A on 0.8.4 bit-identical to the clone; Cheetah vs Bmad at PENT ≤ 2.3e-7 rel. on 8 valgate samples. |
+| 01:45 | 3 | Cloud seed 1 stopped (iter 102); screen-mode training seed 0 on GPU 1 (`delta_xtcav23_screen_s0`). |
+| 01:51 | 3 | Screen plant + features + fallback (`36768b5`). |
+| 01:53–01:56 | 2 | sim/bmad.py, run_sweep on it (`ab33c02`); validate_delta export/track/compare (`53c7c31`), smoke-tested end to end at 5k particles. |
+
+(Note: an earlier version of this table had wrong, estimated clock times; corrected from git at 01:58.)
 
 ## Needs Ryan's review in the morning
 
