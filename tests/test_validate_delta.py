@@ -20,3 +20,12 @@ def test_compare_tables(tmp_path, monkeypatch):
     assert abs(sp["bmad_vs_goal_abs_median"] - 0.5e-5) < 1e-12
     assert abs(s["targets"]["drive_sigma_z"]["surrogate_vs_bmad_rel_median"] - 0.3e-5 / 3.3e-5) < 1e-9
     assert "bmad_vs_goal_abs_median" not in s["targets"]["drive_sigma_z"]
+
+
+def test_eval_overrides_dotted_keys():
+    from twobunch_s2e_rl.rl.eval_delta import _apply_overrides
+    de = {"gain_halfwidth": 0.2, "measurement": {"scale_error_halfwidth": 0.2}}
+    _apply_overrides(de, ["gain_halfwidth=0.4", "measurement.scale_error_halfwidth=0.3",
+                          "offset_sigma={L1PhaseSet: 3.0}"])
+    assert de == {"gain_halfwidth": 0.4, "measurement": {"scale_error_halfwidth": 0.3},
+                  "offset_sigma": {"L1PhaseSet": 3.0}}

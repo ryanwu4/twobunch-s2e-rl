@@ -35,11 +35,25 @@ def _err(x, g, key):
     return np.abs(x - g) if kind == "abs" else np.abs(x - g) / np.abs(g)
 
 
-def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, out=None):
+def _apply_overrides(de: dict, sets) -> dict:
+    """`--set measurement.scale_error_halfwidth=0.3` style overrides of the run's diff_env (eval
+    under conditions the policy was not trained on, e.g. larger misspecification)."""
+    for item in sets or ():
+        path, val = item.split("=", 1)
+        node = de
+        *parents, leaf = path.split(".")
+        for k in parents:
+            node = node.setdefault(k, {})
+        node[leaf] = yaml.safe_load(val)
+    return de
+
+
+def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, out=None,
+             sets=(), tag=""):
     device = device if torch.cuda.is_available() else "cpu"
     logdir = Path(logdir)
     cfg = yaml.safe_load((logdir / "cfg.yaml").read_text())
-    de = cfg["params"]["diff_env"]
+    de = _apply_overrides(cfg["params"]["diff_env"], sets)
     env = build_env_fn(cfg, policy_flow_ckpt(logdir))(
         num_envs=n_episodes, device=device, seed=seed,
         episode_length=int(de["episode_length"]), no_grad=True)
@@ -50,7 +64,7 @@ def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, o
     gain = env._gain.cpu().numpy()                       # (B, n_ctrl) hidden, this episode
     scale = env._scale.cpu().numpy()
     report = {"logdir": str(logdir), "policy": policy, "n_episodes": n_episodes, "seed": seed,
-              "controls": env.controls, "targets": {}}
+              "overrides": list(sets), "controls": env.controls, "targets": {}}
     for key, gkey, _ in env._goal_terms:
         meas, goal = npy[key], npy[gkey]                                  # (T, B)
         if f"{key}_cloud" in npy:                     # screen mode: true beam vs true goal point
@@ -81,8 +95,10 @@ def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, o
                                        "final": float(npy["screen_valid"][-1].mean())}
     report["reward_final_median"] = float(np.median(npy["reward"][-1]))
 
-    out = Path(out) if out else repo_root() / "results" / "rl" / logdir.name / "delta_eval"
-    write_run_json(out, "delta_eval", {"policy": policy, "n_episodes": n_episodes, "seed": seed},
+    name = "delta_eval" + (f"_{tag}" if tag else "")
+    out = Path(out) if out else repo_root() / "results" / "rl" / logdir.name / name
+    write_run_json(out, "delta_eval", {"policy": policy, "n_episodes": n_episodes, "seed": seed,
+                                       "overrides": list(sets)},
                    parents=[str(logdir)], flow_ckpt=policy_flow_ckpt(logdir))
     (out / "eval.json").write_text(json.dumps(report, indent=2))
 
@@ -119,8 +135,12 @@ def main():
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--seed", type=int, default=12345)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="override a diff_env setting for this eval (dotted keys), repeatable")
+    ap.add_argument("--tag", default="", help="output subdir suffix: delta_eval_<tag>")
     args = ap.parse_args()
-    rep = evaluate(args.logdir, args.policy, args.n_episodes, args.device, args.seed, args.out)
+    rep = evaluate(args.logdir, args.policy, args.n_episodes, args.device, args.seed, args.out,
+                   sets=args.set, tag=args.tag)
     print(json.dumps(rep, indent=2))
 
 

@@ -122,6 +122,8 @@ only, hidden gain error U(0.8,1.2) + readback-scale jitter on the other 21 knobs
 - **Bmad open-loop check**, 24 setpoints, 20k particles (`results/rl/delta_xtcav23_cloud_s0/bmad_check/compare.json`):
   Bmad vs goal spacing **6.8 µm** median (4.9 %), drive σ_z **2.7 %**; surrogate vs Bmad spacing
   2.9 % median (p90 11 %), σ_z 5.0 % (p90 16 %), ΔE 4.2 %.
+- Seed 1 replicates: spacing 51 → 2 µm (p90 7 µm), 97 % within 10 µm, 4 steps; drive σ_z
+  30 % → 4.6 %, 81 % within 10 %.
 - **Same check at 100k particles** (campaign fidelity, `bmad_check_N100000/`): Bmad vs goal spacing
   **6.75 µm**, drive σ_z **3.2 %**; surrogate vs Bmad 3.1 % / 4.9 % — the 20k result holds.
 
@@ -135,6 +137,8 @@ valid 66–71 % of the time. Survival unchanged (0.99 / 0.97).
   13 steps; drive σ_z 3.8 % measured / 9.1 % true.
 - **Bmad check of screen seed 0** (24 setpoints, 100k): Bmad vs true goal spacing **6.1 µm**
   (5.1 %), drive σ_z **7.0 %**; surrogate vs Bmad 3.5 % / 4.0 %, charge fraction 0.4 %.
+- **Bmad check of screen seed 1** (24, 100k): spacing **7.4 µm** (5.3 %), drive σ_z **8.0 %**;
+  surrogate vs Bmad 3.8 % / 2.6 %.
 - Measured-vs-true σ_z gap (4 % vs 8–9 %): the measured σ_z includes the ~30 µm transverse-spot blur
   (blur included, per your choice), which compresses its sensitivity to the true bunch length, plus
   the hidden streak-scale error — matching the measured value matches the true one less tightly.
