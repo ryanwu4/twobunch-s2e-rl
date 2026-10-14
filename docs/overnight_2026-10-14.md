@@ -95,7 +95,28 @@ Started ~01:00 PDT; Ryan checks back ~09:00 PDT.
 | 01:51 | 3 | Screen plant + features + fallback (`36768b5`). |
 | 01:53–01:56 | 2 | sim/bmad.py, run_sweep on it (`ab33c02`); validate_delta export/track/compare (`53c7c31`), smoke-tested end to end at 5k particles. |
 
+| 02:03 | 3 | Cloud seed 0 finished (300 iters, 30 min); screen seed 1 started on GPU 0. |
+| 02:05 | 2 | **PENT gate passes**: Cheetah XTCAVF→PENT vs Bmad on all 56 finished valgate samples, every observable ≤ 8e-7 relative (`results/segment_validation_084/pent_valgate.json`). |
+| 02:10 | 4 | Surrogate YAML config + knob_keys/treaty_point hparams (`ae68b63`); campaign.json writer for new campaigns (`6ece2ae`). |
+| 02:19 | 3 | **Cloud delta controller Bmad check**: 24/24 setpoints tracked (20k particles), see Results. |
+
 (Note: an earlier version of this table had wrong, estimated clock times; corrected from git at 01:58.)
+
+## Results so far
+
+**Cloud-mode delta controller** (`logs/overnight_2026-10-14/delta_xtcav23_cloud_s0`, L1/L2 phase deltas
+only, hidden gain error U(0.8,1.2) + readback-scale jitter on the other 21 knobs + random starts):
+
+- Surrogate eval, 512 episodes (`results/rl/delta_xtcav23_cloud_s0/delta_eval/`): spacing error
+  median 52 → **3 µm** (p90 7 µm), 97 % within 10 µm, settles in 4 steps; drive σ_z error 29 % →
+  **4.8 %** (p90 16 %), 78 % within 10 %, settles in ~26 steps (slow — σ_z is the harder, weaker-
+  weighted target). Survival T_d 0.99 / T_w 0.97.
+- **Bmad open-loop check**, 24 setpoints, 20k particles (`results/rl/delta_xtcav23_cloud_s0/bmad_check/compare.json`):
+  Bmad vs goal spacing **6.8 µm** median (4.9 %), drive σ_z **2.7 %**; surrogate vs Bmad spacing
+  2.9 % median (p90 11 %), σ_z 5.0 % (p90 16 %), ΔE 4.2 %.
+
+**PENT gate (Cheetah segment vs Bmad)**: passes at ≤ 8e-7 relative on 56/56 valgate samples (all
+controller-region block so far; the wide block is still tracking).
 
 ## Needs Ryan's review in the morning
 
