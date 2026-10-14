@@ -175,6 +175,9 @@ class TwoBunchFlow(L.LightningModule):
         # per-bunch (de)standardization + knob bounds (from preprocess _norm.json)
         drive_mean=None, drive_std=None, witness_mean=None, witness_std=None,
         knob_low=None, knob_high=None,
+        # knob names + treaty point of the training frame (recorded by new checkpoints; None in
+        # older ones, which get them from artifacts.LEGACY_KNOB_KEYS)
+        knob_keys=None, treaty_point=None,
     ):
         super().__init__()
         self.save_hyperparameters()

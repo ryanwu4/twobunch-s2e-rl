@@ -1,7 +1,11 @@
 """Train the two-bunch conditional-flow surrogate.
 
+  PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.train --config configs/surrogate/<model>.yaml
   PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.train \
       --processed processed/twobunch_flow.h5 --epochs 300
+
+A `--config` yaml sets any of the flags below by their option name (e.g. `n_layers: 16`); flags
+given on the command line override it. The resolved settings + provenance go to <out>/run.json.
 
 Checkpoints -> trained/twobunch_flow/, CSV logs alongside. Model (de)norm buffers are
 loaded from the preprocess _norm.json so the checkpoint is self-contained.
@@ -18,7 +22,8 @@ from lightning.pytorch.loggers import CSVLogger
 from ..datagen.paths import repo_root
 from .dataset import TwoBunchFlowDataModule
 from .model import TwoBunchFlow
-from ..artifacts import resolve_ckpt
+from ..artifacts import resolve_ckpt, write_run_json
+import yaml
 
 
 def build_model(norm: dict, **overrides) -> TwoBunchFlow:
@@ -27,6 +32,7 @@ def build_model(norm: dict, **overrides) -> TwoBunchFlow:
         drive_mean=norm["drive_mean"], drive_std=norm["drive_std"],
         witness_mean=norm["witness_mean"], witness_std=norm["witness_std"],
         knob_low=norm["knob_low"], knob_high=norm["knob_high"],
+        knob_keys=list(norm["knob_keys"]), treaty_point=norm.get("treaty_point", "PENT"),
     )
     kw.update(overrides)
     print(f"[build_model] scaler={norm.get('scaler', 'pooled(v1)')}, coupling={kw.get('coupling','affine')}, "
@@ -38,6 +44,7 @@ def build_model(norm: dict, **overrides) -> TwoBunchFlow:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--config", default=None, help="yaml of flag values (option names as keys)")
     ap.add_argument("--processed", default=str(repo_root() / "processed" / "twobunch_flow.h5"))
     ap.add_argument("--out", default=str(repo_root() / "trained" / "twobunch_flow"))
     ap.add_argument("--epochs", type=int, default=300)
@@ -64,7 +71,16 @@ def main():
                     help="cosine = smooth anneal to lr/100 over --epochs (for warm-started fine-tunes)")
     ap.add_argument("--init-ckpt", default=None,
                     help="warm-start weights from this checkpoint (glob ok) before a fresh fit")
+    pre, _ = ap.parse_known_args()
+    if pre.config:
+        cfg = yaml.safe_load(open(pre.config)) or {}
+        unknown = set(cfg) - {a.dest for a in ap._actions}
+        if unknown:
+            raise SystemExit(f"unknown keys in {pre.config}: {sorted(unknown)}")
+        ap.set_defaults(**cfg)
     args = ap.parse_args()
+    write_run_json(args.out, "surrogate", vars(args), parents=[args.processed] +
+                   ([args.init_ckpt] if args.init_ckpt else []))
 
     L.seed_everything(args.seed, workers=True)
     dm = TwoBunchFlowDataModule(processed_h5=args.processed, batch_size=args.batch_size,

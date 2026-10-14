@@ -1,8 +1,10 @@
 # Surrogate-fitting configs
 
-Surrogate (flow) training is **CLI-driven** — there is no YAML config; all hyperparameters are
-`train.py` flags, and the (de)norm frame comes from the preprocess `*_norm.json`. This folder is a
-placeholder for that stage of the pipeline (`datagen/` → `surrogate/` → `rl/`).
+Surrogate (flow) training takes a YAML config (`--config configs/surrogate/<model>.yaml`, keys =
+`train.py` option names; see `example.yaml`), with CLI flags overriding it; the resolved settings and
+provenance are written to `trained/<model>/run.json`. Models trained before 2026-10-14 were
+CLI-driven; their settings live in the checkpoint hparams. The (de)norm frame always comes from the
+preprocess `*_norm.json`, and new checkpoints also record `knob_keys` and `treaty_point`.
 
 Canonical commands:
 

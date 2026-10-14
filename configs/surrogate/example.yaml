@@ -1,0 +1,22 @@
+# Template for a surrogate training config (one yaml per NEW trained model; older models keep
+# their settings in the checkpoint hparams). Keys are train.py option names; CLI flags override.
+#   python -m twobunch_s2e_rl.surrogate.train --config configs/surrogate/<model>.yaml
+processed: processed/xtcav23_combined.h5
+out: trained/<model_name>
+epochs: 500
+batch_size: 64
+lr: 1.0e-4
+n_layers: 16
+hidden_dim: 128
+coupling: rqs
+n_bins: 16
+tail_bound: 8.0
+w_emit: 0.25
+w_emit_z: 0.5
+w_emit_4d: 0.125
+w_emit_6d: 0.025
+w_cov: 0.5
+bunches: both
+lr_schedule: cosine
+seed: 0
+# init_ckpt: trained/<parent>/checkpoints/best-*.ckpt   # warm start (e.g. after widen_conditioning)
