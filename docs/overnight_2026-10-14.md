@@ -132,7 +132,7 @@ B5D36 field convention, readback-offset semantics, v1 checkpoint, xtcav-gpsr-tun
 
 | 03:40 | 3 | Screen seed 1 finished (eval above); its Bmad check started; cloud seed 1 restarted on GPU 0. |
 
-| 04:10–04:40 | 3 | Cloud seed 1 finished + eval; screen seed 1 Bmad check; robustness sweep (5 evals). |
+| 04:06–04:10 | 3 | Cloud seed 1 finished + eval; screen seed 1 Bmad check; robustness sweep (5 evals). |
 
 (Note: an earlier version of this table had wrong, estimated clock times; corrected from git at 01:58.)
 
