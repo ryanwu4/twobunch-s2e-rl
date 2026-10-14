@@ -132,6 +132,43 @@ def _manifold_rows(seed, n, keys, low, high, spec):
     return rows
 
 
+def write_campaign_json(cfg) -> Path:
+    """data/<campaign>/campaign.json: everything this campaign held fixed, so later merges can embed
+    its samples into a bigger knob space with the values they were ACTUALLY generated at (a knob
+    set's baseline is not that; e.g. tightbox's FF baseline is the 15 cm matched point, while the
+    8-knob campaigns ran golden FF). Written once, never overwritten."""
+    import hashlib
+    from ..artifacts import facet2_s2e_hash, git_state
+    out = Path(cfg["output_dir"]) / "campaign.json"
+    if out.exists():
+        return out
+    root = facet2_root()
+    sha = lambda f: hashlib.sha256(Path(f).read_bytes()).hexdigest() if Path(f).exists() else None
+    import FACET2_S2E as qs
+    baseline = qs.loadConfig("/" + cfg["baseline_config"], str(root))
+    keys, low, high, _ = resolve_sweep_set(cfg.get("sweep_set", "original8"))
+    rec = {
+        "name": cfg["name"], "config": cfg,
+        "swept": {"sweep_set": cfg.get("sweep_set", "original8"), "knob_keys": keys,
+                  "knob_low": low, "knob_high": high},
+        "fixed": {
+            "baseline_config": cfg["baseline_config"],
+            "baseline_config_sha256": sha(root / cfg["baseline_config"]),
+            "defaults_yml_sha256": sha(root / "setLattice_configs" / "defaults.yml"),
+            "baseline_settings": baseline,          # setLattice applies defaults.yml under these
+            "fixed_overrides": cfg.get("fixed_overrides", {}),
+            "input_beam": baseline.get("inputBeamFilePathSuffix"),
+            "input_beam_sha256": sha(str(root) + str(baseline.get("inputBeamFilePathSuffix", ""))),
+            "csrTF": cfg["csrTF"], "transverseWakes": cfg.get("transverseWakes", False),
+            "num_macro_particles": int(cfg["num_macro_particles"]),
+            "treaty_points": cfg.get("treaty_points", TREATY_POINTS),
+        },
+        "facet2_s2e_hash": facet2_s2e_hash(), **git_state(),
+    }
+    out.write_text(json.dumps(rec, indent=2, default=to_jsonable))
+    return out
+
+
 def _sample_json_path(out_dir, idx):
     return Path(out_dir) / f"sample_{idx:05d}.json"
 
@@ -225,6 +262,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     manifest = build_manifest(cfg)
+    write_campaign_json(cfg)
     todo = [item for item in manifest if not _is_done(out_dir, item["idx"])]
     n_total, n_todo = len(manifest), len(todo)
     print(f"[{cfg['name']}] {n_total} samples in manifest, {n_total - n_todo} done, {n_todo} to run "
