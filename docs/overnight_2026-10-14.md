@@ -106,6 +106,8 @@ Started ~01:00 PDT; Ryan checks back ~09:00 PDT.
 
 | 03:34 | 2 | Final PENT gate over all 162 samples: passes (worst 4.5e-6 rel.). |
 
+| 03:40 | 3 | Screen seed 1 finished (eval above); its Bmad check started; cloud seed 1 restarted on GPU 0. |
+
 (Note: an earlier version of this table had wrong, estimated clock times; corrected from git at 01:58.)
 
 ## Results so far
@@ -129,6 +131,13 @@ reward), surrogate eval 256 episodes: spacing error 53 → **6 µm measured / 5 
 72 % within 10 µm, settles in ~23 steps (vs 4 in cloud mode: noisy, sometimes-invalid
 measurements); drive σ_z 23 % → **4.5 % measured / 8.1 % true**, 78 % within 10 %. Screen reading
 valid 66–71 % of the time. Survival unchanged (0.99 / 0.97).
+- Seed 1 replicates: spacing 4 µm measured / 4 µm true (p90 15 µm), 79 % within 10 µm, settles in
+  13 steps; drive σ_z 3.8 % measured / 9.1 % true.
+- **Bmad check of screen seed 0** (24 setpoints, 100k): Bmad vs true goal spacing **6.1 µm**
+  (5.1 %), drive σ_z **7.0 %**; surrogate vs Bmad 3.5 % / 4.0 %, charge fraction 0.4 %.
+- Measured-vs-true σ_z gap (4 % vs 8–9 %): the measured σ_z includes the ~30 µm transverse-spot blur
+  (blur included, per your choice), which compresses its sensitivity to the true bunch length, plus
+  the hidden streak-scale error — matching the measured value matches the true one less tightly.
 
 **Injector sensitivity (Impact-T → Bmad → XTCAVF, 2e4 particles, grid 32; `data/injector_sensitivity_2026-10-14/summary.md`)**,
 at the approved per-episode magnitudes, "absolute" arrival mode (the injector ⟨t⟩ shift kept —
