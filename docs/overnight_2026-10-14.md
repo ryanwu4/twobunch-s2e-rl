@@ -132,6 +132,8 @@ B5D36 field convention, readback-offset semantics, v1 checkpoint, xtcav-gpsr-tun
 
 | 03:40 | 3 | Screen seed 1 finished (eval above); its Bmad check started; cloud seed 1 restarted on GPU 0. |
 
+| 04:10–04:40 | 3 | Cloud seed 1 finished + eval; screen seed 1 Bmad check; robustness sweep (5 evals). |
+
 (Note: an earlier version of this table had wrong, estimated clock times; corrected from git at 01:58.)
 
 ## Results so far
@@ -166,6 +168,12 @@ valid 66–71 % of the time. Survival unchanged (0.99 / 0.97).
 - Measured-vs-true σ_z gap (4 % vs 8–9 %): the measured σ_z includes the ~30 µm transverse-spot blur
   (blur included, per your choice), which compresses its sensitivity to the true bunch length, plus
   the hidden streak-scale error — matching the measured value matches the true one less tightly.
+
+**Robustness (eval only, conditions outside training; `results/rl/<run>/delta_eval_<tag>/`)**, final
+median errors barely move: gain error U(0.6, 1.4) (trained U(0.8, 1.2)): cloud spacing 3 µm (96 %
+within 10 µm), σ_z 4.6 %; screen spacing 5 µm (78 %), σ_z 4.7 %. Screen policy with streak-scale
+error ±30 % (trained ±20 %): 6 µm / σ_z 9.0 % true; with M = 10 shots (5× noisier): 7 µm (68 %
+within) / 9.0 %; with the unseen injector charge-fraction offset: 6 µm / 10.2 %.
 
 **Injector sensitivity (Impact-T → Bmad → XTCAVF, 2e4 particles, grid 32; `data/injector_sensitivity_2026-10-14/summary.md`)**,
 at the approved per-episode magnitudes, "absolute" arrival mode (the injector ⟨t⟩ shift kept —
