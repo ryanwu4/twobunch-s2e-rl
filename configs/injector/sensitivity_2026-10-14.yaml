@@ -1,0 +1,134 @@
+# Impact-T injector sensitivity study (architecture_plan.md, "Injector noise in the early
+# controller", step 2). Cathode -> Impact-T -> L0AFEND -> Bmad (xtcav23 campaign settings) ->
+# XTCAVF. Each injector variable is perturbed one at a time (OAT) at its per-episode DR
+# magnitude, plus a few combinations, a noise floor, and the controller's own L1/L2 phase
+# authority at the SAME low-N Bmad fidelity.
+#
+# Run (bmad-qpad-dev env, repo root):
+#   PYTHONPATH=$PWD/src nice -n 10 /home/rwu4/miniconda3/envs/bmad-qpad-dev/bin/python -u \
+#     scripts/injector_sensitivity.py configs/injector/sensitivity_2026-10-14.yaml
+#   ... --analyze        (CSV + summary.md in output_dir)
+# Resumable: finished runs (runs/<name>.json with "success") are skipped; injector beams are
+# cached by settings hash under beams/<key>/.
+name: injector_sensitivity_2026-10-14
+output_dir: data/injector_sensitivity_2026-10-14
+
+n_particles: 20000        # Impact-T AND Bmad (equal counts -> modifyAndSaveInputBeam's
+                          # random.sample is a pure permutation, no downsample)
+impact_grid: 32           # Impact-T Nx = Ny = Nz (golden: 100 at 5e5)
+n_workers: 24             # concurrent processes (each = 1 Impact-T or 1 single-thread Bmad)
+golden_beam_seed: 20261014   # seeded 5e5 -> N downsample of the golden beam (authority runs)
+
+bmad:                     # = configs/datagen/xtcav23_full.yaml
+  baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+  fixed_overrides:
+    Q19851kG: -63.76368742523523
+    Q19871kG: 42.49972197426665
+    trackEnd: PENT
+  csrTF: true
+  transverseWakes: true
+  treaty_point: XTCAVF
+  sweep_set_baseline: xtcav23   # + the xtcav23 baseline knobs, as the campaign's baseline repeats
+
+# Arrival-time handling into Bmad. "centred" = legacy (t - <t>, erases injector timing
+# shifts; what every existing campaign did). "absolute" = t - <t>_baseline, i.e. the run's
+# arrival-time shift vs the baseline injector beam is kept, so every downstream cavity sees
+# the corresponding RF phase error with Bmad's own sign convention. Both are run for every
+# OAT/combo injector point (Impact-T beam is shared; only Bmad is repeated).
+arrival_modes: [centred, absolute]
+
+# ---------------------------------------------------------------------------------------
+# One-at-a-time perturbations. `abs`: added to golden; `rel`: golden * (1 + r).
+# basis: where the magnitude comes from. "DAQ" = approved per-episode DR ranges
+# (architecture_plan.md table, 17 DAQ runs 2026-04-15/05-01); "ASSUMED" = no PV exists,
+# spec-level / engineering-judgment magnitude (rationale given).
+# ---------------------------------------------------------------------------------------
+oat:
+  laser_timing_ps:
+    abs: [-0.2, 0.2]
+    basis: "DAQ: facility spec 200 fs; measured <= 0.1 ps. Uniform +-0.2 ps edges."
+  distgen:total_charge:value:
+    rel: [-0.006, -0.003, 0.003, 0.006]
+    basis: "DAQ: 0.3% 1-sigma (measured run-to-run ~0.1%); +-1 sigma and +-2 sigma."
+  drive_fraction:
+    abs: [-0.02, 0.02]
+    basis: "DAQ: +-0.02 drive fraction (~10% in witness/drive ratio); measured 0.69-0.73."
+  GUNF:theta0_deg:
+    abs: [-0.25, 0.25]
+    basis: >-
+      ASSUMED: gun RF phase stability, no DAQ magnitude (the 2026-05-01 injector phase
+      drifts are readback drift, not used). 0.25 deg ~ 0.24 ps S-band, the same scale as
+      the laser timing spec; typical LCLS/FACET gun phase jitter is <= 0.1 deg rms, so this
+      is a conservative per-episode offset.
+  GUNF:rf_field_scale:
+    rel: [-0.0025, 0.0025]
+    basis: >-
+      ASSUMED: gun amplitude stability ~0.1% rms (spec-level); 0.25% taken as a
+      conservative per-episode offset (energy feedback holds DL10 energy, not gun gradient).
+  L0AF_phase_offset_deg:
+    abs: [-0.25, 0.25]
+    basis: >-
+      ASSUMED: L0A phase offset, same 0.25 deg as the gun (DL10 energy feedback absorbs
+      L0A amplitude; the 2026-05-01 L0A readback drift of ~6 deg is not used).
+  SOL10111:solenoid_field_scale:
+    rel: [-0.005, 0.005]
+    basis: >-
+      ASSUMED: solenoid setpoint/readback ~0.5% (magnet power-supply + calibration level;
+      the plan's "~1% magnets" readback-error scale halved for a single well-regulated
+      supply).
+  distgen:r_dist:sigma_xy:value:
+    rel: [-0.02, 0.02]
+    basis: >-
+      ASSUMED: laser spot size, no PV. 2% ~ laser power/pointing (~1% laser power proxy
+      from the plan) doubled for spot-size imaging drift. Truncation radius held fixed.
+  distgen:r_dist:truncation_radius:value:
+    rel: [-0.02, 0.02]
+    basis: "ASSUMED: iris/truncation radius, same 2% as the spot (no PV)."
+  distgen:start:MTE:value:
+    rel: [-0.10, 0.10]
+    basis: >-
+      ASSUMED: cathode MTE, no PV. +-10% (40 meV) for QE/surface drift over weeks; MTE is
+      slow, so this is a per-episode offset at most.
+  sigma_t_ps:
+    rel: [-0.02, 0.02]
+    basis: "ASSUMED: laser pulse length (both pulses together), no PV; 2% (spec-level)."
+  distgen:t_dist:dists:d2:avg_t:value:
+    abs: [-0.1, 0.1]
+    basis: >-
+      ASSUMED: inter-bunch delay (PSDL / double-pulse delay stage), no shot-level PV;
+      +-0.1 ps (delay-stage repeatability, half the timing spec).
+
+# A few combinations at OAT edge values. Each entry is a delta from golden: {abs: a} adds a,
+# {rel: r} multiplies by (1 + r).
+combos:
+  timing+charge+ratio:
+    laser_timing_ps: {abs: 0.2}
+    distgen:total_charge:value: {rel: 0.003}
+    drive_fraction: {abs: 0.02}
+  gun+L0A_phase:
+    GUNF:theta0_deg: {abs: 0.25}
+    L0AF_phase_offset_deg: {abs: 0.25}
+  timing-_gun-:
+    laser_timing_ps: {abs: -0.2}
+    GUNF:theta0_deg: {abs: -0.25}
+  spot+MTE+sol:
+    distgen:r_dist:sigma_xy:value: {rel: 0.02}
+    distgen:start:MTE:value: {rel: 0.10}
+    SOL10111:solenoid_field_scale: {rel: 0.005}
+
+# Noise floor: the baseline (burnin -1 = distgen default, as golden) plus extra baselines
+# with different Hammersley start indices. A bit-identical repeat would measure nothing.
+# Note: every OAT/combo run uses the baseline burnin (common random numbers), so the floor
+# from independent realisations is a conservative bound on their difference noise.
+noise_floor_burnins: [100003, 200003]
+
+# Controller authority at the same fidelity. golden = seeded downsample of the golden 5e5
+# beam; impact = this study's baseline injector beam. Deltas in deg from golden.
+authority:
+  beams: [golden, impact]
+  L1PhaseSet: [-1.0, -0.5, 0.5, 1.0]
+  L2PhaseSet: [-1.0, -0.5, 0.5, 1.0]
+  extra_golden_seeds: [20261015]   # Bmad-side downsample noise for the golden-beam runs
+
+# Optional higher-N rerun of key variables (only if effects sit at the low-N noise floor):
+#   --n-particles 100000 --only <names>  (results go to runs_N100000/)
