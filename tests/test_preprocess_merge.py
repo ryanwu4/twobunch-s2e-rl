@@ -84,3 +84,31 @@ def test_campaign_without_json_parses_as_before(tmp_path):
     assert K.shape == (3, 8) and (camp == 0).all()
     with pytest.raises(KeyError):                      # no campaign.json -> no silent fill
         _run(tmp_path, "old8", "expanded")
+
+
+def test_per_sample_transmission_and_split_groups(tmp_path):
+    """per_sample: T = charge / the row's own reference charge (no downsampling-noise ceiling);
+    'max' (default) keeps the v1-v3 labels. Split groups tie an injector point's rows together."""
+    d = tmp_path / "c"
+    d.mkdir()
+    keys, lo, hi, _ = resolve_sweep_set("tightbox")
+    rows = [  # (witness charge at BEGBC20, at PENT, injector_point, block, linac_id)
+        (0.398, 0.398, "lhs0", "nested", 1), (0.402, 0.402, "lhs0", "nested", 2),
+        (0.400, 0.380, "lhs1", "nested", 3), (0.401, 0.401, "golden", "paired_golden", 3),
+        (0.399, 0.399, "golden", "crossed", 0)]
+    for i, (qb, qp, pt, blk, lid) in enumerate(rows):
+        spec = lambda q: {"PDrive_charge_nC": 1.2, "PWitness_charge_nC": q}
+        (d / f"sample_{i:05d}.json").write_text(json.dumps(
+            {"idx": i, "knobs": {k: (a + b) / 2 for k, a, b in zip(keys, lo, hi)}, "success": True,
+             "specs": {"BEGBC20": spec(qb), "PENT": spec(qp)}, "injector_point": pt, "block": blk,
+             "linac_id": lid}))
+    out = tmp_path / "o.h5"
+    preprocess(subdir="c", p=16, sweep_set="tightbox", out=str(out), verbose=False, data_root=tmp_path,
+               transmission="per_sample")
+    with h5py.File(out) as h:
+        wf, g = h["witness_frac"][...], h["group"][...]
+    np.testing.assert_allclose(wf, [1.0, 1.0, 0.95, 1.0, 1.0], rtol=1e-6)     # no-loss rows read 1
+    assert g[0] == g[1] and g[2] == g[3] and len({g[0], g[2], g[4]}) == 3
+    preprocess(subdir="c", p=16, sweep_set="tightbox", out=str(out), verbose=False, data_root=tmp_path)
+    with h5py.File(out) as h:
+        assert h["witness_frac"][...].max() == pytest.approx(1.0) and h["witness_frac"][0] < 1.0  # max mode

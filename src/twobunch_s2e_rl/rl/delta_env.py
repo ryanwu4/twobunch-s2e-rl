@@ -64,6 +64,7 @@ class DeltaControlEnv:
         action_step: dict[str, float],        # physical change per unit action, per control
         start_box: dict[str, tuple[float, float]],
         context_sigma: dict[str, float] | None = None,   # per-knob overrides of readback_sigma
+        context_dist: dict[str, dict] | None = None,     # per-knob {dist: normal|uniform, width}
         offset_sigma: dict[str, float] | None = None,    # per-control misspecification offset 1-sigma
         gain_halfwidth: float = 0.2,
         scale_error_keys: tuple[str, ...] = (),
@@ -87,10 +88,27 @@ class DeltaControlEnv:
         self._base = torch.tensor([baseline[k] for k in knob_space.keys], **dev)
         self._lo = torch.tensor(knob_space.low, **dev)
         self._hi = torch.tensor(knob_space.high, **dev)
-        ctx = dict(context_sigma or {})
-        self._ctx_sigma = torch.tensor([ctx.get(k, readback_sigma(k, baseline[k]))
-                                        if k not in self.controls else 0.0
-                                        for k in knob_space.keys], **dev)
+        # hidden context: N(baseline, sigma) per knob (readback_sigma rule, or context_sigma), or an
+        # explicit context_dist entry {dist: normal | uniform, width: sigma | half-width}. Injector
+        # knobs have no readback rule: each must be given in context_dist (or context_sigma).
+        from ..datagen.sweep_params import INJECTOR_PARAMS
+        ctx, cdist = dict(context_sigma or {}), dict(context_dist or {})
+        missing_inj = [k for k in knob_space.keys if k in INJECTOR_PARAMS and k not in ctx and k not in cdist]
+        if missing_inj:
+            raise ValueError(f"injector knobs need an explicit context_dist entry: {missing_inj}")
+        bad = [k for k, v in cdist.items() if v.get("dist") not in ("normal", "uniform")]
+        if bad:
+            raise ValueError(f"context_dist dist must be 'normal' or 'uniform' for {bad}")
+
+        def width(k):
+            if k in self.controls:
+                return 0.0
+            if k in cdist:
+                return float(cdist[k]["width"])
+            return float(ctx.get(k, readback_sigma(k, baseline[k])))
+        self._ctx_sigma = torch.tensor([width(k) for k in knob_space.keys], **dev)
+        self._ctx_uniform = torch.tensor([k in cdist and cdist[k]["dist"] == "uniform"
+                                          for k in knob_space.keys], device=self.device)
         self._step_phys = torch.tensor([action_step[k] for k in self.controls], **dev)
         self._start_lo = torch.tensor([start_box[k][0] for k in self.controls], **dev)
         self._start_hi = torch.tensor([start_box[k][1] for k in self.controls], **dev)
@@ -213,8 +231,10 @@ class DeltaControlEnv:
         start = self._start_lo + self._rand(B, n_ctrl) * (self._start_hi - self._start_lo)
         offset = self._randn(B, n_ctrl) * self._off_sigma
         gain = 1.0 + (2 * self._rand(B, n_ctrl) - 1) * self._gain_hw
-        context = torch.minimum(torch.maximum(self._base + self._randn(B, self._ks.n) * self._ctx_sigma,
-                                              self._lo), self._hi)
+        unit = self._randn(B, self._ks.n)
+        if self._ctx_uniform.any():          # extra draw only then: existing configs keep their RNG stream
+            unit = torch.where(self._ctx_uniform, 2 * self._rand(B, self._ks.n) - 1, unit)
+        context = torch.minimum(torch.maximum(self._base + unit * self._ctx_sigma, self._lo), self._hi)
         scale = 1.0 + (2 * self._rand(B) - 1) * self._scale_hw
         goal_ctrl = self._start_lo + self._rand(B, n_ctrl) * (self._start_hi - self._start_lo)
         fo = self._randn(B, len(self._fo_keys)) * self._fo_sigma

@@ -18,15 +18,39 @@ import h5py
 import lightning as L
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, Dataset, Subset, random_split
+
+
+def group_split(groups, val_fraction: float, seed: int):
+    """(train_idx, val_idx) with whole groups on one side; val gets ~val_fraction of the rows."""
+    groups = np.asarray(groups)
+    uniq = np.unique(groups)
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(len(uniq))
+    sizes = {g: int((groups == g).sum()) for g in uniq}
+    target, val_g, n = val_fraction * len(groups), set(), 0
+    for i in order:
+        if n >= target:
+            break
+        val_g.add(uniq[i]); n += sizes[uniq[i]]
+    is_val = np.isin(groups, list(val_g))
+    return np.flatnonzero(~is_val).tolist(), np.flatnonzero(is_val).tolist()
 
 
 def _load(h, k):
     return np.asarray(h[k][...])
 
 
+SCALER_KEYS = ("drive_mean", "drive_std", "witness_mean", "witness_std")
+
+
 class TwoBunchFlowDataset(Dataset):
-    def __init__(self, processed_h5: str, norm_json: str | None = None):
+    """`scaler`: per-bunch particle scalers {drive_mean, drive_std, witness_mean, witness_std} that
+    REPLACE the processed norm's for standardization (and in `self.norm`). Used when warm-starting
+    from a checkpoint: the model decodes with its own scalers, so the training targets must be
+    standardized with exactly those, or the flow learns in one frame and decodes in another."""
+
+    def __init__(self, processed_h5: str, norm_json: str | None = None, scaler: dict | None = None):
         with h5py.File(processed_h5, "r") as h:
             knobs = _load(h, "knobs").astype(np.float32)              # (N,8)
             drive = _load(h, "drive_parts").astype(np.float32)        # (N,P,6)
@@ -39,7 +63,17 @@ class TwoBunchFlowDataset(Dataset):
         norm_json = norm_json or processed_h5.replace(".h5", "_norm.json")
         with open(norm_json) as f:
             norm = json.load(f)
+        if scaler is not None:
+            norm = {**norm, **{k: [float(v) for v in scaler[k]] for k in SCALER_KEYS},
+                    "scaler_source": "checkpoint"}
         self.norm = norm
+        groups = None
+        with h5py.File(processed_h5, "r") as h:
+            if "group" in h:
+                groups = np.asarray(h["group"][...])
+        # split groups: rows that must stay on the same side of train/val (preprocess `group`);
+        # default = every row its own group (plain random split, as before)
+        self.groups = groups if groups is not None else np.arange(len(knobs))
 
         lo = np.array(norm["knob_low"], np.float32)
         hi = np.array(norm["knob_high"], np.float32)
@@ -75,7 +109,8 @@ class TwoBunchFlowDataset(Dataset):
 
 class TwoBunchFlowDataModule(L.LightningDataModule):
     def __init__(self, processed_h5="processed/twobunch_flow.h5", norm_json=None,
-                 batch_size=64, val_fraction=0.1, num_workers=0, split_seed=42):
+                 batch_size=64, val_fraction=0.1, num_workers=0, split_seed=42, scaler=None,
+                 split="random"):
         super().__init__()
         self.save_hyperparameters()
         self.full = None
@@ -84,12 +119,19 @@ class TwoBunchFlowDataModule(L.LightningDataModule):
 
     def setup(self, stage=None):
         if self.full is None:
-            self.full = TwoBunchFlowDataset(self.hparams.processed_h5, self.hparams.norm_json)
-        n_val = int(round(len(self.full) * self.hparams.val_fraction))
-        n_train = len(self.full) - n_val
-        self.train, self.val = random_split(
-            self.full, [n_train, n_val],
-            generator=torch.Generator().manual_seed(self.hparams.split_seed))
+            self.full = TwoBunchFlowDataset(self.hparams.processed_h5, self.hparams.norm_json,
+                                            scaler=self.hparams.scaler)
+        if self.hparams.split == "random":
+            n_val = int(round(len(self.full) * self.hparams.val_fraction))
+            n_train = len(self.full) - n_val
+            self.train, self.val = random_split(
+                self.full, [n_train, n_val],
+                generator=torch.Generator().manual_seed(self.hparams.split_seed))
+        elif self.hparams.split == "group":
+            tr, va = group_split(self.full.groups, self.hparams.val_fraction, self.hparams.split_seed)
+            self.train, self.val = Subset(self.full, tr), Subset(self.full, va)
+        else:
+            raise ValueError(f"split must be 'random' or 'group', got {self.hparams.split!r}")
 
     def _dl(self, ds, shuffle):
         return DataLoader(ds, batch_size=self.hparams.batch_size, shuffle=shuffle,

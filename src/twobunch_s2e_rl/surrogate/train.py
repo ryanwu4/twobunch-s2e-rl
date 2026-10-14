@@ -13,17 +13,32 @@ loaded from the preprocess _norm.json so the checkpoint is self-contained.
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
 
+import numpy as np
 import torch
 import lightning as L
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
 
 from ..datagen.paths import repo_root
-from .dataset import TwoBunchFlowDataModule
+from .dataset import SCALER_KEYS, TwoBunchFlowDataModule
 from .model import TwoBunchFlow
 from ..artifacts import resolve_ckpt, write_run_json
 import yaml
+
+
+def check_knob_frame(state: dict, norm: dict, ckpt) -> None:
+    """A warm start must condition in the processed table's knob frame (else the inputs are
+    silently re-scaled)."""
+    lo, hi = state["knob_low"].numpy(), state["knob_high"].numpy()
+    if lo.shape[0] != len(norm["knob_low"]) or not (
+            np.allclose(lo, norm["knob_low"], rtol=1e-6, atol=0) and
+            np.allclose(hi, norm["knob_high"], rtol=1e-6, atol=0)):
+        raise SystemExit(f"{ckpt}: knob frame differs from the processed table "
+                         f"({lo.shape[0]} vs {len(norm['knob_low'])} knobs); widen the checkpoint "
+                         "to this frame first (scripts/widen_flow_ckpt.py --norm <processed>_norm.json)")
 
 
 def build_model(norm: dict, **overrides) -> TwoBunchFlow:
@@ -70,7 +85,13 @@ def main():
     ap.add_argument("--lr-schedule", choices=["plateau", "cosine"], default="plateau",
                     help="cosine = smooth anneal to lr/100 over --epochs (for warm-started fine-tunes)")
     ap.add_argument("--init-ckpt", default=None,
-                    help="warm-start weights from this checkpoint (glob ok) before a fresh fit")
+                    help="warm-start weights from this checkpoint (glob ok) before a fresh fit; its "
+                         "particle scalers are used to standardize the data (one frame) and its knob "
+                         "frame must equal the processed table's (widen it first: "
+                         "scripts/widen_flow_ckpt.py)")
+    ap.add_argument("--split", choices=["random", "group"], default="random",
+                    help="train/val split: 'group' keeps each injector point (and its paired rows) on "
+                         "one side (preprocess `group` column)")
     pre, _ = ap.parse_known_args()
     if pre.config:
         cfg = yaml.safe_load(open(pre.config)) or {}
@@ -83,9 +104,18 @@ def main():
                    ([args.init_ckpt] if args.init_ckpt else []))
 
     L.seed_everything(args.seed, workers=True)
+    init_state, scaler = None, None
+    if args.init_ckpt:
+        ck = resolve_ckpt(args.init_ckpt)
+        init_state = torch.load(ck, map_location="cpu", weights_only=False)["state_dict"]
+        scaler = {k: init_state[k].tolist() for k in SCALER_KEYS}
     dm = TwoBunchFlowDataModule(processed_h5=args.processed, batch_size=args.batch_size,
-                                num_workers=args.num_workers)
+                                num_workers=args.num_workers, scaler=scaler, split=args.split)
     dm.setup()
+    if init_state is not None:
+        check_knob_frame(init_state, dm.norm, ck)
+    Path(args.out).mkdir(parents=True, exist_ok=True)
+    (Path(args.out) / "norm.json").write_text(json.dumps(dm.norm, indent=2))   # plant charges etc.
     bunches = {"both": (0, 1), "drive": (0,), "witness": (1,)}[args.bunches]
     model = build_model(dm.norm, lr=args.lr, n_layers=args.n_layers,
                         hidden_dim=args.hidden_dim, coupling=args.coupling,
@@ -93,11 +123,9 @@ def main():
                         w_emit=args.w_emit, w_emit_z=args.w_emit_z, w_emit_4d=args.w_emit_4d,
                         w_emit_6d=args.w_emit_6d, w_cov=args.w_cov, bunches=bunches,
                         lr_schedule=args.lr_schedule, t_max=args.epochs)
-    if args.init_ckpt:
+    if init_state is not None:
         # warm-start weights only (new hparams + fresh optimizer/LR schedule); not a full resume
-        ck = resolve_ckpt(args.init_ckpt)
-        state = torch.load(ck, map_location="cpu", weights_only=False)["state_dict"]
-        missing, unexpected = model.load_state_dict(state, strict=False)
+        missing, unexpected = model.load_state_dict(init_state, strict=False)
         print(f"warm-started weights from {ck} (missing={len(missing)}, unexpected={len(unexpected)})")
 
     ckpt = ModelCheckpoint(dirpath=f"{args.out}/checkpoints", monitor="val_loss",

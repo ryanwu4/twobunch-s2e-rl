@@ -208,3 +208,20 @@ def test_reward_only_objective_not_in_obs():
            "spacing_goal": torch.full((3,), 2e-4)}
     r, _ = spec(obs)
     assert r[0] < r[1]                                    # the hidden term still shapes the reward
+
+
+def test_context_dist_uniform_and_injector_keys_required():
+    """context_dist gives per-knob uniform / normal hidden context; a knob space containing
+    injector knobs refuses to build without explicit entries for them."""
+    env = _env(num_envs=4000, context_dist={"L1EnergyOffset": {"dist": "uniform", "width": 1e6}})
+    j = KS.index("L1EnergyOffset")
+    d = env._context[:, j] - BASE["L1EnergyOffset"]
+    assert d.abs().max() <= 1e6 + 1 and abs(d.std().item() - 1e6 / math.sqrt(3)) < 0.05e6
+    keys = list(KEYS) + ["laser_timing_ps"]
+    ks = KnobSpace.from_lists(keys, list(LO) + [-0.3], list(HI) + [0.3])
+    with pytest.raises(ValueError, match="injector knobs need an explicit context_dist"):
+        DeltaControlEnv(4, observe_fn=lambda k: {}, knob_space=ks, baseline={**BASE, "laser_timing_ps": 0.0},
+                        controls=CTRL, reward_spec=_spec(), device="cpu", episode_length=4,
+                        action_step={"L1PhaseSet": 0.3, "L2PhaseSet": 0.3},
+                        start_box={"L1PhaseSet": (BASE["L1PhaseSet"] - 2, BASE["L1PhaseSet"] + 2),
+                                   "L2PhaseSet": (-37.5, -34.5)})

@@ -10,7 +10,9 @@ import argparse
 import csv
 import json
 import os
+import warnings
 from functools import partial
+from pathlib import Path
 
 import numpy as np
 
@@ -205,6 +207,14 @@ def build_env_fn(cfg: dict, flow_ckpt: str):
     )
 
 
+def flow_norm_json(ckpt, campaign_h5) -> str:
+    """The processed norm the flow was TRAINED on (train.py writes <out>/norm.json next to
+    <out>/checkpoints/): full charges etc. must come from it, not from the reward campaign. Older
+    checkpoints have none -> the reward campaign's norm (they were trained on it)."""
+    own = Path(ckpt).resolve().parent.parent / "norm.json"
+    return str(own) if own.exists() else str(campaign_h5).replace(".h5", "_norm.json")
+
+
 def build_delta_env_fn(cfg: dict, flow_ckpt: str):
     """DeltaControlEnv over a plant chosen by diff_env.plant:
       - "flow": the flow's own observables at its treaty point (cloud-mode ground truth)
@@ -233,9 +243,13 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
             observe_fn = flow_plant(flow, n_particles)
         else:
             sc = de.get("screen", {})
+            if "split" not in sc or "threshold" not in sc:
+                warnings.warn("screen config without explicit `split` / `threshold`: using the v1 "
+                              "defaults (zlobe, midpoint = TRUE-centroid threshold, a truth leak). "
+                              "Set both explicitly in new configs.", stacklevel=2)
             observe_fn = xtcav_screen_plant(
                 flow, n_particles, spec_path=str(repo_root() / sc.get("spec", "configs/segment/segment_baseline.json")),
-                norm_json=str(repo_root() / de["campaign_h5"]).replace(".h5", "_norm.json"), device=device,
+                norm_json=flow_norm_json(ckpt, repo_root() / de["campaign_h5"]), device=device,
                 tdc_voltage_V=float(sc.get("tdc_voltage_V", 22e6)), split=sc.get("split", "zlobe"),
                 resolution_m=float(sc.get("extra_resolution_m", 0.0)),
                 threshold=sc.get("threshold", "midpoint"), row_correct=bool(sc.get("row_correct", False)),
@@ -246,7 +260,8 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
             feature_offset_sigma=ms.get("feature_offset_sigma"),
             knob_space=frame, baseline=baseline, controls=de["controls"], reward_spec=spec,
             action_step=de["action_step"], start_box={k: tuple(v) for k, v in de["start_box"].items()},
-            context_sigma=de.get("context_sigma"), offset_sigma=de.get("offset_sigma"),
+            context_sigma=de.get("context_sigma"), context_dist=de.get("context_dist"),
+            offset_sigma=de.get("offset_sigma"),
             gain_halfwidth=float(de.get("gain_halfwidth", 0.2)),
             scale_error_keys=tuple(ms.get("scale_error_keys", ())),
             scale_error_halfwidth=float(ms.get("scale_error_halfwidth", 0.0)),

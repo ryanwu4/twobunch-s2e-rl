@@ -68,3 +68,68 @@ def test_widen_real_xtcav23_ckpt():
     a, b = _obs(flow, k_old, z), _obs(wide, k_new, z)
     for k in ("bunch_spacing", "drive_sigma_z", "witness_norm_emit_x", "T_witness"):
         torch.testing.assert_close(b[k], a[k], rtol=2e-4, atol=1e-9)
+
+
+def _processed(tmp_path, space, drive_mean, n=6, P=8):
+    """Minimal processed table + norm whose particle scalers DIFFER from the checkpoint's."""
+    import json
+    import h5py
+    import numpy as np
+    h5 = tmp_path / "t.h5"
+    with h5py.File(h5, "w") as h:
+        h["knobs"] = np.stack([np.asarray(space.low) + 0.5 * (np.asarray(space.high) - np.asarray(space.low))] * n)
+        h["drive_parts"] = np.ones((n, P, 6), np.float32)
+        h["witness_parts"] = np.ones((n, P, 6), np.float32)
+        for k in ("drive_present", "witness_viable", "drive_density", "witness_density"):
+            h[k] = np.ones(n, bool)
+        h["drive_frac"] = np.ones(n, np.float32)
+        h["witness_frac"] = np.ones(n, np.float32)
+        h["group"] = np.array([0, 0, 1, 1, 2, 3], np.int32)
+    norm = {"knob_keys": list(space.keys), "knob_low": list(space.low), "knob_high": list(space.high),
+            "drive_mean": drive_mean, "drive_std": [2.0] * 6, "witness_mean": [0.3] * 6,
+            "witness_std": [3.0] * 6}
+    (tmp_path / "t_norm.json").write_text(json.dumps(norm))
+    return str(h5)
+
+
+def test_zero_epoch_finetune_reproduces_old_flow(tmp_path):
+    """train.py's warm-start path (dataset standardized with the CHECKPOINT's scalers, model built
+    from that norm, weights loaded) must decode exactly like the widened old flow: one frame."""
+    from twobunch_s2e_rl.surrogate.dataset import SCALER_KEYS, TwoBunchFlowDataModule
+    from twobunch_s2e_rl.surrogate.train import build_model, check_knob_frame
+    old_flow = _flow()
+    old_flow.drive_mean.fill_(0.7); old_flow.drive_std.fill_(1.5)       # old frame != new table's
+    wide = widen_conditioning(old_flow, NEW)
+    state = wide.state_dict()
+    h5 = _processed(tmp_path, NEW, drive_mean=[-4.0] * 6)
+    scaler = {k: state[k].tolist() for k in SCALER_KEYS}
+    dm = TwoBunchFlowDataModule(processed_h5=h5, scaler=scaler)
+    dm.setup()
+    check_knob_frame(state, dm.norm, "ckpt")
+    model = build_model(dm.norm, n_layers=2, hidden_dim=16, coupling="rqs").eval()
+    model.load_state_dict(state, strict=False)
+    torch.testing.assert_close(model.drive_mean, wide.drive_mean)
+    # the training targets are standardized in the model's own frame
+    torch.testing.assert_close(dm.full.drive[0, 0], (torch.ones(6) - 0.7) / 1.5)
+    g = torch.Generator().manual_seed(3)
+    kn = torch.rand(4, 5, generator=g)
+    z = (torch.randn(64, 6, generator=g), torch.randn(64, 6, generator=g))
+    a, b = _obs(wide, kn, z), _obs(model, kn, z)
+    for k in ("bunch_spacing", "drive_sigma_z", "drive_norm_emit_x", "T_witness"):
+        torch.testing.assert_close(b[k], a[k], rtol=1e-6, atol=1e-12)
+
+
+def test_warm_start_refuses_a_different_knob_frame(tmp_path):
+    from twobunch_s2e_rl.surrogate.train import check_knob_frame
+    state = _flow().state_dict()                 # 3-knob frame vs a 5-knob table
+    with pytest.raises(SystemExit, match="knob frame differs"):
+        check_knob_frame(state, {"knob_low": list(NEW.low), "knob_high": list(NEW.high)}, "ckpt")
+
+
+def test_group_split_keeps_groups_together():
+    from twobunch_s2e_rl.surrogate.dataset import group_split
+    import numpy as np
+    groups = np.repeat(np.arange(20), 5)
+    tr, va = group_split(groups, 0.2, seed=0)
+    assert set(groups[tr]).isdisjoint(set(groups[va])) and 15 <= len(va) <= 25
+    assert sorted(tr + va) == list(range(100))

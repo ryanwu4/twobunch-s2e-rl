@@ -59,7 +59,8 @@ def _subsample(coords: np.ndarray, p: int, rng: np.random.Generator) -> np.ndarr
 
 
 def parse_one(json_path: str, p: int, rng: np.random.Generator, keys: list,
-              treaty_point: str = PENT, fill: dict | None = None) -> dict | None:
+              treaty_point: str = PENT, fill: dict | None = None,
+              transmission_ref: str = "BEGBC20") -> dict | None:
     with open(json_path) as f:
         d = json.load(f)
     if not d.get("success"):
@@ -92,6 +93,12 @@ def parse_one(json_path: str, p: int, rng: np.random.Generator, keys: list,
         # golden beam's charge up to downsample noise). T = charge / full stays the training label.
         "drive_q_in": float(d.get("injected_charge_nC", {}).get("drive", np.nan)),
         "witness_q_in": float(d.get("injected_charge_nC", {}).get("witness", np.nan)),
+        # per-bunch charge at an upstream reference point (stand-in for the injected charge of
+        # campaigns that did not record it; xtcav23 has no loss upstream of BC20)
+        "drive_q_ref": float((d.get("specs", {}).get(transmission_ref, {}).get("PDrive_charge_nC")) or np.nan),
+        "witness_q_ref": float((d.get("specs", {}).get(transmission_ref, {}).get("PWitness_charge_nC")) or np.nan),
+        # split-group fields (injector campaigns)
+        "block": d.get("block"), "injector_point": d.get("injector_point"), "linac_id": d.get("linac_id"),
     }
 
     if not (drive_present or witness_viable):
@@ -236,9 +243,45 @@ def check_mergeable(camps: list[dict], treaty_point: str) -> None:
                                  f"{k} = {fo_a.get(k)} vs {fo_b.get(k)}")
 
 
+def split_groups(records) -> np.ndarray:
+    """Group id per row for a leak-free train/val split: rows of the same (campaign, injector
+    point) form one group, and a paired_golden row joins the group of the nested row it pairs with
+    (same campaign + linac_id). The shared golden injector point is NOT a link (it would chain the
+    whole campaign together); rows without injector-campaign fields are their own group."""
+    parent = list(range(len(records)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i, j):
+        parent[find(i)] = find(j)
+
+    by_point, by_linac = {}, {}
+    for i, r in enumerate(records):
+        if r.get("injector_point") not in (None, "golden", "golden_h5"):
+            by_point.setdefault((r["campaign"], r["injector_point"]), []).append(i)
+        if r.get("block") in ("nested", "paired_golden") and r.get("linac_id") is not None:
+            by_linac.setdefault((r["campaign"], r["linac_id"]), []).append(i)
+    for members in list(by_point.values()) + list(by_linac.values()):
+        for j in members[1:]:
+            union(members[0], j)
+    roots = [find(i) for i in range(len(records))]
+    _, ids = np.unique(roots, return_inverse=True)
+    return ids.astype(np.int32)
+
+
 def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
                scaler="intrabunch", sweep_set="original8", treaty_point=PENT,
-               verbose=True, data_root=None, campaign_jsons=None, allow_drop=()):
+               verbose=True, data_root=None, campaign_jsons=None, allow_drop=(),
+               transmission="max", transmission_ref="BEGBC20"):
+    # transmission: "max" (v1-v3 tables): T = charge / max charge over records -- carries the
+    #   +-0.9% downsampling noise of the golden-beam campaigns, so T ~0.986 with no loss.
+    #   "per_sample": T = charge / that row's injected charge (recorded by injector campaigns; else
+    #   the charge at `transmission_ref`). The norm then records transmission="per_sample" and the
+    #   median injected charges as the full charges.
     # subdir may be comma-separated to MERGE campaigns (e.g. "tightbox_v2_full,expanded_full").
     # When merging boxes with different bounds, pass a union sweep_set (e.g. "tightbox+expanded")
     # so every draw is normalized in one common frame; parse_one stores raw knobs, so the frame
@@ -273,7 +316,8 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
 
     records = []
     for i, (fp, ci) in enumerate(zip(files, file_campaign)):
-        rec = parse_one(fp, p, rng, keys, treaty_point=treaty_point, fill=fills.get(ci))
+        rec = parse_one(fp, p, rng, keys, treaty_point=treaty_point, fill=fills.get(ci),
+                        transmission_ref=transmission_ref)
         if rec is not None:
             rec["campaign"] = ci
             records.append(rec)
@@ -295,8 +339,23 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
 
     drive_mean, drive_std = _scaler(records, "drive_parts", "drive_density", scaler)
     witness_mean, witness_std = _scaler(records, "witness_parts", "witness_density", scaler)
-    drive_full = max((r["drive_charge"] for r in records), default=1.0) or 1.0
-    witness_full = max((r["witness_charge"] for r in records), default=1.0) or 1.0
+    if transmission == "max":
+        drive_full = max((r["drive_charge"] for r in records), default=1.0) or 1.0
+        witness_full = max((r["witness_charge"] for r in records), default=1.0) or 1.0
+        for r in records:
+            r["drive_ref"], r["witness_ref"] = drive_full, witness_full
+    elif transmission == "per_sample":
+        for r in records:
+            for b in ("drive", "witness"):
+                q = r[f"{b}_q_in"] if np.isfinite(r[f"{b}_q_in"]) else r[f"{b}_q_ref"]
+                if not np.isfinite(q) or q <= 0:
+                    raise ValueError(f"row idx={r['idx']} (campaign {r['campaign']}): no injected "
+                                     f"charge and no {transmission_ref} charge for the {b}")
+                r[f"{b}_ref"] = q
+        drive_full = float(np.median([r["drive_ref"] for r in records]))
+        witness_full = float(np.median([r["witness_ref"] for r in records]))
+    else:
+        raise ValueError(f"transmission must be 'max' or 'per_sample', got {transmission!r}")
 
     def frac(c, full):
         return float(np.clip(c / full, 0.0, 1.05))
@@ -312,8 +371,12 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
         for col, dt in [("drive_present", bool), ("witness_viable", bool),
                         ("drive_density", bool), ("witness_density", bool)]:
             h.create_dataset(col, data=np.array([r[col] for r in records], dtype=dt))
-        h.create_dataset("drive_frac", data=np.array([frac(r["drive_charge"], drive_full) for r in records], np.float32))
-        h.create_dataset("witness_frac", data=np.array([frac(r["witness_charge"], witness_full) for r in records], np.float32))
+        h.create_dataset("drive_frac", data=np.array([frac(r["drive_charge"], r["drive_ref"]) for r in records], np.float32))
+        h.create_dataset("witness_frac", data=np.array([frac(r["witness_charge"], r["witness_ref"]) for r in records], np.float32))
+        if transmission == "per_sample":
+            h.create_dataset("drive_q_ref_nC", data=np.array([r["drive_ref"] for r in records], np.float32))
+            h.create_dataset("witness_q_ref_nC", data=np.array([r["witness_ref"] for r in records], np.float32))
+        h.create_dataset("group", data=split_groups(records))
         h.create_dataset("n_drive", data=np.array([r["n_drive"] for r in records], np.int32))
         h.create_dataset("n_witness", data=np.array([r["n_witness"] for r in records], np.int32))
         h.create_dataset("idx", data=np.array([r["idx"] for r in records], np.int32))
@@ -336,7 +399,7 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
         "drive_full_charge_nC": drive_full, "witness_full_charge_nC": witness_full,
         "coord_keys": list(COORD_KEYS), "electron_mc2_ev": ELECTRON_MC2_EV,
         "P": int(p), "n_records": n, "scaler": scaler, "sweep_set": sweep_set,
-        "treaty_point": treaty_point,
+        "treaty_point": treaty_point, "transmission": transmission,
     }
     with open(out.replace(".h5", "_norm.json"), "w") as f:
         json.dump(norm, f, indent=2)
@@ -371,6 +434,12 @@ def main():
     ap.add_argument("--campaign-json", action="append", default=[], metavar="SUBDIR=PATH",
                     help="campaign record for SUBDIR kept outside data/<SUBDIR> (e.g. a backfill); "
                          "repeatable")
+    ap.add_argument("--transmission", choices=["max", "per_sample"], default="max",
+                    help="transmission label: 'max' (v1-v3; charge / max over records) or "
+                         "'per_sample' (charge / that row's injected charge)")
+    ap.add_argument("--transmission-ref", default="BEGBC20",
+                    help="treaty point whose charge stands in for the injected charge when a row "
+                         "did not record it (per_sample mode)")
     ap.add_argument("--allow-drop", default="",
                     help="comma-separated swept knobs to marginalize over (opt-in exception to the "
                          "knob-drop rule)")
@@ -379,7 +448,8 @@ def main():
     preprocess(subdir=args.subdir, p=args.P, max_samples=args.max_samples,
                seed=args.seed, out=args.out, scaler=args.scaler, sweep_set=args.sweep_set,
                treaty_point=args.treaty_point, campaign_jsons=cjs,
-               allow_drop=[k for k in args.allow_drop.split(",") if k])
+               allow_drop=[k for k in args.allow_drop.split(",") if k],
+               transmission=args.transmission, transmission_ref=args.transmission_ref)
 
 
 if __name__ == "__main__":

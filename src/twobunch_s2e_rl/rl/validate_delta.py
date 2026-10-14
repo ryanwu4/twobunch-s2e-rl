@@ -31,7 +31,8 @@ import yaml
 
 from ..datagen.paths import repo_root
 
-# campaign whose fixed settings the xtcav23 surrogate was trained under (until campaign.json exists)
+# campaign whose fixed settings the flow was trained under: diff_env.bmad_campaign_cfg if set, else
+# the xtcav23 campaign (the only flows trained so far)
 CAMPAIGN_CFG = "configs/datagen/xtcav23_full.yaml"
 TARGETS = ("bunch_spacing", "drive_sigma_z", "energy_difference", "drive_charge_fraction")
 
@@ -53,11 +54,20 @@ def export(logdir, k=24, device="cuda", seed=777, policy="best", tag=""):
     env = build_env_fn(cfg, policy_flow_ckpt(logdir))(num_envs=k, device=device, seed=seed,
                                                        episode_length=int(de["episode_length"]),
                                                        no_grad=True)
+    from ..datagen.sweep_params import INJECTOR_PARAMS
+    inj = [key for key in env._ks.keys if key in INJECTOR_PARAMS]
+    if inj and any(float(env._ctx_sigma[env._ks.index(key)]) > 0 for key in inj):
+        raise NotImplementedError("Bmad check of an injector-randomized policy needs the Impact-T "
+                                  f"path per setpoint ({inj}); not implemented")
     actor, rms = load_policy(str(Path(logdir) / f"{policy}_policy.pt"), device)
-    # stop one step short of the episode end: the final step would reset the env and redraw the
-    # hidden context, which the exported knob settings must come from
-    traj = rollout(env, actor, rms, n_steps=int(de["episode_length"]) - 1)
+    # the final step resets the env (new hidden context), so take the context just BEFORE it and
+    # the true controls reached BY it: the exported state is the end of step episode_length, the
+    # same step eval_delta reports
+    n = int(de["episode_length"])
+    traj = rollout(env, actor, rms, n_steps=n - 1)
     knobs = env._context.clone()                                       # (K, n_knob) physical
+    last = rollout(env, actor, rms, n_steps=1)
+    traj = {key: torch.cat([traj[key], last[key]]) for key in traj}
     knobs[:, env._ci] = traj["true_controls"][-1]                      # true controls at the end
     rows = []
     for i in range(k):
@@ -116,7 +126,9 @@ def track_all(logdir, num_macro=20000, workers=12, tag=""):
     import multiprocessing
     out = _out(logdir, tag)
     rows = json.loads((out / "setpoints.json").read_text())
-    camp = yaml.safe_load((repo_root() / CAMPAIGN_CFG).read_text())
+    cfg = yaml.safe_load((Path(logdir) / "cfg.yaml").read_text())
+    camp_cfg = cfg["params"]["diff_env"].get("bmad_campaign_cfg", CAMPAIGN_CFG)
+    camp = yaml.safe_load((repo_root() / camp_cfg).read_text())
     with multiprocessing.Pool(workers, initializer=_init, initargs=(camp, num_macro, str(out))) as pool:
         for i, status in pool.imap_unordered(_track_one, rows):
             print(f"  setpoint {i}: {status}", flush=True)
