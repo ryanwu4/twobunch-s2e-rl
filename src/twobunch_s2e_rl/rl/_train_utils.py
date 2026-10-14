@@ -238,7 +238,8 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
                 norm_json=str(repo_root() / de["campaign_h5"]).replace(".h5", "_norm.json"), device=device,
                 tdc_voltage_V=float(sc.get("tdc_voltage_V", 22e6)), split=sc.get("split", "zlobe"),
                 resolution_m=float(sc.get("extra_resolution_m", 0.0)),
-                threshold=sc.get("threshold", "midpoint"), row_correct=bool(sc.get("row_correct", False)))
+                threshold=sc.get("threshold", "midpoint"), row_correct=bool(sc.get("row_correct", False)),
+                quad_jitter=sc.get("quad_jitter"))
         return DeltaControlEnv(
             num_envs, device=device, seed=seed, episode_length=episode_length, no_grad=no_grad,
             observe_fn=observe_fn, fallback_keys=tuple(ms.get("fallback_keys", ())),

@@ -15,6 +15,8 @@ Per episode (all hidden from the policy):
   tolerate.
 - measurement scale error on chosen features (streak calibration): measured = true * s,
   s ~ U(1 - h, 1 + h)
+- plant-side hidden parameters (e.g. the post-XTCAVF quad strengths in screen mode): redrawn for the
+  reset envs through `observe_fn.resample(mask, generator)` if the plant provides it
 - goals: "achievable" — the measured features of a random true control point in the start box,
   under this episode's context and scale error (noise-free), so every goal is reachable
 
@@ -238,6 +240,9 @@ class DeltaControlEnv:
         self._context = torch.where(mc, context, self._context)
         self._scale = torch.where(m, scale, self._scale)
         self._fo = torch.where(mc, fo, self._fo)
+        resample = getattr(self._observe_fn, "resample", None)
+        if resample is not None:
+            resample(m, self._rng)
         # commanded start = true start minus the offset (what the operator's readback would say);
         # the policy only ever sees cmd - cmd0, which is 0 here
         cmd0 = (start - offset).detach()

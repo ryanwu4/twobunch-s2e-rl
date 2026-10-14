@@ -6,8 +6,12 @@
   ground-truth cloud twin of every screen feature is returned alongside as `<key>_cloud`, and the
   flow's own observables (survival heads etc.) pass through unchanged.
 
-The segment quads (Q2/Q1/Q0FF) are held at the golden values stored in the segment spec in this
-first version (they are downstream of XTCAVF and outside the controller's action set).
+The segment quads (Q2/Q1/Q0FF, optionally the spectrometer Q0D/Q1D/Q2D) sit downstream of XTCAVF,
+so the flow never sees them. By default they are held at the spec's golden values; `quad_jitter`
+({name: fractional 1-sigma}) instead draws a hidden per-episode strength for each env
+(`observe.resample(mask, generator)`, called by DeltaControlEnv at reset). The streak calibration
+stays the golden one, so a quad error also acts as a calibration / resolution / energy-axis error,
+as on the machine between phase-scan calibrations.
 """
 from __future__ import annotations
 
@@ -41,7 +45,8 @@ def flow_plant(flow, n_particles: int):
 def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
                        tdc_voltage_V: float = 22e6, tdc_phase_deg: float = 0.0,
                        resolution_m: float = 0.0, split: str = "energy",
-                       threshold: str = "midpoint", row_correct: bool = False):
+                       threshold: str = "midpoint", row_correct: bool = False,
+                       quad_jitter: dict[str, float] | None = None):
     from xtcav_segment.convert import cloud_to_beam
     from xtcav_segment.features import FEATURE_KEYS, calibrate_streak, cloud_features, screen_features
     from xtcav_segment.segment import (back_drift, build_segment_from_spec, element_by_name,
@@ -56,6 +61,8 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
     set_tdc(segment, tdc_voltage_V, tdc_phase_deg)
     tdc = element_by_name(segment, "XTCAVF")
     tdc.voltage = torch.tensor([[tdc_voltage_V], [-tdc_voltage_V]], device=device, dtype=torch.float64)
+    quads = {name: element_by_name(segment, name) for name in (quad_jitter or {})}
+    k1_golden = {name: q.k1.detach().clone() for name, q in quads.items()}
     norm = json.loads(open(norm_json).read())
     q_full_d, q_full_w = norm["drive_full_charge_nC"], norm["witness_full_charge_nC"]
 
@@ -92,6 +99,15 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
         obs["screen_misassign"] = scr["screen_misassign"]
         return obs
 
+    def resample(mask: torch.Tensor, generator: torch.Generator):
+        """Redraw the hidden quad strengths of the envs in `mask` (B,) bool; others keep theirs."""
+        for name, q in quads.items():
+            k1 = k1_golden[name] * (1 + quad_jitter[name] * torch.randn(
+                mask.shape[0], generator=generator, device=mask.device, dtype=torch.float64))
+            old = q.k1 if q.k1.dim() == 1 and q.k1.shape[0] == mask.shape[0] else k1_golden[name].expand_as(k1)
+            q.k1 = torch.where(mask, k1, old)
+
+    observe.resample = resample if quads else None
     observe.streak = streak
     observe.eta_y = eta_y
     return observe

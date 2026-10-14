@@ -179,3 +179,17 @@ def test_feature_offset_is_per_episode_and_hidden():
     _, _, _, info2 = env.step(torch.zeros(2048, 2))
     d2 = info2["achieved"]["bunch_spacing"] - info2["achieved"]["bunch_spacing_true"]
     assert torch.allclose(d, d2)                               # constant within the episode
+
+
+def test_plant_resample_hook_called_with_reset_mask():
+    """A plant exposing `resample(mask, generator)` (e.g. hidden post-XTCAVF quad strengths) gets
+    every reset: all envs at construction, only the done ones afterwards."""
+    torch.manual_seed(0)
+    flow = TwoBunchFlow(condition_dim=8, n_layers=2, hidden_dim=16, n_aux_particles=64).eval()
+    masks = []
+    obs_fn = lambda k: flow.observables(k, n=64)
+    obs_fn.resample = lambda mask, gen: masks.append(mask.clone())
+    env = _env(observe_fn=obs_fn)
+    assert masks and masks[-1].all()
+    env.reset(torch.tensor([1, 3]))
+    assert masks[-1].tolist() == [i in (1, 3) for i in range(8)]
