@@ -43,7 +43,7 @@ design:
 csrTF: true
 transverseWakes: true
 baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
-treaty_points: [BEGBC20, MFFF, XTCAVF, PENT]
+treaty_points: [BL11356, BL14888, BEGBC20, MFFF, XTCAVF, PENT]   # BL11356/BL14888 = BC11/BC14 BLEN monitors (sigma_z only)
 save_beams_at: [XTCAVF]
 fixed_overrides:
   Q19851kG: -63.76368742523523

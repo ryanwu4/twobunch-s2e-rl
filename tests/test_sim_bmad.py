@@ -5,13 +5,14 @@ from twobunch_s2e_rl.sim.bmad import merged_settings, split_bunches, track
 
 
 class _P:
-    def __init__(self, n, weights):
+    def __init__(self, n, weights, z=None):
         self.x = np.zeros(n)
+        self.z = np.linspace(0.0, 1e-4, n) if z is None else z
         self.weight = np.asarray(weights, float)
         self.written = []
 
     def __getitem__(self, m):
-        return _P(int(m.sum()), self.weight[m])
+        return _P(int(m.sum()), self.weight[m], self.z[m])
 
     def write(self, path):
         self.written.append(path)
@@ -51,6 +52,7 @@ def test_track_passes_full_settings_and_collects_specs():
     assert qs.calls == [("setLattice", s), ("trackBeam", s)]
     x = rec["specs"]["XTCAVF"]
     assert x["n_live_drive"] == 2 and x["n_live_witness"] == 2 and x["twiss"] is None
+    assert {"sigma_z_rms_total", "sigma_z_rms_drive", "sigma_z_rms_witness"} <= set(x)
     assert qs.beams["XTCAVF"].written == ["/tmp/sample_00007_XTCAVF.h5"]
     p = rec["specs"]["PENT"]                       # fully scraped: no beam file, error recorded
     assert p["n_live_total"] == 0 and "specs_error" in p and qs.beams["PENT"].written == []

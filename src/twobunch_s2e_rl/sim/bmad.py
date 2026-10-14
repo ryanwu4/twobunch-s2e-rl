@@ -16,11 +16,18 @@ def merged_settings(baseline: dict, fixed_overrides: dict | None, knobs: dict) -
     return {**baseline, **(fixed_overrides or {}), **knobs}
 
 
-def make_tao(qs, s2e_root, baseline: dict, *, csr: bool, wakes: bool, n_particles: int, scratch):
-    return qs.initializeTao(
+def make_tao(qs, s2e_root, baseline: dict, *, csr: bool, wakes: bool, n_particles: int, scratch,
+             saved_at=()):
+    """`saved_at`: extra elements whose beam Tao must keep in RAM so `track` can read them (Tao
+    saves every MARKER plus FACET2-S2E's own list; e.g. the BLEN monitors BL11356 / BL14888 are not
+    markers)."""
+    tao = qs.initializeTao(
         filePath=str(s2e_root), inputBeamFilePathSuffix=baseline["inputBeamFilePathSuffix"],
         csrTF=csr, transverseWakes=wakes, numMacroParticles=n_particles,
         scratchPath=str(scratch), randomizeFileNames=True)
+    if saved_at:
+        tao.cmd(f"set beam add_saved_at = {', '.join(saved_at)}")
+    return tao
 
 
 def track(qs, tao, s2e_root, settings: dict, points, *, n_in: int, save_beams_at=(),
@@ -37,10 +44,14 @@ def track(qs, tao, s2e_root, settings: dict, points, *, n_in: int, save_beams_at
         if ele in save_beams_at and len(P.x) and out_prefix is not None:
             P.write(f"{out_prefix}_{ele}.h5")
         specs = {"n_live_total": len(P.x), "transmission_total": len(P.x) / n_in}
+        if len(P.x):
+            specs["sigma_z_rms_total"] = float(np.std(P.z))          # what a BLEN monitor integrates
         if len(np.unique(P.weight)) == 2:
             PDrive, PWitness = qs.getDriverAndWitness(P)
             specs["n_live_drive"] = len(PDrive.x)
             specs["n_live_witness"] = len(PWitness.x)
+            specs["sigma_z_rms_drive"] = float(np.std(PDrive.z))
+            specs["sigma_z_rms_witness"] = float(np.std(PWitness.z))
         try:
             specs.update(qs.getBeamSpecs(P, targetTwiss=ele if ele in _TWISS_POINTS else None) or {})
         except Exception as e:  # noqa: BLE001 - record, don't lose the sample
