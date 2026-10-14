@@ -397,7 +397,10 @@ def build_twobunch_reward_spec(
                                  boundary_margin=boundary_margin) for e in objectives]
         # obs = objective metrics (knobs are already the obs prefix), then per-env goals appended
         # at the end so the obs prefix stays stable (mirrors the goal-append invariant below).
-        obs_keys = tuple(dict.fromkeys(e["key"] for e in objectives if e["key"] != KNOBS_KEY))
+        # `observe: false` on an objective keeps it reward-only (e.g. a privileged sim quantity
+        # with no machine diagnostic, such as the per-bunch transmissions).
+        obs_keys = tuple(dict.fromkeys(e["key"] for e in objectives
+                                       if e["key"] != KNOBS_KEY and e.get("observe", True)))
         # observe-only metrics (in obs, no reward term, e.g. the driven energy difference) follow
         # the objective metrics; goals are still appended last
         obs_keys = obs_keys + tuple(k for k in observe_keys if k not in obs_keys)

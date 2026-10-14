@@ -193,3 +193,18 @@ def test_plant_resample_hook_called_with_reset_mask():
     assert masks and masks[-1].all()
     env.reset(torch.tensor([1, 3]))
     assert masks[-1].tolist() == [i in (1, 3) for i in range(8)]
+
+
+def test_reward_only_objective_not_in_obs():
+    """`observe: false` keeps a term in the reward but out of the policy obs."""
+    norms = {"bunch_spacing": {"transform": "identity", "mean": 2e-4, "std": 1e-4},
+             "T_witness": {"transform": "identity", "mean": 0.9, "std": 0.1}}
+    objs = [{"key": "bunch_spacing", "kind": "target", "goal": [1e-4, 3e-4]},
+            {"key": "T_witness", "kind": "hinge", "hinge_at": 0.9, "observe": False}]
+    spec = build_twobunch_reward_spec(norms, {}, objectives=objs)
+    assert "T_witness" not in spec.obs_keys and "bunch_spacing" in spec.obs_keys
+    assert any(t.key == "T_witness" for t in spec.terms)
+    obs = {"bunch_spacing": torch.full((3,), 2e-4), "T_witness": torch.tensor([0.5, 0.95, 1.0]),
+           "spacing_goal": torch.full((3,), 2e-4)}
+    r, _ = spec(obs)
+    assert r[0] < r[1]                                    # the hidden term still shapes the reward
