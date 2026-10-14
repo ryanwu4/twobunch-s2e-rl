@@ -137,6 +137,7 @@ B5D36 field convention, readback-offset semantics, v1 checkpoint, xtcav-gpsr-tun
 | 04:23 | 3 | Screen+injector seed 0 eval (above). |
 | 04:25 | 3 | Started screen+injector seed 1 (GPU 1) and a cloud σ_z-weight ablation (GPU 0) — a first launch at 04:23 silently failed (zsh word-splitting in my launch loop) and was redone. |
 | 04:44 | 3 | σ_z-weight ablation finished + eval (above). |
+| 04:49 | 3a | Injector grid-64 check finished; analysed (above). |
 
 (Note: an earlier version of this table had wrong, estimated clock times; corrected from git at 01:58.)
 
@@ -206,8 +207,13 @@ solenoid / spot / MTE / σ_t / L0A phase / charge ≤ 0.8 µm. Controller author
   verdict (absolute mode): laser timing, gun phase/amplitude, bunch delay → **input-side L1/L2
   phase-offset proxy** (≤ 0.31° / 0.16°; ΔE residual 0.02°); drive fraction → **output-side**
   charge-ratio offset; charge, L0A phase, solenoid, spot, truncation, MTE, σ_t → negligible
-  (< 0.05° equivalent). A grid-64 check (attributing the +16–21 % emittance gap to the space-charge
-  grid) is still running (PID 1523234, ETA ~05:30; `runs_N100000_grid64/`).
+  (< 0.05° equivalent).
+- **Grid-64 check** (1e5 particles; `baseline_check_N100000_grid64.md`, `effects_N100000_grid64.csv`):
+  the baseline emittance gap vs the golden beam drops from +16–21 % (grid 32) to **+3–4 %**
+  (sizes +5–7 % → +1 %) — it is the space-charge grid, as suspected. Effects are grid-converged on
+  the controlled targets (timing +0.2 ps: spacing +7.59 vs +7.61 µm, drive σ_z −1.20 vs −1.09 µm);
+  only the small witness σ_z effect moves (+0.54 vs +0.27 µm). → An injector campaign should use
+  grid ≥ 64 (the golden beam used 100).
 - **Pipeline finding:** in the legacy "centred" mode (FACET2-S2E time-centres the input beam) the
   timing effect is ~6× smaller (spacing ±1.3 µm): every existing campaign erases injector arrival-
   time jitter. The injector campaign should keep absolute timing.
