@@ -283,7 +283,7 @@ SWEEP_SETS = {
 #     laser_timing_ps    DR +-0.2 ps (DAQ; spec 200 fs)          -> +-0.30   (+-7.6 um spacing @0.2)
 #     GUNF amplitude     DR +-0.25% (assumed)                    -> +-0.375% (-+4 um)
 #     GUNF phase         DR +-0.25 deg (assumed)                 -> +-0.375 deg (+-1.3 um)
-#     PSDL delay (d2 avg_t) DR +-0.1 ps (assumed)                -> 9 +- 0.15 ps (+-4.6 um)
+#     PSDL delay (d2 avg_t) DR +-0.2 ps (Ryan, 2026-10-14)       -> 9 +- 0.30 ps (+-4.6 um per 0.1 ps)
 #     drive_fraction     DR +-0.02 (DAQ 0.69-0.73 measured)      -> 0.75 +- 0.03 (ratio -+0.035)
 #     total charge       DR 0.3% 1-sigma (DAQ)                   -> +-0.9% (3 sigma; -+0.4 um/0.3%)
 # - "passive" (< 0.05 deg equivalent L1/L2 phase; <= 1% transverse emittance): swept at 1x their
@@ -300,7 +300,7 @@ INJECTOR_PARAMS = {
     "laser_timing_ps":                      (-0.3,              0.3,               0.0),
     "GUNF:rf_field_scale":                  (_GUN_AMP * (1 - 0.00375), _GUN_AMP * (1 + 0.00375), _GUN_AMP),
     "GUNF:theta0_deg":                      (-60.7 - 0.375,    -60.7 + 0.375,     -60.7),
-    "distgen:t_dist:dists:d2:avg_t:value":  (8.85,              9.15,              9.0),
+    "distgen:t_dist:dists:d2:avg_t:value":  (8.70,              9.30,              9.0),
     "drive_fraction":                       (0.72,              0.78,              0.75),
     "distgen:total_charge:value":           (1600.0 * 0.991,    1600.0 * 1.009,    1600.0),
     # passive

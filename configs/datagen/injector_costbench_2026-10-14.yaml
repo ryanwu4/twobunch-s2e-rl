@@ -1,0 +1,38 @@
+# Clean-node COST BENCHMARK for injector_full.yaml (same physics/fidelity, same driver, 64 workers):
+# 63 LHS injector points (+ the golden reference beam) x 2 nested linac draws = 126 Bmad rows, 64
+# Impact-T runs. Run with nothing else on the CPUs; throughput -> results/injector_costbench_2026-10-14.
+name: injector_costbench_2026-10-14
+output_dir: data/injector_costbench_2026-10-14
+sweep_set: xtcav23_inj12
+linac_sweep_set: xtcav23
+injector_sweep_set: inj12
+n_workers: 64
+
+injector:
+  n_particles: 100000
+  grid: 64
+  arrival: absolute
+  hammersley_burnin: -1
+
+design:
+  seed: 20261020
+  injector:
+    golden: true
+    lhs: 63
+    box_scale: 1.0
+  linac:
+    shared: {baseline: false, lhs: 0}
+    per_injector_lhs: 2
+  pair_golden_frac: 0.0
+  bridge: false
+
+# = configs/datagen/xtcav23_full.yaml physics
+csrTF: true
+transverseWakes: true
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+treaty_points: [BEGBC20, MFFF, XTCAVF, PENT]
+save_beams_at: [XTCAVF]
+fixed_overrides:
+  Q19851kG: -63.76368742523523
+  Q19871kG: 42.49972197426665
+  trackEnd: PENT
