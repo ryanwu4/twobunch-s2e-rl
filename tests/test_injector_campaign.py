@@ -84,6 +84,31 @@ def test_manifest_blocks_pairing_and_bounds(tmp_path):
     assert ic.make_rows(_cfg(tmp_path)) == rows        # deterministic
 
 
+def test_controller_region_draws(tmp_path):
+    """controller_frac: exactly round(f*k) of each injector point's k nested draws come from the
+    controller region (L1/L2 in the sub-box, other knobs at golden +- readback sigma, in box)."""
+    from twobunch_s2e_rl.datagen.sweep_params import readback_sigma
+    box = {"L1PhaseSet": [-22.5, -18.95], "L2PhaseSet": [-38.04, -33.04]}
+    rows = ic.make_rows(_cfg(tmp_path, linac={"shared": {"baseline": False, "lhs": 0},
+                                              "per_injector_lhs": 10, "controller_frac": 0.4,
+                                              "controller_box": box},
+                             injector={"golden": True, "lhs": 20}))
+    nested = [r for r in rows if r["block"] == "nested"]
+    keys, lo, hi, base = resolve_sweep_set("xtcav23")
+    for pt in {r["injector_point"] for r in nested}:
+        assert sum(r["linac_region"] == "controller" for r in nested if r["injector_point"] == pt) == 4
+    ctrl = [r["knobs"] for r in nested if r["linac_region"] == "controller"]
+    for k, (a, b) in box.items():
+        assert all(a <= c[k] <= b for c in ctrl)
+    k = "L2EnergyOffset"
+    dev = np.array([c[k] - base[k] for c in ctrl]) / readback_sigma(k, base[k])
+    assert 0.6 < dev.std() < 1.4 and abs(dev.mean()) < 0.5
+    assert all(lo[i] <= c[key] <= hi[i] for c in ctrl for i, key in enumerate(keys))
+    with pytest.raises(ValueError, match="outside the linac box"):
+        ic.make_rows(_cfg(tmp_path, linac={"shared": {}, "per_injector_lhs": 2, "controller_frac": 0.5,
+                                           "controller_box": {"L1PhaseSet": [-30.0, -20.0]}}))
+
+
 def test_box_scale_and_manifest_written_once(tmp_path):
     rows = ic.make_rows(_cfg(tmp_path, injector={"golden": False, "lhs": 50, "box_scale": 0.5}))
     t = np.array([r["injector"]["laser_timing_ps"] for r in rows if r["block"] == "nested"])

@@ -39,22 +39,7 @@ import torch
 from ..knobs import KnobSpace
 from .reward import TwoBunchRewardSpec, _t
 
-SECTION_GAIN_EV = {"L1EnergyOffset": 210e6, "L2EnergyOffset": 4.165e9, "L3EnergyOffset": 5.5e9}
-
-
-def readback_sigma(key: str, baseline: float) -> float:
-    """Default readback-error-scale 1-sigma for a knob (physical units): 0.1% of the section energy
-    gain for energy offsets, 0.1 mm for movers, 5e-4 kG.m for FF kickers, 0.3 deg for phases,
-    1% for other magnets. Override per knob in the config."""
-    if key in SECTION_GAIN_EV:
-        return 1e-3 * SECTION_GAIN_EV[key]
-    if "Offset" in key:
-        return 1e-4
-    if key.startswith(("XC", "YC")):
-        return 5e-4
-    if "Phase" in key:
-        return 0.3
-    return 0.01 * abs(baseline)
+from ..datagen.sweep_params import SECTION_GAIN_EV, readback_sigma  # noqa: F401  (re-exported)
 
 
 class DeltaControlEnv:

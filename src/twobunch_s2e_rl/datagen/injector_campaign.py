@@ -55,7 +55,7 @@ import numpy as np
 import yaml
 
 from .paths import facet2_root, repo_root
-from .sweep_params import INJECTOR_KEYS, injector_golden, resolve_sweep_set
+from .sweep_params import INJECTOR_KEYS, injector_golden, readback_sigma, resolve_sweep_set
 
 GOLDEN_BEAM_SUFFIX = "/beams/2024-10-14_Impact_TwoBunch/2024-10-14_TwoBunch.h5"
 TREATY_POINTS = ["BEGBC20", "MFFF", "XTCAVF", "PENT"]
@@ -103,12 +103,17 @@ def build_manifest(cfg) -> list[dict]:
     design:
       seed: int
       injector: {golden: bool, oat: [{key: {abs|rel}}...], lhs: n, box_scale: 1.0}
-      linac:    {shared: {baseline: bool, lhs: n}, per_injector_lhs: k}
+      linac:    {shared: {baseline: bool, lhs: n}, per_injector_lhs: k,
+                 controller_frac: f (of the k per point), controller_box: {L1PhaseSet: [lo, hi], ...}}
       pair_golden_frac: f     # fraction of per-injector rows re-run at injector = golden
       bridge: bool            # golden-h5 beam rows at the shared linac points
     Every injector point x every shared linac point (crossed), plus k independent linac LHS
     draws per LHS injector point (nested; one LHS over the linac box of size n_lhs*k, so the
-    linac marginals stay stratified over the whole block)."""
+    linac marginals stay stratified over the whole block). A fraction `controller_frac` of the
+    nested draws instead comes from the delta controller's operating region: the
+    `controller_box` knobs (L1/L2 phase) by LHS in their sub-box, every other linac knob
+    ~ N(golden, readback_sigma) clipped to the box (as the xtcav23 valgate controller block);
+    those rows carry linac_region = "controller"."""
     path = Path(cfg["output_dir"]) / "manifest.json"
     if path.exists():
         return json.loads(path.read_text())
@@ -116,6 +121,24 @@ def build_manifest(cfg) -> list[dict]:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(rows, indent=1))
     return rows
+
+
+def _controller_draws(n, keys, low, high, base, box, seed):
+    """(n, len(keys)) linac draws in the controller region: `box` keys by LHS in their sub-box,
+    the rest ~ N(golden, readback_sigma) clipped to [low, high]."""
+    bad = [k for k, (lo, hi) in box.items()
+           if not low[keys.index(k)] <= lo < hi <= high[keys.index(k)]]
+    if bad:
+        raise ValueError(f"controller_box outside the linac box for {bad}")
+    rng = np.random.default_rng(seed)
+    u = _lhs(n, [box[k][0] for k in box], [box[k][1] for k in box], seed)
+    out = np.empty((n, len(keys)))
+    for j, k in enumerate(keys):
+        if k in box:
+            out[:, j] = u[:, list(box).index(k)]
+        else:
+            out[:, j] = np.clip(base[k] + rng.normal(0.0, readback_sigma(k, base[k]), n), low[j], high[j])
+    return out
 
 
 def make_rows(cfg) -> list[dict]:
@@ -159,14 +182,23 @@ def make_rows(cfg) -> list[dict]:
     # nested: k independent linac draws per LHS injector point
     k = int(des["linac"].get("per_injector_lhs", 0))
     lhs_pts = [(t, p) for t, p in inj_pts if t.startswith("lhs")]
-    draws = _lhs(len(lhs_pts) * k, llo, lhi, seed + 2)
-    if len(draws):
-        draws = draws[np.random.default_rng(seed + 3).permutation(len(draws))]
+    # per injector point: k_ctrl controller-region draws + (k - k_ctrl) full-box draws; each pool
+    # is one LHS (stratified over the block) shuffled across the injector points
+    k_ctrl = round(float(des["linac"].get("controller_frac", 0.0)) * k)
+    full = _lhs(len(lhs_pts) * (k - k_ctrl), llo, lhi, seed + 2)
+    full = full[np.random.default_rng(seed + 3).permutation(len(full))]
+    ctrl = (_controller_draws(len(lhs_pts) * k_ctrl, lkeys, llo, lhi, lbase,
+                              des["linac"]["controller_box"], seed + 5) if k_ctrl else full[:0])
+    draws, region = [], []
+    for j in range(len(lhs_pts)):
+        draws += list(ctrl[j * k_ctrl:(j + 1) * k_ctrl]) + list(full[j * (k - k_ctrl):(j + 1) * (k - k_ctrl)])
+        region += ["controller"] * k_ctrl + ["full"] * (k - k_ctrl)
     nested = []
     for j, (tag, inj) in enumerate(lhs_pts):
         for m in range(k):
             knobs = dict(zip(lkeys, map(float, draws[j * k + m])))
             add("nested", "impact", inj, knobs, lid, tag)
+            rows[-1]["linac_region"] = region[j * k + m]
             nested.append(rows[-1])
             lid += 1
     # paired: a fraction of nested rows re-run at injector = golden (same linac knobs)
@@ -364,6 +396,7 @@ def bmad_task(args):
     jpath = row_json_path(out_dir, row)
     result = {"idx": row["idx"], "block": row["block"], "beam": row["beam"],
               "injector_point": row["injector_point"], "linac_id": row["linac_id"],
+              "linac_region": row.get("linac_region", "full"),
               "knobs": {**row["knobs"], **row["injector"]},
               "linac_knobs": row["knobs"], "injector_settings": row["injector"],
               "fixed_overrides": _CFG.get("fixed_overrides", {}),

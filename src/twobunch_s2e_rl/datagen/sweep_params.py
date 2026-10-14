@@ -284,7 +284,8 @@ SWEEP_SETS = {
 #     GUNF amplitude     DR +-0.25% (assumed)                    -> +-0.375% (-+4 um)
 #     GUNF phase         DR +-0.25 deg (assumed)                 -> +-0.375 deg (+-1.3 um)
 #     PSDL delay (d2 avg_t) DR +-0.2 ps (Ryan, 2026-10-14)       -> 9 +- 0.30 ps (+-4.6 um per 0.1 ps)
-#     drive_fraction     DR +-0.02 (DAQ 0.69-0.73 measured)      -> 0.75 +- 0.03 (ratio -+0.035)
+#     drive_fraction     DAQ run means 0.69/0.71/0.73 (screen, energy-gated), design 0.75; RL DR =
+#                        per-episode nominal in 0.69-0.75 +- 0.02 -> box 0.66-0.80 (golden 0.75 inside)
 #     total charge       DR 0.3% 1-sigma (DAQ)                   -> +-0.9% (3 sigma; -+0.4 um/0.3%)
 # - "passive" (< 0.05 deg equivalent L1/L2 phase; <= 1% transverse emittance): swept at 1x their
 #   (assumed) DR magnitude — costless in a nested LHS, lets the campaign measure the
@@ -301,7 +302,7 @@ INJECTOR_PARAMS = {
     "GUNF:rf_field_scale":                  (_GUN_AMP * (1 - 0.00375), _GUN_AMP * (1 + 0.00375), _GUN_AMP),
     "GUNF:theta0_deg":                      (-60.7 - 0.375,    -60.7 + 0.375,     -60.7),
     "distgen:t_dist:dists:d2:avg_t:value":  (8.70,              9.30,              9.0),
-    "drive_fraction":                       (0.72,              0.78,              0.75),
+    "drive_fraction":                       (0.66,              0.80,              0.75),
     "distgen:total_charge:value":           (1600.0 * 0.991,    1600.0 * 1.009,    1600.0),
     # passive
     "L0AF_phase_offset_deg":                (-0.25,             0.25,              0.0),
@@ -318,6 +319,25 @@ INJECTOR_KEYS = list(INJECTOR_PARAMS)
 # injector-only sets, and concatenated linac + injector sets (keys = linac keys then injector keys).
 INJECTOR_SWEEP_SETS = {"inj12": INJECTOR_PARAMS}
 CONCAT_SWEEP_SETS = {"xtcav23_inj12": ("xtcav23", "inj12")}
+
+
+# Readback-error-scale 1-sigma per knob (physical units): the hidden per-episode context jitter of
+# the delta controller (rl/delta_env.py) and the "controller region" linac draws of campaigns.
+SECTION_GAIN_EV = {"L1EnergyOffset": 210e6, "L2EnergyOffset": 4.165e9, "L3EnergyOffset": 5.5e9}
+
+
+def readback_sigma(key: str, baseline: float) -> float:
+    """0.1% of the section energy gain for energy offsets, 0.1 mm for movers, 5e-4 kG.m for FF
+    kickers, 0.3 deg for phases, 1% for other magnets."""
+    if key in SECTION_GAIN_EV:
+        return 1e-3 * SECTION_GAIN_EV[key]
+    if "Offset" in key:
+        return 1e-4
+    if key.startswith(("XC", "YC")):
+        return 5e-4
+    if "Phase" in key:
+        return 0.3
+    return 0.01 * abs(baseline)
 
 
 def injector_golden(keys=None) -> dict:

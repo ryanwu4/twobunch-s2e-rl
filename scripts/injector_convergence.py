@@ -2,10 +2,12 @@
 
 For each (N, grid) the golden injector and three perturbations at their randomization magnitude
 (laser timing +0.2 ps, drive-witness delay +0.2 ps, gun amplitude +0.25%) run cathode -> Impact-T
--> L0AFEND (sim/injector.py, Hammersley burnin -1 = common random numbers). Every L0AFEND beam is
-then tracked by Bmad at FIXED fidelity (N_bmad = 1e5, CSR + wakes, xtcav23 baseline linac, to
-XTCAVF), absolute arrival vs the same-resolution golden run, so only the Impact-T resolution varies.
-Reference: the FACET2-S2E golden beam (runImpact gridCount=100, 5e5; beams/2024-10-14_Impact_TwoBunch).
+-> L0AFEND (sim/injector.py, Hammersley burnin -1 = common random numbers), then Bmad (CSR + wakes,
+xtcav23 baseline linac, to XTCAVF) with the SAME particle count as Impact-T, exactly as a campaign
+row runs it, absolute arrival vs the same-resolution golden run. The scan is at and BELOW the
+planned campaign fidelity (1e5, grid 64), to see how far it can be cut; the high end is anchored by
+one 1e5 / grid-100 point and the FACET2-S2E golden beam (runImpact gridCount=100, 5e5;
+beams/2024-10-14_Impact_TwoBunch), tracked by Bmad at every N (isolates the Bmad count effect).
 
 Reported per (N, grid): absolute values at L0AFEND and XTCAVF vs the highest resolution and vs the
 golden h5, and the injector EFFECTS (perturbed - golden at the same resolution), which is what the
@@ -37,12 +39,13 @@ import yaml  # noqa: E402
 REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "data" / "injector_convergence_2026-10-14"
 RES = REPO / "results" / "injector_convergence_2026-10-14"
-CONFIGS = [(100_000, 32), (100_000, 48), (100_000, 64), (100_000, 100),
-           (200_000, 64), (200_000, 100), (500_000, 64), (500_000, 100)]
+CONFIGS = [(10_000, 16), (10_000, 32), (20_000, 16), (20_000, 32), (20_000, 48),
+           (50_000, 32), (50_000, 48), (50_000, 64), (100_000, 32), (100_000, 48), (100_000, 64),
+           (100_000, 100)]
 POINTS = {"golden": {}, "timing+0.2ps": {"laser_timing_ps": 0.2},
           "delay+0.2ps": {"distgen:t_dist:dists:d2:avg_t:value": 9.2},
           "gunamp+0.25%": {"GUNF:rf_field_scale": "rel+0.0025"}}
-N_BMAD = 100_000
+# the golden h5 (Impact-T 5e5 / grid 100) is also tracked at every N: isolates the Bmad count effect
 CAMPAIGN_CFG = REPO / "configs" / "datagen" / "xtcav23_valgate.yaml"
 GOLDEN_H5 = "/beams/2024-10-14_Impact_TwoBunch/2024-10-14_TwoBunch.h5"
 _TAO = None
@@ -82,7 +85,7 @@ def impact_task(args):
         return (point, n, grid), False, time.perf_counter() - t0
 
 
-def _tao():
+def _tao(n):
     global _TAO
     if _TAO is None:
         import FACET2_S2E as qs
@@ -91,15 +94,16 @@ def _tao():
         camp = yaml.safe_load(CAMPAIGN_CFG.read_text())
         root = facet2_root()
         base = qs.loadConfig("/" + camp["baseline_config"], str(root))
-        _TAO = (qs, root, base, camp, make_tao(qs, root, base, csr=True, wakes=True, n_particles=N_BMAD,
+        _TAO = (qs, root, base, camp, make_tao(qs, root, base, csr=True, wakes=True, n_particles=n,
                                                scratch=OUT / "scratch" / f"pid{os.getpid()}"))
     return _TAO
 
 
 def bmad_task(args):
-    """Track one L0AFEND beam (or the golden h5) at fixed Bmad fidelity to XTCAVF."""
+    """Track one L0AFEND beam (or the golden h5) to XTCAVF, Bmad count = Impact-T count."""
     point, n, grid = args
-    tag = "golden_h5" if point == "golden_h5" else f"N{n}_g{grid}_{point}"
+    n_bmad = n                       # golden_h5: the golden 5e5 beam downsampled to n
+    tag = f"golden_h5_N{n}" if point == "golden_h5" else f"N{n}_g{grid}_{point}"
     jpath = OUT / "bmad" / f"{tag}.json"
     if jpath.exists():
         return tag, "skip"
@@ -107,8 +111,8 @@ def bmad_task(args):
     from pmd_beamphysics import ParticleGroup
     from twobunch_s2e_rl.datagen.sweep_params import resolve_sweep_set
     from twobunch_s2e_rl.sim.bmad import cloud_metrics, merged_settings, track
-    qs, root, base, camp, tao = _tao()
-    rec = {"tag": tag, "point": point, "n_impact": n, "grid": grid, "n_bmad": N_BMAD}
+    qs, root, base, camp, tao = _tao(n_bmad)
+    rec = {"tag": tag, "point": point, "n_impact": n, "grid": grid, "n_bmad": n_bmad}
     try:
         scratch = Path(tao.activeFilePath).parent
         if point == "golden_h5":
@@ -127,12 +131,12 @@ def bmad_task(args):
             rec["impact_wall_s"] = info["wall_s"]
             rec["n_l0afend"] = info["n_l0afend"]
         random.seed(20261014)            # same downsample indices for every beam of the same N
-        modifyAndSaveInputBeam(src, numMacroParticles=N_BMAD, timeCenterTF=centre,
+        modifyAndSaveInputBeam(src, numMacroParticles=n_bmad, timeCenterTF=centre,
                                outputBeamFilePath=tao.activeFilePath)
         knobs = resolve_sweep_set("xtcav23")[3]
         st = merged_settings(base, {**camp["fixed_overrides"], "trackEnd": "XTCAVF"}, knobs)
         t0 = time.perf_counter()
-        out = track(qs, tao, root, st, ["XTCAVF"], n_in=N_BMAD, save_beams_at=("XTCAVF",),
+        out = track(qs, tao, root, st, ["XTCAVF"], n_in=n_bmad, save_beams_at=("XTCAVF",),
                     out_prefix=str(OUT / "bmad" / tag))
         rec["bmad_wall_s"] = time.perf_counter() - t0
         rec["truth"] = cloud_metrics(str(OUT / "bmad" / f"{tag}_XTCAVF.h5"))
@@ -168,7 +172,7 @@ def run(workers):
     done_beams = {}
     ctx = mp.get_context("spawn")
     with ctx.Pool(workers, maxtasksperchild=1) as pool:
-        pend = [pool.apply_async(bmad_task, (("golden_h5", 0, 0),))]
+        pend = [pool.apply_async(bmad_task, (("golden_h5", n, 0),)) for n in sorted({c[0] for c in CONFIGS})]
         for (p, n, g), ok, dt in pool.imap_unordered(impact_task, impact_jobs):
             print(f"impact {p} N={n} grid={g}: {'ok' if ok else 'FAIL'} {dt:.0f} s", flush=True)
             done_beams.setdefault((n, g), set()).add(p if ok else None)
@@ -193,10 +197,14 @@ def analyze():
                 continue
             info = json.loads((wd / "injector_info.json").read_text())
             rows.append({"N": n, "grid": g, "point": p, "impact_wall_s": info["wall_s"],
+                         "bmad_wall_s": b.get("bmad_wall_s"),
                          **{f"L0_{k}": v for k, v in l0afend_metrics(wd / "beam_L0AFEND.h5").items()},
                          **{f"X_{k}": v for k, v in b["truth"].items()}})
-    gj = OUT / "bmad" / "golden_h5.json"
-    golden_h5 = json.loads(gj.read_text())["truth"] if gj.exists() else None
+    golden_h5 = {}
+    for gj in sorted((OUT / "bmad").glob("golden_h5_N*.json")):
+        g = json.loads(gj.read_text())
+        if g.get("ok"):
+            golden_h5[g["n_bmad"]] = {**g["truth"], "bmad_wall_s": g.get("bmad_wall_s")}
     (RES / "rows.json").write_text(json.dumps({"rows": rows, "golden_h5_xtcavf": golden_h5}, indent=1))
     print(f"{len(rows)} rows -> {RES / 'rows.json'}")
     return rows, golden_h5

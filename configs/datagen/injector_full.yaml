@@ -1,5 +1,6 @@
 # Injector + linac FULL campaign — DRAFT, NOT LAUNCHED (results/injector_pilot_2026-10-14/PLAN.md).
-# Nested design: 250 LHS injector points (inj12 box) x 10 independent xtcav23-box linac draws each,
+# Nested design: 250 LHS injector points (inj12 box) x 10 linac draws each (60% full xtcav23 box,
+# 40% controller region),
 # + the 250 injector points (and golden) at the golden linac point (injector response surface),
 # + 10% of the nested rows re-run at injector = golden (exact paired differences), + 1 bridge row.
 #   rows: 251 crossed + 2500 nested + 250 paired_golden + 1 bridge = 3002 Bmad; 251 Impact-T.
@@ -31,6 +32,10 @@ design:
   linac:
     shared: {baseline: true, lhs: 0}
     per_injector_lhs: 10
+    # 40% of the nested draws in the delta controller's operating region (start box of
+    # configs/rl/delta_xtcav23_*.yaml; other knobs at golden +- readback sigma), 60% full box
+    controller_frac: 0.4
+    controller_box: {L1PhaseSet: [-22.5, -18.95], L2PhaseSet: [-38.0447801603, -33.0447801603]}
   pair_golden_frac: 0.1
   bridge: true
 

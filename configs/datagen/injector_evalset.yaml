@@ -37,6 +37,8 @@ design:
       - {"distgen:t_dist:dists:d2:avg_t:value": {abs: -0.2}}
       - {"distgen:t_dist:dists:d2:avg_t:value": {abs: 0.2}}
       - {"distgen:t_dist:dists:d2:avg_t:value": {abs: 0.3}}
+      - {drive_fraction: {abs: -0.09}}     # 0.66 (box edge; measured run means 0.69-0.73)
+      - {drive_fraction: {abs: -0.05}}     # 0.70 (measured operating point)
       - {drive_fraction: {abs: -0.03}}
       - {drive_fraction: {abs: -0.02}}
       - {drive_fraction: {abs: 0.02}}
