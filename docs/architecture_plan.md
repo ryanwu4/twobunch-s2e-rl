@@ -4,6 +4,19 @@ Status: **proposed** (2026-10-13/14, branch `dev/2026-10-13`; revised after two 
 lab-notebook pass). **First priority: the delta controller on L1/L2 phase (see below).**
 Nothing here is implemented yet.
 
+## Implementation status (overnight 2026-10-14; details in `docs/overnight_2026-10-14.md`)
+
+| Phase | State |
+|---|---|
+| 0 compatibility guards | done (`tests/test_compat.py`, goldens in `tests/golden/`) |
+| 1a core | done: `knobs.py`, `artifacts.py`, L2 frame fix, `resolve_ckpt` everywhere, loud norms cache |
+| 1b goals | done: goals on any target |
+| 2 XTCAV endpoint | done: `src/xtcav_segment/` on Cheetah 0.8.4, Stage A bit-identical, PENT gate passed; `sim/bmad.py` |
+| 3 delta controller | done (deviation: separate `rl/delta_env.py` instead of options on `diff_env`); cloud + screen modes trained; Bmad-checked |
+| 3a injector study | done (`sim/injector.py`, `scripts/injector_sensitivity.py`) |
+| 4 cleanup | partly: surrogate yaml + run.json, campaign.json for new campaigns; backfill for old campaigns NOT done |
+| 5 injector campaign | not started; `widen_conditioning` and preprocess embed / merge checks / knob-drop rule are in place |
+
 ## Goals and constraints
 
 - Grow the **control/input variables** (first: injector / Impact-T) and the **control targets**
