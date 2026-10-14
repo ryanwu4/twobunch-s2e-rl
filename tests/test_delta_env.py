@@ -146,3 +146,23 @@ def test_start_box_outside_plant_box_rejected():
     with pytest.raises(ValueError, match="not inside"):
         _env(start_box={"L1PhaseSet": (BASE["L1PhaseSet"] - 2, BASE["L1PhaseSet"] + 2),
                         "L2PhaseSet": (-36.0, -33.0)})
+
+
+def test_rollout_shapes_and_obs_dim_guard():
+    from twobunch_s2e_rl.rl.rollout import rollout
+
+    class _Actor(torch.nn.Module):
+        def __init__(self, nin):
+            super().__init__()
+            self.lin = torch.nn.Linear(nin, 2)
+
+        def forward(self, obs, deterministic=True):
+            return self.lin(obs)
+
+    env = _env(num_envs=3)
+    env.reset()
+    traj = rollout(env, _Actor(env.num_obs), None)
+    assert traj["action"].shape == (4, 3, 2) and traj["reward"].shape == (4, 3)
+    assert traj["bunch_spacing"].shape == (4, 3) and traj["true_controls"].shape == (4, 3, 2)
+    with pytest.raises(ValueError, match="obs-dim mismatch"):
+        rollout(env, _Actor(env.num_obs + 1), None)

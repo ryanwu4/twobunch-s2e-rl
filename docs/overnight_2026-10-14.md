@@ -43,6 +43,16 @@ Started ~01:00 PDT; Ryan checks back ~09:00 PDT.
    the misspecification the policy actually has to tolerate. Worth confirming this matches your
    intent.
 7. **Default readback σ for phases = 0.3°** (other knobs per assumption 3) in `delta_env.readback_sigma`.
+8. **Delta-controller settings (my choices, `configs/rl/delta_xtcav23_cloud.yaml`)**: action step
+   0.3°/unit action/step; episode 32 steps; start box L1 [−22.5, −18.95] (asymmetric: golden −20.29
+   is only 2.2° below the xtcav23 box top −18.5, kept 0.45° margin), L2 golden ± 2.5° =
+   [−38.04, −33.04]; reward weights spacing 1.0, drive σ_z 0.5, survival hinges 2.0 at T = 0.98,
+   boundary 0.5 (controls only); ΔE observed only; witness σ_z not used; 32 actors (64 OOMs the
+   80 GB A100 with BPTT's retained graph), 300 epochs, lr 5e-4.
+9. **Cloud mode = pure ground truth** (no shot noise, no scale error) — the clean baseline. Shot
+   jitter and streak-scale error are applied in screen mode only.
+10. **Goal ranges in the objectives block are only for obs normalization** under achievable-goal
+    sampling (goals come from the plant itself), so they are wide placeholders.
 
 ## Progress
 
@@ -52,6 +62,10 @@ Started ~01:00 PDT; Ryan checks back ~09:00 PDT.
 | 01:05 | 0 | Compatibility guards + goldens committed (`b1d2459`): 153 pass + 1 strict xfail (L2 drift bug). |
 | 01:07 | 2 | Validation-gate Bmad campaign launched (`data/xtcav23_valgate_2026-10-14/`, log `logs/overnight_2026-10-14/valgate_sweep.log`). |
 | 01:07 | 3a, 2 | Two parallel agents started: injector wrapper + Impact-T sensitivity study; xtcav_segment port + Cheetah 0.8.4 + Stage-A re-validation. |
+| 01:20 | 1a | KnobSpace, artifacts, L2 frame fix, glob→resolve_ckpt (`c73ac37`); loud norms cache (`cdf5fc0`). |
+| 01:30 | 1b | Generic goals (`15d4f73`). |
+| 01:45 | 3 | DeltaControlEnv (`662506e`); training wiring + cloud config (`dbf7870`). |
+| 01:55 | 3 | Cloud-mode delta controller training: seed 0 on GPU 0, seed 1 on GPU 1 (`logs/overnight_2026-10-14/delta_xtcav23_cloud_s{0,1}`). First attempt OOM'd (2 runs × 64 actors on one GPU); fixed to 1 run/GPU, 32 actors. |
 
 ## Needs Ryan's review in the morning
 
