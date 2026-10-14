@@ -3,6 +3,30 @@
 Autonomous run on branch `dev/2026-10-13`, following `docs/architecture_plan.md`.
 Started ~01:00 PDT; Ryan checks back ~09:00 PDT.
 
+## Morning summary (read this first)
+
+**Built and committed on `dev/2026-10-13`** (not pushed; full suite green — 240+ tests):
+phase 0 compatibility guards; phase 1 core (`KnobSpace`, `artifacts`, L2 frame bug fixed, generic
+goals, loud norms cache); phase 2 XTCAV endpoint (`src/xtcav_segment/` on Cheetah 0.8.4,
+`sim/bmad.py`); phase 3 delta controller (`rl/delta_env.py`, screen features, `eval_delta`,
+`validate_delta`); injector wrapper + sensitivity study; surrogate YAML configs, `campaign.json`
+for new campaigns, `widen_conditioning`, preprocess embed / merge checks / knob-drop rule.
+
+**Headline results**
+1. The **Cheetah XTCAVF→PENT segment matches Bmad** to ≤ 4.5e-6 relative on all 162 new Bmad tracks.
+2. The **delta controller on L1/L2 phase only** (no absolute readbacks; hidden gain error, context
+   jitter, random starts) steers to achievable (spacing, drive σ_z) goals. **In Bmad** (24
+   setpoints, 100k particles) the beam lands **6–7 µm** from the spacing goal and **3–8 %** from
+   the drive σ_z goal, cloud and screen modes alike, on 2 seeds each.
+3. **Screen mode** (realistic XTCAV ±V measurement, streak-calibration error, shot noise) works but
+   settles slower (13–23 vs 4 steps) and leaves σ_z less tightly controlled (8–9 % true vs 4–5 %).
+4. **Injector noise** at DAQ-derived magnitudes acts mostly as ≤ 0.3° effective L1/L2 shifts
+   (absorbed by a feedback delta controller) plus a direct charge-ratio change; the existing
+   pipeline's input-beam time-centring **erases injector timing effects** (~6× too small).
+
+**Decisions waiting for you**: see "Needs Ryan's review" at the bottom (energy gate vs z-lobe split,
+B5D36 field convention, readback-offset semantics, v1 checkpoint, xtcav-gpsr-tuning branch).
+
 ## Ground rules (agreed before starting)
 
 - Work only on `dev/2026-10-13` (and a new branch in xtcav-gpsr-tuning); commit per phase, never push.
