@@ -1,0 +1,83 @@
+# Delta-only controller on L1/L2 phase, SCREEN mode: xtcav23 flow at XTCAVF -> Cheetah segment with
+# the TCAV at +/-22 MV -> DTOTR -> particle-space XTCAV features (z-lobe split; +/-V centroid
+# half-difference; transverse-spot blur included). Measurement realism: hidden streak-scale error
+# U(0.8, 1.2) on the z-derived features, shot jitter averaged over M=50 shots. Goals are defined on
+# the MEASURED features; the reward falls back to the ground-truth cloud twin (plus a fixed
+# penalty) where the screen reading is invalid. Otherwise identical to delta_xtcav23_cloud.yaml.
+#
+# _inj variant: + output-side injector stand-in from the 2026-10-14 Impact-T sensitivity study: a
+# hidden per-episode offset on the observed drive charge fraction (drive fraction +-0.02 at the
+# laser moves it by +-0.035). The injector's effect on spacing / sigma_z is a <= 0.3 deg effective
+# L1/L2 shift, already covered by the random true start.
+#
+# Hidden per episode: true start in start_box; other 21 knobs ~ N(golden, readback sigma); control
+# gain error U(0.8, 1.2) (+ a 1-deg readback offset, which a delta controller is immune to).
+# Goals: achievable (spacing, drive sigma_z) from a random true L1/L2 point in start_box.
+params:
+  diff_env:
+    name: DeltaControlEnv
+    plant: xtcav_screen
+    screen:
+      spec: configs/segment/segment_baseline.json
+      tdc_voltage_V: 22.0e6
+      split: zlobe               # energy gate misassigns ~13% of charge in sim (bunches overlap in E)
+    flow_ckpt: trained/xtcav23/checkpoints/best-epoch=498-val_loss=0.1747.ckpt
+    baseline_set: xtcav23            # golden / recorded baseline values of every knob
+    episode_length: 32
+    stochastic_env: true
+    n_particles: 512
+    controls: [L1PhaseSet, L2PhaseSet]
+    action_step: {L1PhaseSet: 0.3, L2PhaseSet: 0.3}           # deg per unit action per step
+    start_box:                                                 # ~golden +-2 (L1, asymmetric) / +-2.5 deg (L2)
+      L1PhaseSet: [-22.5, -18.95]          # golden -20.29; box top -18.5 (keep 0.45 deg margin)
+      L2PhaseSet: [-38.0447801603, -33.0447801603]
+    offset_sigma: {L1PhaseSet: 1.0, L2PhaseSet: 1.0}           # readback offset (deg, 1 sigma)
+    gain_halfwidth: 0.2
+    measurement:
+      scale_error_keys: [bunch_spacing, drive_sigma_z]          # streak-calibration error
+      scale_error_halfwidth: 0.2
+      shot_noise: {bunch_spacing: 15.0e-6, drive_sigma_z: 2.0e-6, drive_charge_fraction: 0.03}
+      shots_per_step: 50
+      fallback_keys: [bunch_spacing, drive_sigma_z]
+      feature_offset_sigma: {drive_charge_fraction: 0.035}
+    # ---- reward ----
+    campaign_h5: processed/xtcav23_combined.h5
+    reward_norms_json: results/rl/_shared/norms/metric_norms_delta_xtcav23_screen.json
+    surv_T_min: 0.9
+    surv_margin: 0.05
+    observe: [energy_difference, drive_charge_fraction]        # observed, not targeted
+    objectives:
+      - {key: bunch_spacing, kind: target, weight: 1.0, goal: [5.0e-5, 4.0e-4]}
+      - {key: drive_sigma_z, kind: target, weight: 0.5, goal: [5.0e-6, 2.0e-4]}
+      - {key: T_drive,       kind: hinge,  weight: 2.0, hinge_at: 0.98}
+      - {key: T_witness,     kind: hinge,  weight: 2.0, hinge_at: 0.98}
+      - {key: knobs,         kind: boundary, weight: 0.5, margin: 0.05}
+      - {key: screen_valid,  kind: hinge,  weight: 1.0, hinge_at: 1.0}   # fixed penalty when invalid
+  general:
+    seed: 0
+    device: cuda:0
+    render: false
+    train: true
+    logdir: logs/overnight_2026-10-14/delta_xtcav23_screen_inj
+  config:
+    name: DeltaBPTT
+    num_actors: 16          # screen plant: ~37 GB at 16 x 32 steps x 512 particles (Cheetah +-V graph)
+    steps_num: 32
+    max_epochs: 300
+    actor_learning_rate: 5e-4
+    lr_schedule: linear
+    gamma: 0.99
+    obs_rms: true
+    truncate_grads: true
+    grad_norm: 1.0
+    rew_scale: 1.0
+    save_interval: 50
+    betas: [0.7, 0.95]
+    player:
+      games_num: 64
+      deterministic: true
+  network:
+    actor_mlp:
+      units: [128, 128]
+      activation: elu
+    actor_logstd_init: -1.0
