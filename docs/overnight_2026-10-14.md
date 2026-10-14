@@ -134,6 +134,8 @@ B5D36 field convention, readback-offset semantics, v1 checkpoint, xtcav-gpsr-tun
 
 | 04:06–04:10 | 3 | Cloud seed 1 finished + eval; screen seed 1 Bmad check; robustness sweep (5 evals). |
 
+| 04:23 | 3 | Screen+injector seed 0 eval (above). Started: screen+injector seed 1 (GPU 1) and a cloud-mode σ_z-weight ablation 0.5 → 1.0 (GPU 0, `delta_xtcav23_cloud_wsz1`, my exploration). |
+
 (Note: an earlier version of this table had wrong, estimated clock times; corrected from git at 01:58.)
 
 ## Results so far
@@ -174,6 +176,11 @@ median errors barely move: gain error U(0.6, 1.4) (trained U(0.8, 1.2)): cloud s
 within 10 µm), σ_z 4.6 %; screen spacing 5 µm (78 %), σ_z 4.7 %. Screen policy with streak-scale
 error ±30 % (trained ±20 %): 6 µm / σ_z 9.0 % true; with M = 10 shots (5× noisier): 7 µm (68 %
 within) / 9.0 %; with the unseen injector charge-fraction offset: 6 µm / 10.2 %.
+
+**Screen + injector stand-in in training** (`delta_xtcav23_screen_inj_s0`, hidden charge-fraction
+offset σ = 0.035): spacing 8 µm (63 % within 10 µm), σ_z 6.3 % measured / 12.3 % true — slightly
+*worse* than the plain screen policy evaluated with the same unseen offset (6 µm / 10.2 %). One seed:
+no evidence the offset helps; the plain policy is already robust to it. Seed 1 running.
 
 **Injector sensitivity (Impact-T → Bmad → XTCAVF, 2e4 particles, grid 32; `data/injector_sensitivity_2026-10-14/summary.md`)**,
 at the approved per-episode magnitudes, "absolute" arrival mode (the injector ⟨t⟩ shift kept —
