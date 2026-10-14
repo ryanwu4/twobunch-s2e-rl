@@ -42,11 +42,23 @@ RES = REPO / "results" / "injector_convergence_2026-10-14"
 CONFIGS = [(10_000, 16), (10_000, 32), (20_000, 16), (20_000, 32), (20_000, 48),
            (50_000, 32), (50_000, 48), (50_000, 64), (100_000, 32), (100_000, 48), (100_000, 64),
            (100_000, 100)]
-POINTS = {"golden": {}, "timing+0.2ps": {"laser_timing_ps": 0.2},
+POINTS = {"golden": {}, "timing+0.2ps": {"laser_timing_ps": 0.2}, "dfrac0.80": {"drive_fraction": 0.80},
           "delay+0.2ps": {"distgen:t_dist:dists:d2:avg_t:value": 9.2},
           "gunamp+0.25%": {"GUNF:rf_field_scale": "rel+0.0025"}}
 # the golden h5 (Impact-T 5e5 / grid 100) is also tracked at every N: isolates the Bmad count effect
 CAMPAIGN_CFG = REPO / "configs" / "datagen" / "xtcav23_valgate.yaml"
+# linac points: the xtcav23 baseline, and the strongly compressed pilot point "LHS B" (L1 -26.8,
+# L2 -32.0; spacing ~60 um) where the pilot's injector response flipped sign and CSR noise is worst
+PILOT_MANIFEST = REPO / "data" / "injector_pilot_2026-10-14" / "manifest.json"
+LINAC = ("baseline", "compressed")
+
+
+def _linac_knobs(name):
+    from twobunch_s2e_rl.datagen.sweep_params import resolve_sweep_set
+    if name == "baseline":
+        return resolve_sweep_set("xtcav23")[3]
+    rows = json.loads(PILOT_MANIFEST.read_text())
+    return next(r["knobs"] for r in rows if r["block"] == "crossed" and r["linac_id"] == 2)
 GOLDEN_H5 = "/beams/2024-10-14_Impact_TwoBunch/2024-10-14_TwoBunch.h5"
 _TAO = None
 
@@ -101,9 +113,9 @@ def _tao(n):
 
 def bmad_task(args):
     """Track one L0AFEND beam (or the golden h5) to XTCAVF, Bmad count = Impact-T count."""
-    point, n, grid = args
+    point, n, grid, linac = args
     n_bmad = n                       # golden_h5: the golden 5e5 beam downsampled to n
-    tag = f"golden_h5_N{n}" if point == "golden_h5" else f"N{n}_g{grid}_{point}"
+    tag = (f"golden_h5_N{n}" if point == "golden_h5" else f"N{n}_g{grid}_{point}") + f"_{linac}"
     jpath = OUT / "bmad" / f"{tag}.json"
     if jpath.exists():
         return tag, "skip"
@@ -112,7 +124,7 @@ def bmad_task(args):
     from twobunch_s2e_rl.datagen.sweep_params import resolve_sweep_set
     from twobunch_s2e_rl.sim.bmad import cloud_metrics, merged_settings, track
     qs, root, base, camp, tao = _tao(n_bmad)
-    rec = {"tag": tag, "point": point, "n_impact": n, "grid": grid, "n_bmad": n_bmad}
+    rec = {"tag": tag, "point": point, "n_impact": n, "grid": grid, "n_bmad": n_bmad, "linac": linac}
     try:
         scratch = Path(tao.activeFilePath).parent
         if point == "golden_h5":
@@ -133,7 +145,7 @@ def bmad_task(args):
         random.seed(20261014)            # same downsample indices for every beam of the same N
         modifyAndSaveInputBeam(src, numMacroParticles=n_bmad, timeCenterTF=centre,
                                outputBeamFilePath=tao.activeFilePath)
-        knobs = resolve_sweep_set("xtcav23")[3]
+        knobs = _linac_knobs(linac)
         st = merged_settings(base, {**camp["fixed_overrides"], "trackEnd": "XTCAVF"}, knobs)
         t0 = time.perf_counter()
         out = track(qs, tao, root, st, ["XTCAVF"], n_in=n_bmad, save_beams_at=("XTCAVF",),
@@ -172,12 +184,13 @@ def run(workers):
     done_beams = {}
     ctx = mp.get_context("spawn")
     with ctx.Pool(workers, maxtasksperchild=1) as pool:
-        pend = [pool.apply_async(bmad_task, (("golden_h5", n, 0),)) for n in sorted({c[0] for c in CONFIGS})]
+        pend = [pool.apply_async(bmad_task, (("golden_h5", n, 0, lin),))
+                for n in sorted({c[0] for c in CONFIGS}) for lin in LINAC]
         for (p, n, g), ok, dt in pool.imap_unordered(impact_task, impact_jobs):
             print(f"impact {p} N={n} grid={g}: {'ok' if ok else 'FAIL'} {dt:.0f} s", flush=True)
             done_beams.setdefault((n, g), set()).add(p if ok else None)
             if done_beams[(n, g)] >= set(POINTS):     # all points of this resolution done
-                pend += [pool.apply_async(bmad_task, ((q, n, g),)) for q in POINTS]
+                pend += [pool.apply_async(bmad_task, ((q, n, g, lin),)) for q in POINTS for lin in LINAC]
         for r in pend:
             print("bmad", *r.get(), flush=True)
 
@@ -189,22 +202,23 @@ def analyze():
     for n, g in CONFIGS:
         for p in POINTS:
             wd = _beam_dir(p, n, g, ref)
-            j = OUT / "bmad" / f"N{n}_g{g}_{p}.json"
-            if not (wd / "beam_L0AFEND.h5").exists() or not j.exists():
-                continue
-            b = json.loads(j.read_text())
-            if not b.get("ok"):
-                continue
-            info = json.loads((wd / "injector_info.json").read_text())
-            rows.append({"N": n, "grid": g, "point": p, "impact_wall_s": info["wall_s"],
-                         "bmad_wall_s": b.get("bmad_wall_s"),
-                         **{f"L0_{k}": v for k, v in l0afend_metrics(wd / "beam_L0AFEND.h5").items()},
-                         **{f"X_{k}": v for k, v in b["truth"].items()}})
+            for lin in LINAC:
+                j = OUT / "bmad" / f"N{n}_g{g}_{p}_{lin}.json"
+                if not (wd / "beam_L0AFEND.h5").exists() or not j.exists():
+                    continue
+                b = json.loads(j.read_text())
+                if not b.get("ok"):
+                    continue
+                info = json.loads((wd / "injector_info.json").read_text())
+                rows.append({"N": n, "grid": g, "point": p, "linac": lin, "impact_wall_s": info["wall_s"],
+                             "bmad_wall_s": b.get("bmad_wall_s"),
+                             **{f"L0_{k}": v for k, v in l0afend_metrics(wd / "beam_L0AFEND.h5").items()},
+                             **{f"X_{k}": v for k, v in b["truth"].items()}})
     golden_h5 = {}
     for gj in sorted((OUT / "bmad").glob("golden_h5_N*.json")):
         g = json.loads(gj.read_text())
         if g.get("ok"):
-            golden_h5[g["n_bmad"]] = {**g["truth"], "bmad_wall_s": g.get("bmad_wall_s")}
+            golden_h5[f"{g['n_bmad']}_{g.get('linac', 'baseline')}"] = {**g["truth"], "bmad_wall_s": g.get("bmad_wall_s")}
     (RES / "rows.json").write_text(json.dumps({"rows": rows, "golden_h5_xtcavf": golden_h5}, indent=1))
     print(f"{len(rows)} rows -> {RES / 'rows.json'}")
     return rows, golden_h5
