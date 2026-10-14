@@ -37,6 +37,7 @@ from scipy.stats import qmc
 from .sweep_params import resolve_sweep_set
 from .ff_manifold import MANIFOLD_SPECS, sample_anchored_ff
 from .paths import facet2_root, repo_root
+from ..sim.bmad import make_tao, merged_settings, track
 
 TREATY_POINTS = ["BEGBC20", "MFFF", "PENT"]
 
@@ -157,52 +158,23 @@ def _init_worker(cfg):
 
 
 def _make_tao(qs):
-    return qs.initializeTao(
-        filePath=str(_S2E_ROOT),
-        inputBeamFilePathSuffix=_BASELINE["inputBeamFilePathSuffix"],
-        csrTF=_CFG["csrTF"],
-        transverseWakes=_CFG.get("transverseWakes", False),
-        numMacroParticles=_CFG["num_macro_particles"],
-        scratchPath=str(Path(_CFG["output_dir"]) / "scratch"),
-        randomizeFileNames=True,
-    )
+    return make_tao(qs, _S2E_ROOT, _BASELINE, csr=_CFG["csrTF"],
+                    wakes=_CFG.get("transverseWakes", False),
+                    n_particles=_CFG["num_macro_particles"],
+                    scratch=Path(_CFG["output_dir"]) / "scratch")
 
 
 def _track_and_collect(qs, item):
     # fixed_overrides: campaign-constant setLattice/trackBeam settings that are NOT sweep
     # dims (e.g. Q19851kG/Q19871kG at recorded BACTs, trackEnd) — applied between the
     # baseline config and the per-sample knobs.
-    merged = {**_BASELINE, **_CFG.get("fixed_overrides", {}), **item["knobs"]}
+    merged = merged_settings(_BASELINE, _CFG.get("fixed_overrides", {}), item["knobs"])
     t0 = time.perf_counter()
-    qs.setLattice(_TAO, **merged)
-    qs.trackBeam(_TAO, str(_S2E_ROOT), **merged)
-    wall_s = time.perf_counter() - t0
-
-    n_in = int(_CFG["num_macro_particles"])
-    record = {"wall_s": wall_s, "specs": {}}
-    for ele in _CFG.get("treaty_points", TREATY_POINTS):
-        P = qs.getBeamAtElement(_TAO, ele)
-
-        # Save the beam before computing specs: degenerate beams (a fully-scraped
-        # bunch) can crash getBeamSpecs, and the cloud itself is feasibility data.
-        if ele in _CFG.get("save_beams_at", ["PENT"]) and len(P.x):
-            P.write(str(Path(_CFG["output_dir"]) / f"sample_{item['idx']:05d}_{ele}.h5"))
-
-        specs = {"n_live_total": len(P.x), "transmission_total": len(P.x) / n_in}
-        if len(np.unique(P.weight)) == 2:
-            PDrive, PWitness = qs.getDriverAndWitness(P)
-            specs["n_live_drive"] = len(PDrive.x)
-            specs["n_live_witness"] = len(PWitness.x)
-        try:
-            # getBeamSpecs only knows golden Twiss at these elements; any other name
-            # falls into an undefined-variable path (its abort `return` is commented
-            # out upstream) -> pass None so specs still compute, just without BMAG.
-            twiss = ele if ele in ("PR10571", "BEGBC20", "MFFF", "PENT") else None
-            specs.update(qs.getBeamSpecs(P, targetTwiss=twiss) or {})
-        except Exception as e:
-            specs["specs_error"] = f"{type(e).__name__}: {e}"
-        record["specs"][ele] = specs
-    return record
+    record = track(qs, _TAO, _S2E_ROOT, merged, _CFG.get("treaty_points", TREATY_POINTS),
+                   n_in=int(_CFG["num_macro_particles"]),
+                   save_beams_at=_CFG.get("save_beams_at", ["PENT"]),
+                   out_prefix=str(Path(_CFG["output_dir"]) / f"sample_{item['idx']:05d}"))
+    return {"wall_s": time.perf_counter() - t0, **record}
 
 
 def run_sample(item):
