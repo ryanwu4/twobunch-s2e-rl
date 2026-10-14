@@ -104,6 +104,8 @@ Started ~01:00 PDT; Ryan checks back ~09:00 PDT.
 | 03:13 | 3 | Screen seed 0 finished; eval above. 100k Bmad re-check of the cloud policy done. Valgate campaign complete (162/162). |
 | 03:15 | 3 | Started: screen + injector stand-in run on GPU 1 (`delta_xtcav23_screen_inj_s0`); Bmad check of screen seed 0 at 100k (24 workers); final PENT gate over all 162 valgate samples. |
 
+| 03:34 | 2 | Final PENT gate over all 162 samples: passes (worst 4.5e-6 rel.). |
+
 (Note: an earlier version of this table had wrong, estimated clock times; corrected from git at 01:58.)
 
 ## Results so far
@@ -146,8 +148,9 @@ solenoid / spot / MTE / σ_t / L0A phase / charge ≤ 0.8 µm. Controller author
 - Baseline reproduction (2e4 / grid 32 vs the golden 5e5 / grid 100 beam): charge, charge ratio,
   energies, bunch separation reproduce; transverse sizes +4–7 %, emittance +6–19 % (fidelity).
 
-**PENT gate (Cheetah segment vs Bmad)**: passes at ≤ 8e-7 relative on 56/56 valgate samples (all
-controller-region block so far; the wide block is still tracking).
+**PENT gate (Cheetah segment vs Bmad)**: passes on all 162 valgate samples (120 controller-region +
+42 wide-box incl. Q2/Q1/Q0FF ±5 %): worst relative difference over every observable 4.5e-6
+(witness BMAG_y); spacing / σ_z / emittances ≤ 1e-6.
 
 ## Needs Ryan's review in the morning
 
