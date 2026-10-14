@@ -353,7 +353,21 @@ def test_objectives_bad_kind_and_bad_goal_raise():
     with pytest.raises(ValueError):
         build_twobunch_reward_spec(_norms(), _floors(),
                                    objectives=[{"key": "bunch_spacing", "kind": "bogus"}])
-    with pytest.raises(ValueError):   # goal-conditioning only wired for bunch_spacing
+    with pytest.raises(ValueError):   # unknown goal sampling space
         build_twobunch_reward_spec(_norms(), _floors(),
                                    objectives=[{"key": "transverse_offset", "kind": "target",
-                                                "goal": [1e-5, 2e-5]}])
+                                                "goal": [1e-5, 2e-5], "goal_space": "cubic"}])
+
+
+def test_goal_on_any_target_obs_keys_and_specs():
+    """Goals are generic: any target can carry `goal:`; goal obs are appended in term order as
+    <key>_goal, except the spacing goal, which keeps its original name `spacing_goal`."""
+    objs = [{"key": "bunch_spacing", "kind": "target", "goal": [1e-4, 3e-4]},
+            {"key": "drive_norm_emit_x", "kind": "target", "goal": [2e-5, 8e-5]},
+            {"key": "T_drive", "kind": "hinge", "weight": 2.0}]
+    spec = build_twobunch_reward_spec(_norms(), _floors(), objectives=objs)
+    assert spec.obs_keys == ("bunch_spacing", "drive_norm_emit_x", "T_drive",
+                             "spacing_goal", "drive_norm_emit_x_goal")
+    assert spec.goal_specs() == {"spacing_goal": (1e-4, 3e-4, "linear"),
+                                 "drive_norm_emit_x_goal": (2e-5, 8e-5, "log")}
+    assert spec.obs_norms["drive_norm_emit_x_goal"] == spec.obs_norms["drive_norm_emit_x"]

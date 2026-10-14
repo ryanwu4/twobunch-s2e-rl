@@ -40,7 +40,7 @@ import yaml
 
 from ..datagen.paths import rl_dir
 from ._eval_plots import plot_closedloop_trajectory, render_sweep_plots
-from ._train_utils import build_reward_spec, resolve_ckpt
+from ._train_utils import build_reward_spec, goal_specs, pin_goal, resolve_ckpt
 from .bmad_bridge import BmadBridge
 from .bmad_env import BmadTwoBunchEnv
 from .diff_env import N_KNOB, TwoBunchFlowEnv
@@ -128,10 +128,10 @@ def _env_goal_kwargs(goal_conditioned: bool, goal_um, de: dict) -> dict:
     goal, else keep the training range. Empty for a non-goal-conditioned policy."""
     if not goal_conditioned:
         return {}
+    goals = goal_specs(de, build_reward_spec(de))
     if goal_um is not None:
-        g = goal_um * 1e-6
-        return dict(spacing_goal_lo=g, spacing_goal_hi=g)
-    return dict(spacing_goal_lo=de.get("spacing_goal_lo_m"), spacing_goal_hi=de.get("spacing_goal_hi_m"))
+        goals = pin_goal(goals, "spacing_goal", goal_um * 1e-6)
+    return dict(goals=goals)
 
 
 def main():

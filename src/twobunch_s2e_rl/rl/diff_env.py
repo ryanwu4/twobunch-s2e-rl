@@ -45,6 +45,7 @@ Domain randomization:
 """
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import torch
@@ -124,6 +125,7 @@ class TwoBunchFlowEnv:
         common_random_numbers: bool = False,
         spacing_goal_lo: float | None = None,
         spacing_goal_hi: float | None = None,
+        goals: dict | None = None,
         knob_box_lo=None,
         knob_box_hi=None,
     ):
@@ -161,11 +163,13 @@ class TwoBunchFlowEnv:
         self.common_random_numbers = bool(common_random_numbers)
         self._n = int(n_particles)
         self._reward_spec = reward_spec
-        # goal-conditioning: per-episode target spacing (physical meters) sampled in [lo, hi].
-        # When unset the env is byte-identical to the fixed-target env (no goal in obs/reward).
-        self._goal_conditioned = spacing_goal_lo is not None and spacing_goal_hi is not None
-        self._goal_lo = float(spacing_goal_lo) if self._goal_conditioned else 0.0
-        self._goal_hi = float(spacing_goal_hi) if self._goal_conditioned else 0.0
+        # goal-conditioning: per-episode goals {goal_key: (lo, hi, "linear"|"log")} in physical
+        # units (from reward_spec.goal_specs()); `spacing_goal_lo/hi` is the original spacing-only
+        # form. When unset the env is byte-identical to the fixed-target env (no goal in obs/reward).
+        if goals is None and spacing_goal_lo is not None and spacing_goal_hi is not None:
+            goals = {"spacing_goal": (float(spacing_goal_lo), float(spacing_goal_hi), "linear")}
+        self._goal_specs = {k: (float(lo), float(hi), sp) for k, (lo, hi, sp) in (goals or {}).items()}
+        self._goal_conditioned = bool(self._goal_specs)
 
         self._rng = torch.Generator(device=self.device)
         self._rng.manual_seed(int(seed))
@@ -177,7 +181,7 @@ class TwoBunchFlowEnv:
         z = lambda *s: torch.zeros(*s, device=self.device)
         self._knobs = z(self.num_envs, self.n_knob)            # commanded (grad leaf)
         self._drift = z(self.num_envs, self.n_knob)            # hidden, detached
-        self._spacing_goal = z(self.num_envs)                  # (B,) per-episode goal, detached
+        self._goals = {k: z(self.num_envs) for k in self._goal_specs}   # (B,) per-episode goals, detached
         self._step_count = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
         self._last_obs_extra = z(self.num_envs, self._reward_spec.n_obs_extra)  # detached
         self._last_achieved: dict[str, torch.Tensor] = {}
@@ -213,13 +217,22 @@ class TwoBunchFlowEnv:
         return torch.randn(n, self.n_knob, generator=self._rng,
                            device=self.device) * self._drift_std
 
-    def _sample_goal(self, n: int) -> torch.Tensor:
-        """(n,) per-episode target spacing in physical meters, uniform in [goal_lo, goal_hi].
-        Zeros (unused) when not goal-conditioned. Uses `_rng` for CRN-reproducibility."""
-        if not self._goal_conditioned:
-            return torch.zeros(n, device=self.device)
-        u = torch.rand(n, generator=self._rng, device=self.device)
-        return self._goal_lo + u * (self._goal_hi - self._goal_lo)
+    @property
+    def _spacing_goal(self) -> torch.Tensor | None:
+        return self._goals.get("spacing_goal")
+
+    def _sample_goals(self, n: int) -> dict[str, torch.Tensor]:
+        """{goal_key: (n,)} per-episode goals in physical units, uniform in [lo, hi] in linear or
+        log10 space. One `_rng` draw per goal, in spec order (a single spacing goal draws exactly
+        as before goals were generic, so CRN-seeded runs reproduce)."""
+        out = {}
+        for k, (lo, hi, space) in self._goal_specs.items():
+            u = torch.rand(n, generator=self._rng, device=self.device)
+            if space == "log":
+                out[k] = 10.0 ** (math.log10(lo) + u * (math.log10(hi) - math.log10(lo)))
+            else:
+                out[k] = lo + u * (hi - lo)
+        return out
 
     def _observe(self, knobs_cmd: torch.Tensor):
         """Run the flow at the actual (drifted) knobs -> (reward (B,), obs_extra (B,k) detached,
@@ -227,8 +240,8 @@ class TwoBunchFlowEnv:
         knobs_act = torch.minimum(torch.maximum(knobs_cmd + self._drift, self._klo), self._khi)
         obs_dict = self._flow.observables(knobs_act, n=self._n)
         obs_dict["knobs"] = knobs_act          # for the trust-region (boundary) reward term
-        if self._goal_conditioned:             # per-env target spacing (detached constant)
-            obs_dict["spacing_goal"] = self._spacing_goal   # seen by both obs_scaled and the reward term
+        obs_dict.update(self._goals)           # per-env goals (detached constants), seen by both
+                                               # obs_scaled and the reward terms
         reward, achieved = self._reward_spec(obs_dict)
         obs_extra = self._reward_spec.obs_scaled(obs_dict).detach()
         return reward, obs_extra, {k: v.detach() for k, v in achieved.items()}
@@ -251,12 +264,12 @@ class TwoBunchFlowEnv:
         else:
             new_knobs = (0.5 * (self._klo + self._khi)).expand(n, -1)            # box midpoint
         new_drift = self._sample_drift(n)
-        new_goal = self._sample_goal(n)
+        new_goals = self._sample_goals(n)
 
         if n == self.num_envs:
             self._knobs = new_knobs
             self._drift = new_drift
-            self._spacing_goal = new_goal
+            self._goals = new_goals
         else:
             # _knobs is grad-attached -> torch.where grad-safety for survivors (mirror pattern).
             mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
@@ -265,7 +278,8 @@ class TwoBunchFlowEnv:
             knobs_full[env_ids] = new_knobs
             self._knobs = torch.where(mask.unsqueeze(-1), knobs_full, self._knobs)
             self._drift[env_ids] = new_drift          # detached buffer -> plain assign
-            self._spacing_goal[env_ids] = new_goal    # detached buffer -> plain assign
+            for k, v in new_goals.items():            # detached buffers -> plain assign
+                self._goals[k][env_ids] = v
 
         self._step_count[env_ids] = 0
 

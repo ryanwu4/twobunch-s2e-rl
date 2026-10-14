@@ -83,9 +83,11 @@ _GATE_FOR = {k: ("T_drive" if k.startswith("drive") else "T_witness") for k in E
 _DEFAULT_NORM_KEYS = (("bunch_spacing", "energy_difference", "transverse_offset",
                        "angular_misalignment") + SURV_KEYS + EMIT_KEYS)
 
-# goal-conditioned target: which obs key carries the per-env goal for a given metric. Only
-# bunch_spacing is wired end-to-end in the env today (self._spacing_goal -> obs["spacing_goal"]).
-_GOAL_KEY_FOR = {"bunch_spacing": "spacing_goal"}
+def goal_key_for(key: str) -> str:
+    """Obs/reward key carrying the per-env goal of a goal-conditioned target. The spacing goal keeps
+    its original name `spacing_goal` so goal-conditioned policies trained before goals were generic
+    load unchanged; every other target uses `<key>_goal`."""
+    return "spacing_goal" if key == "bunch_spacing" else f"{key}_goal"
 
 
 def _t(x: torch.Tensor, transform: str) -> torch.Tensor:
@@ -220,6 +222,8 @@ class RewardTerm:
     margin: float = 0.05           # boundary mode: edge band width
     goal_key: str | None = None    # target mode: per-env target read from obs[goal_key] (B,), physical
                                    # units; overrides the scalar `target` for goal-conditioned RL
+    goal_range: tuple[float, float] | None = None   # per-episode goal sampling range (physical)
+    goal_space: str = "linear"     # sample the goal uniformly in "linear" or "log" (log10) space
 
     def _gate(self, obs: dict[str, torch.Tensor]) -> torch.Tensor | None:
         if self.gate_key is None:
@@ -304,6 +308,12 @@ class TwoBunchRewardSpec:
     def n_obs_extra(self) -> int:
         return len(self.obs_keys)
 
+    def goal_specs(self) -> dict[str, tuple[float, float, str]]:
+        """{goal_key: (lo, hi, space)} for every goal-conditioned target with a sampling range,
+        in term order (the env samples one goal per entry each episode)."""
+        return {t.goal_key: (t.goal_range[0], t.goal_range[1], t.goal_space)
+                for t in self.terms if t.goal_key is not None and t.goal_range is not None}
+
 
 def _term_from_spec(e: dict, norms: dict, floors: dict, *, surv_T_min: float, surv_margin: float,
                     emit_below_weight: float, emit_gate_band: float,
@@ -325,14 +335,18 @@ def _term_from_spec(e: dict, norms: dict, floors: dict, *, surv_T_min: float, su
     s = norms[key]
     tr, m, sd = s["transform"], s["mean"], s["std"]
     if kind == "target":
-        goal_key = None
+        goal_key, goal_range, goal_space = None, None, "linear"
         if e.get("goal") is not None:
-            if key not in _GOAL_KEY_FOR:
-                raise ValueError(f"goal-conditioning not wired for {key!r} "
-                                 f"(env supports {list(_GOAL_KEY_FOR)})")
-            goal_key = _GOAL_KEY_FOR[key]
+            goal_key = goal_key_for(key)
+            goal_range = (float(e["goal"][0]), float(e["goal"][1]))
+            # default sampling space follows the metric's transform (spacing: linear; sigma_z,
+            # BMAG, emittance: log); override per entry with `goal_space:`
+            goal_space = e.get("goal_space", "log" if tr == "log10" else "linear")
+            if goal_space not in ("linear", "log"):
+                raise ValueError(f"goal_space must be 'linear' or 'log', got {goal_space!r}")
         return RewardTerm(key, "target", tr, m, sd, w,
-                          target=float(e.get("target", 0.0)), goal_key=goal_key)
+                          target=float(e.get("target", 0.0)), goal_key=goal_key,
+                          goal_range=goal_range, goal_space=goal_space)
     if kind in ("minimize", "maximize", "ceiling"):
         return RewardTerm(key, kind, tr, m, sd, w,
                           floor=(float(e["floor"]) if "floor" in e else None))

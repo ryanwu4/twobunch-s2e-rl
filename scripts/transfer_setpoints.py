@@ -33,7 +33,8 @@ import yaml
 from twobunch_s2e_rl.datagen.paths import repo_root
 from twobunch_s2e_rl.rl.diff_env import TwoBunchFlowEnv
 from twobunch_s2e_rl.rl.eval import _load_policy, _assert_obs_dim
-from twobunch_s2e_rl.rl._train_utils import build_reward_spec, resolve_ckpt, _knob_box_bounds
+from twobunch_s2e_rl.rl._train_utils import (build_reward_spec, goal_specs, pin_goal,
+                                             resolve_ckpt, _knob_box_bounds)
 from twobunch_s2e_rl.rl._eval_plots import render_sweep_plots
 
 # achieved-metric key -> (report name, scale to display unit)
@@ -85,7 +86,7 @@ def transfer(logdir, flow_ckpt, targets_um, policy="best", num_rollouts=256, see
             flow_ckpt=resolve_ckpt(flow_ckpt), reward_spec=spec,
             n_particles=int(de.get("n_particles", 512)), action_scale=float(de.get("action_scale", 0.05)),
             knob_box_lo=box_lo, knob_box_hi=box_hi,
-            spacing_goal_lo=g_um * 1e-6, spacing_goal_hi=g_um * 1e-6)   # pin every env to this goal
+            goals=pin_goal(goal_specs(de, spec), "spacing_goal", g_um * 1e-6))   # pin every env to this goal
         if actor is None:
             actor, obs_rms = _load_policy(str(logdir / f"{policy}_policy.pt"), device)
             _assert_obs_dim(env, actor)

@@ -187,3 +187,38 @@ def test_env_drift_confined_to_rf_idx_26knob():
     assert env._drift_std is not None and env._drift_std.numel() == 26
     nz = (env._drift_std != 0).nonzero().flatten().tolist()
     assert nz == list(RF_DRIFT_IDX)                           # drift only on RF/energy knobs
+
+
+def test_generic_goals_sampled_in_range_and_space():
+    """Two goals (spacing linear, sigma_z log) are sampled per episode within range and fed to
+    the reward/obs; a single spacing goal draws exactly as the original spacing-only env did."""
+    env = _env(num_envs=256, reward_spec=_gc_spec(),
+               goals={"spacing_goal": (1e-4, 3e-4, "linear"),
+                      "drive_sigma_z_goal": (1e-5, 1e-4, "log")})
+    sz = env._goals["drive_sigma_z_goal"]
+    assert (sz >= 1e-5).all() and (sz <= 1e-4).all()
+    # log-uniform: about half the mass below the geometric midpoint
+    assert 0.35 < float((sz < 10 ** -4.5).float().mean()) < 0.65
+    assert torch.equal(env._spacing_goal, env._goals["spacing_goal"])
+
+
+def test_single_spacing_goal_draws_match_original_rng_order():
+    a = _env(num_envs=6, reward_spec=_gc_spec(), spacing_goal_lo=1e-4, spacing_goal_hi=3e-4)
+    b = _env(num_envs=6, reward_spec=_gc_spec(), goals={"spacing_goal": (1e-4, 3e-4, "linear")})
+    assert torch.equal(a._spacing_goal, b._spacing_goal)
+    # the original formula: one torch.rand(n) on the env generator after the knob/drift draws
+    g = torch.Generator().manual_seed(0)
+    torch.rand(6, 8, generator=g)                       # stochastic_init knobs
+    u = torch.rand(6, generator=g)
+    assert torch.allclose(a._spacing_goal, 1e-4 + u * 2e-4)
+
+
+def test_pin_goal_and_goal_specs_helpers():
+    from twobunch_s2e_rl.rl._train_utils import goal_specs, pin_goal
+    spec = _gc_spec()
+    flat = goal_specs({"spacing_goal_lo_m": 1e-4, "spacing_goal_hi_m": 3e-4}, spec)
+    assert flat == {"spacing_goal": (1e-4, 3e-4, "linear")}
+    assert pin_goal(flat, "spacing_goal", 2e-4) == {"spacing_goal": (2e-4, 2e-4, "linear")}
+    with pytest.raises(ValueError):
+        pin_goal(flat, "drive_sigma_z_goal", 1e-5)
+    assert goal_specs({}, _spec()) == {}

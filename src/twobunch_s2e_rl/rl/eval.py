@@ -29,7 +29,7 @@ import yaml
 from .diff_env import TwoBunchFlowEnv
 from .diffrl.utils import RunningMeanStd
 from ._eval_plots import render_sweep_plots
-from ._train_utils import build_reward_spec, resolve_ckpt, _knob_box_bounds
+from ._train_utils import build_reward_spec, goal_specs, pin_goal, resolve_ckpt, _knob_box_bounds
 from ..datagen.paths import rl_dir
 
 
@@ -71,14 +71,10 @@ def evaluate(logdir, flow_ckpt, policy="best", num_rollouts=256, rf_drift_std=0.
         cfg = yaml.safe_load(f)
     de = cfg["params"]["diff_env"]
     spec = build_reward_spec(de)
-    goal_conditioned = "spacing_goal" in spec.obs_keys
+    goals = goal_specs(de, spec)                 # training ranges (random goal per episode)
     if goal_um is not None:
-        env_goal = dict(spacing_goal_lo=goal_um * 1e-6, spacing_goal_hi=goal_um * 1e-6)
-    elif goal_conditioned:                       # keep the training range (random goal per episode)
-        env_goal = dict(spacing_goal_lo=de.get("spacing_goal_lo_m"),
-                        spacing_goal_hi=de.get("spacing_goal_hi_m"))
-    else:
-        env_goal = {}
+        goals = pin_goal(goals, "spacing_goal", goal_um * 1e-6)
+    env_goal = dict(goals=goals)
     box_lo, box_hi = _knob_box_bounds(de)   # MUST match training: same knob box or the policy is off-frame
     env = TwoBunchFlowEnv(
         num_rollouts, device=device, seed=seed,
@@ -125,9 +121,13 @@ def evaluate(logdir, flow_ckpt, policy="best", num_rollouts=256, rf_drift_std=0.
                  "drive": env._flow.sample_bunch(kr, 0, n_cloud)[0].detach().cpu().numpy(),
                  "witness": env._flow.sample_bunch(kr, 1, n_cloud)[0].detach().cpu().numpy()}
 
-    # error vs the goal when pinned, else vs the legacy 200 um set point (kept for old non-goal runs)
-    ref_um = float(goal_um) if goal_um is not None else 200.0
-    err_key = "abs_err_to_goal_median" if goal_um is not None else "abs_err_to_200_median"
+    # error vs the goal when pinned, else vs the reward's fixed spacing target (200 um in every
+    # fixed-target config; the key keeps its historical name in that case)
+    target_m = next((t.target for t in spec.terms if t.key == "bunch_spacing" and t.mode == "target"),
+                    2e-4)
+    ref_um = float(goal_um) if goal_um is not None else target_m * 1e6
+    err_key = ("abs_err_to_goal_median" if goal_um is not None else
+               "abs_err_to_200_median" if abs(ref_um - 200.0) < 1e-6 else "abs_err_to_target_median")
     spacing_report = {"median": _pct(spacing_um, 50), "p10": _pct(spacing_um, 10),
                       "p90": _pct(spacing_um, 90), err_key: float(np.median(np.abs(spacing_um - ref_um)))}
     if goal_um is not None:

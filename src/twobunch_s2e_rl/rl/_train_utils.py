@@ -78,14 +78,24 @@ def override(cfg: dict, args: argparse.Namespace) -> dict:
 
 
 
-def _spacing_goal_range(de: dict):
-    """(lo, hi) target-spacing range for goal-conditioned RL: from the objectives block's
-    bunch_spacing `goal` if present, else the flat spacing_goal_{lo,hi}_m keys (back-compat)."""
-    for e in de.get("objectives") or []:
-        if e.get("key") == "bunch_spacing" and e.get("goal") is not None:
-            lo, hi = e["goal"]
-            return float(lo), float(hi)
-    return de.get("spacing_goal_lo_m"), de.get("spacing_goal_hi_m")
+def goal_specs(de: dict, spec) -> dict:
+    """{goal_key: (lo, hi, space)} the env samples per episode: from the objectives block's
+    `goal:` entries (any target), else the flat spacing_goal_{lo,hi}_m keys (original form).
+    The single place eval / eval_bmad / transfer_setpoints read goal ranges from."""
+    specs = dict(spec.goal_specs())
+    lo, hi = de.get("spacing_goal_lo_m"), de.get("spacing_goal_hi_m")
+    if not specs and lo is not None and hi is not None:
+        specs = {"spacing_goal": (float(lo), float(hi), "linear")}
+    return specs
+
+
+def pin_goal(specs: dict, goal_key: str, value: float) -> dict:
+    """Copy of `specs` with one goal pinned to a fixed value (degenerate [v, v] range)."""
+    if goal_key not in specs:
+        raise ValueError(f"policy has no {goal_key!r} goal (goals: {list(specs)})")
+    out = dict(specs)
+    out[goal_key] = (float(value), float(value), specs[goal_key][2])
+    return out
 
 
 def build_reward_spec(de: dict):
@@ -163,7 +173,6 @@ def build_env_fn(cfg: dict, flow_ckpt: str):
     standard (num_envs, device, seed, episode_length, stochastic_init, ...) kwargs."""
     de = cfg["params"]["diff_env"]
     spec = build_reward_spec(de)
-    goal_lo, goal_hi = _spacing_goal_range(de)
     box_lo, box_hi = _knob_box_bounds(de)
     # latent RF drift: an `rf_drift` block (physical units) builds a per-knob normalized-std
     # vector; otherwise fall back to the scalar `rf_drift_std` (CLI-overridable, 0 = off).
@@ -184,8 +193,7 @@ def build_env_fn(cfg: dict, flow_ckpt: str):
         action_scale=de.get("action_scale", 0.05),
         rf_drift_std=drift,
         common_random_numbers=de.get("common_random_numbers", False),
-        spacing_goal_lo=goal_lo,
-        spacing_goal_hi=goal_hi,
+        goals=goal_specs(de, spec),
         knob_box_lo=box_lo,
         knob_box_hi=box_hi,
     )
