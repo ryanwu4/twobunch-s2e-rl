@@ -26,8 +26,8 @@ import numpy as np
 import torch
 import yaml
 
-from twobunch_s2e_rl.datagen.sweep_params import (
-    BASELINE_KNOBS, BOUNDS_HIGH, BOUNDS_LOW, PARAM_KEYS)
+from twobunch_s2e_rl.artifacts import resolve_ckpt
+from twobunch_s2e_rl.datagen.sweep_params import BASELINE_KNOBS, PARAM_KEYS
 from twobunch_s2e_rl.rl._train_utils import build_reward_spec
 from twobunch_s2e_rl.rl.bmad_bridge import BmadBridge
 from twobunch_s2e_rl.rl.bmad_env import BmadTwoBunchEnv
@@ -36,7 +36,7 @@ from twobunch_s2e_rl.surrogate.model import TwoBunchFlow
 
 
 def _resolve(p):
-    return sorted(glob.glob(p))[-1] if "*" in p else p
+    return resolve_ckpt(p)
 
 
 def main():
@@ -59,15 +59,16 @@ def main():
     de = yaml.safe_load(open(args.cfg))["params"]["diff_env"]
     spec = build_reward_spec(de)
 
-    lo, hi = np.array(BOUNDS_LOW), np.array(BOUNDS_HIGH)
+    # ---- surrogate: average several draws at the baseline knobs ----
+    flow = TwoBunchFlow.load_from_checkpoint(_resolve(args.flow_ckpt),
+                                             map_location=device).to(device).eval()
+    # normalize in the flow's OWN frame (today's BOUNDS_* table no longer matches the 8-knob
+    # artifacts: L2PhaseSet was widened in place after they were made)
+    lo, hi = flow.knob_low.cpu().numpy().astype(np.float64), flow.knob_high.cpu().numpy().astype(np.float64)
     phys = np.array([BASELINE_KNOBS[k] for k in PARAM_KEYS], dtype=np.float64)
     knorm = ((phys - lo) / (hi - lo)).astype(np.float32)
     print("baseline knobs (phys):", {k: round(float(v), 3) for k, v in zip(PARAM_KEYS, phys)})
     print("baseline knobs (norm):", {k: round(float(v), 3) for k, v in zip(PARAM_KEYS, knorm)})
-
-    # ---- surrogate: average several draws at the baseline knobs ----
-    flow = TwoBunchFlow.load_from_checkpoint(_resolve(args.flow_ckpt),
-                                             map_location=device).to(device).eval()
     for p in flow.parameters():
         p.requires_grad_(False)
     kt = torch.tensor(knorm, device=device).unsqueeze(0)            # (1, 8)

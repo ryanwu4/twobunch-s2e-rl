@@ -49,7 +49,6 @@ from typing import Any
 
 import torch
 
-from ..datagen.sweep_params import PARAM_KEYS, SWEEP_PARAMS
 from ..surrogate.model import TwoBunchFlow
 from .reward import TwoBunchRewardSpec
 
@@ -68,25 +67,35 @@ RF_NOMINAL_ENERGY_EV = {
 
 
 def rf_drift_std_vector(phase_drift_deg: float = 0.5,
-                        amp_drift_frac: float = 0.005) -> torch.Tensor:
-    """Per-knob 1-sigma latent RF drift in NORMALIZED [0,1] knob units (length N_KNOB).
+                        amp_drift_frac: float = 0.005, knob_space=None) -> torch.Tensor:
+    """Per-knob 1-sigma latent RF drift in NORMALIZED [0,1] knob units, one entry per knob of
+    `knob_space` (matched by NAME, so it works for the 8-, 23- and 26-knob frames).
 
-    Maps physical RF jitter onto the swept-knob box:
+    Pass the frame the policy's flow was trained in (`artifacts.flow_knob_space(flow)`): today's
+    sweep_params table no longer matches the 8-knob artifacts (L2PhaseSet was widened in place
+    from [-38,-34] to [-40,-34] after they were made), so the default (`original8` table) gives
+    the post-widening L2 std 0.083 instead of the train-time 0.125.
+
+    Maps physical RF jitter onto the knob box:
     - phase knobs (L1/L2 PhaseSet): `phase_drift_deg` deg / (box width in deg)
     - energy-offset knobs (L1/L2/L3): `amp_drift_frac` * nominal section energy gain (eV)
       / (box width in eV) -- treats RF amplitude jitter as on-crest energy-gain jitter
-    - sextupole knobs (S1/S2/S3 ELkG): 0 (not RF).
+    - every other knob: 0 (not RF).
 
-    See the module docstring for the worked default values (0.5 deg / 0.5% -> L1Phase 0.100,
-    L2Phase 0.125, each energy ~0.250)."""
-    std = [0.0] * N_KNOB
-    for j, k in enumerate(PARAM_KEYS):
-        lo, hi, _ = SWEEP_PARAMS[k]
-        width = float(hi - lo)
+    See the module docstring for the worked default values (0.5 deg / 0.5% on the train-time
+    8-knob frame -> L1Phase 0.100, L2Phase 0.125, each energy ~0.250)."""
+    if knob_space is None:
+        from ..knobs import KnobSpace
+        knob_space = KnobSpace.from_sweep_set("original8")
+    std = []
+    for k in knob_space.keys:
+        width = float(knob_space.width(k))
         if k in RF_PHASE_KEYS:
-            std[j] = phase_drift_deg / width
+            std.append(phase_drift_deg / width)
         elif k in RF_NOMINAL_ENERGY_EV:
-            std[j] = (amp_drift_frac * RF_NOMINAL_ENERGY_EV[k]) / width
+            std.append((amp_drift_frac * RF_NOMINAL_ENERGY_EV[k]) / width)
+        else:
+            std.append(0.0)
     return torch.tensor(std, dtype=torch.float32)
 
 

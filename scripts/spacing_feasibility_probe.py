@@ -17,7 +17,6 @@ training. Read-only; no training, no env.
 from __future__ import annotations
 
 import argparse
-import glob
 from pathlib import Path
 
 import matplotlib
@@ -27,10 +26,11 @@ import numpy as np
 import torch
 
 from twobunch_s2e_rl.surrogate.model import TwoBunchFlow
+from twobunch_s2e_rl.artifacts import resolve_ckpt
 
 
 def _resolve(path: str) -> str:
-    return sorted(glob.glob(path))[-1] if "*" in path else path
+    return resolve_ckpt(path)
 
 
 @torch.no_grad()

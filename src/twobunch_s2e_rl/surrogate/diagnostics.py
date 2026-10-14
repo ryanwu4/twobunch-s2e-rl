@@ -14,7 +14,6 @@ Writes to <--out, default results/surrogate/default/diagnostics>/:
 from __future__ import annotations
 
 import argparse
-import glob
 
 import matplotlib
 matplotlib.use("Agg")
@@ -25,6 +24,7 @@ import torch
 from ..datagen.paths import repo_root
 from .dataset import TwoBunchFlowDataset
 from .model import TwoBunchFlow
+from ..artifacts import resolve_ckpt
 
 # per-coordinate display scaling (cols: x,y,z [m]; px,py,pz [eV/c])
 SCALE = np.array([1e6, 1e6, 1e6, 1e-6, 1e-6, 1e-6])
@@ -285,7 +285,7 @@ def main():
     ap.add_argument("--only-slices", action="store_true",
                     help="render only slices.png (skip corner/beam/knob/feasibility/dispersion).")
     args = ap.parse_args()
-    ckpt = sorted(glob.glob(args.ckpt))[-1] if "*" in args.ckpt else args.ckpt
+    ckpt = resolve_ckpt(args.ckpt)
     out = repo_root() / args.out
     out.mkdir(parents=True, exist_ok=True)
     b = Bundle(ckpt, args.processed)

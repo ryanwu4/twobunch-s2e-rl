@@ -13,7 +13,6 @@ Writes <--out, default results/surrogate/v2/diagnostics>/lps_scraping_{box,trend
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 
 import matplotlib
@@ -24,6 +23,7 @@ import torch
 
 from ..datagen.paths import repo_root
 from .diagnostics import Bundle
+from ..artifacts import resolve_ckpt
 
 INTACT = 0.9  # surviving-fraction threshold: >= intact, < scraped
 C_T, C_F = "#1f77b4", "#d62728"
@@ -156,7 +156,7 @@ def main():
     ap.add_argument("--processed", default=str(repo_root() / "processed" / "twobunch_flow_v2.h5"))
     ap.add_argument("--out", default="results/surrogate/v2/diagnostics")
     args = ap.parse_args()
-    ckpt = sorted(glob.glob(args.ckpt))[-1] if "*" in args.ckpt else args.ckpt
+    ckpt = resolve_ckpt(args.ckpt)
     analyze(ckpt, args.processed, args.out)
 
 

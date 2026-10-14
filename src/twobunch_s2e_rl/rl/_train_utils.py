@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import argparse
 import csv
-import glob
 import json
 import os
 from functools import partial
 
 import numpy as np
 
+from ..artifacts import flow_knob_space, resolve_ckpt  # resolve_ckpt re-exported for eval/scripts
+from ..surrogate.model import TwoBunchFlow
 from .diff_env import TwoBunchFlowEnv, rf_drift_std_vector
 from .reward import reward_spec_from_campaign
 from ..datagen.paths import repo_root
@@ -75,8 +76,6 @@ def override(cfg: dict, args: argparse.Namespace) -> dict:
     return cfg
 
 
-def resolve_ckpt(path: str) -> str:
-    return sorted(glob.glob(path))[-1] if "*" in path else path
 
 
 def _spacing_goal_range(de: dict):
@@ -168,7 +167,11 @@ def build_env_fn(cfg: dict, flow_ckpt: str):
     # vector; otherwise fall back to the scalar `rf_drift_std` (CLI-overridable, 0 = off).
     rf = de.get("rf_drift", {})
     if rf.get("enabled", False):
-        drift = rf_drift_std_vector(rf.get("phase_drift_deg", 0.5), rf.get("amp_drift_frac", 0.005))
+        # in the flow's OWN frame (train-time bounds), not today's knob tables
+        frame = flow_knob_space(TwoBunchFlow.load_from_checkpoint(resolve_ckpt(flow_ckpt),
+                                                                  map_location="cpu"))
+        drift = rf_drift_std_vector(rf.get("phase_drift_deg", 0.5), rf.get("amp_drift_frac", 0.005),
+                                    knob_space=frame)
     else:
         drift = de.get("rf_drift_std", 0.0)
     return partial(

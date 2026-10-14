@@ -28,6 +28,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
+from ..artifacts import resolve_ckpt
 from ..datagen.paths import repo_root
 from ..datagen.sweep_params import BASELINE_KNOBS, BOUNDS_HIGH, BOUNDS_LOW, PARAM_KEYS
 from ..surrogate.model import TwoBunchFlow
@@ -38,8 +39,13 @@ METRICS = ("bunch_spacing", "transverse_offset", "angular_misalignment", "energy
 N_GRID = (256, 512, 1024, 2048, 4096, 8192)
 
 
-def _baseline_norm() -> np.ndarray:
-    lo, hi = np.array(BOUNDS_LOW), np.array(BOUNDS_HIGH)
+def _baseline_norm(flow=None) -> np.ndarray:
+    # normalize in the flow's own frame when given (today's BOUNDS_* table no longer matches the
+    # 8-knob artifacts: L2PhaseSet was widened in place after they were made)
+    if flow is not None:
+        lo, hi = flow.knob_low.cpu().numpy(), flow.knob_high.cpu().numpy()
+    else:
+        lo, hi = np.array(BOUNDS_LOW), np.array(BOUNDS_HIGH)
     base = np.array([BASELINE_KNOBS[k] for k in PARAM_KEYS])
     return ((base - lo) / np.maximum(hi - lo, 1e-12)).astype(np.float32)
 
@@ -79,7 +85,7 @@ def study(ckpt, device="cuda", n_draws=32, grad_draws=16, ref_N=16384,
         p.requires_grad_(False)
 
     rng = np.random.default_rng(seed)
-    points = [("baseline", _baseline_norm())]
+    points = [("baseline", _baseline_norm(flow))]
     for i in range(n_points - 1):
         points.append((f"rand{i}", rng.random(8).astype(np.float32)))
 
@@ -154,7 +160,7 @@ def main():
     ap.add_argument("--n-points", type=int, default=3)
     ap.add_argument("--out", default="results/rl/_shared")
     args = ap.parse_args()
-    ckpt = sorted(glob.glob(args.ckpt))[-1] if "*" in args.ckpt else args.ckpt
+    ckpt = resolve_ckpt(args.ckpt)
     study(ckpt, device=args.device, n_draws=args.n_draws, grad_draws=args.grad_draws,
           ref_N=args.ref_n, n_points=args.n_points, out_dir=args.out)
 

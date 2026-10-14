@@ -28,7 +28,7 @@ class BmadTwoBunchEnv:
     def __init__(self, bridge, reward_spec: TwoBunchRewardSpec, *, num_envs: int = 1,
                  device: str = "cpu", episode_length: int = 24, action_scale: float = 0.05,
                  stochastic_init: bool = True, seed: int = 0, min_particles: int = 64,
-                 spacing_goal: float | None = None):
+                 spacing_goal: float | None = None, knob_low=None, knob_high=None):
         self.bridge = bridge
         self._reward_spec = reward_spec
         self.num_envs = int(num_envs)
@@ -41,8 +41,12 @@ class BmadTwoBunchEnv:
         self.num_actions = ACTION_DIM
         self.num_obs = N_KNOB + reward_spec.n_obs_extra
         self._rng = torch.Generator(device=self.device).manual_seed(int(seed))
-        self._lo = torch.tensor(BOUNDS_LOW, device=self.device, dtype=torch.float32)
-        self._hi = torch.tensor(BOUNDS_HIGH, device=self.device, dtype=torch.float32)
+        # knob frame: pass the policy's flow frame (flow.knob_low/high) -- today's BOUNDS_* table
+        # no longer matches the 8-knob artifacts (L2PhaseSet widened in place after they were made)
+        lo = BOUNDS_LOW if knob_low is None else knob_low
+        hi = BOUNDS_HIGH if knob_high is None else knob_high
+        self._lo = torch.as_tensor(lo, device=self.device, dtype=torch.float32)
+        self._hi = torch.as_tensor(hi, device=self.device, dtype=torch.float32)
 
         # neutral fallbacks (campaign means / spacing target) for scraped-bunch steps
         n = reward_spec.obs_norms

@@ -7,7 +7,6 @@ Writes <--out, default results/surrogate/default>/{parity.png, phase_space.png, 
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 
 import matplotlib
@@ -21,6 +20,7 @@ from ..datagen.paths import repo_root
 from .dataset import TwoBunchFlowDataModule
 from .model import TwoBunchFlow
 from .properties import inter_bunch, per_bunch
+from ..artifacts import resolve_ckpt
 
 PARITY_KEYS = [
     ("drive_norm_emit_x", "drive ε_n,x [m]", True),
@@ -156,7 +156,7 @@ def main():
     ap.add_argument("--out", default="results/surrogate/default")
     ap.add_argument("--n", type=int, default=2048)
     args = ap.parse_args()
-    ckpt = sorted(glob.glob(args.ckpt))[-1] if "*" in args.ckpt else args.ckpt
+    ckpt = resolve_ckpt(args.ckpt)
     evaluate(ckpt, args.processed, args.out, n=args.n)
 
 

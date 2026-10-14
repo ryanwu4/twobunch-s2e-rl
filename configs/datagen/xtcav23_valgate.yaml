@@ -1,0 +1,21 @@
+# Validation-gate campaign for the XTCAVF surrogate + Cheetah segment (plan phase 2). Beams saved at
+# BOTH XTCAVF and PENT so Cheetah XTCAVF->PENT can be compared against Bmad. Same physics settings
+# as xtcav23_full; the manifest is pre-built by scripts/make_valgate_manifest.py (controller-region
+# block + wide LHS block + 2 baseline repeats) and reused as-is by run_sweep.
+name: xtcav23_valgate_2026-10-14
+sweep_set: xtcav23          # unused for sampling (manifest pre-built); kept for provenance
+n_samples: 160
+n_baseline_repeats: 2
+num_macro_particles: 100000
+n_workers: 56
+seed: 20261014
+csrTF: true
+transverseWakes: true
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+output_dir: data/xtcav23_valgate_2026-10-14
+treaty_points: [BEGBC20, MFFF, XTCAVF, PENT]
+save_beams_at: [XTCAVF, PENT]
+fixed_overrides:
+  Q19851kG: -63.76368742523523
+  Q19871kG: 42.49972197426665
+  trackEnd: PENT

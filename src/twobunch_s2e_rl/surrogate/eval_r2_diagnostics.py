@@ -18,7 +18,6 @@ Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg \
     python -m twobunch_s2e_rl.surrogate.eval_r2_diagnostics --ckpt '<glob>' --processed <h5> [--out <dir>]
 """
 import argparse
-import glob
 import json
 import os
 
@@ -34,6 +33,7 @@ from .model import TwoBunchFlow
 from .dataset import TwoBunchFlowDataModule
 from .properties import per_bunch, inter_bunch
 from .eval import PARITY_KEYS, _destd
+from ..artifacts import resolve_ckpt
 
 WEAK_FOCUS = ["witness_norm_emit_x", "witness_norm_emit_y", "witness_slice_bmag_max",
               "witness_bmag_y", "witness_bmag_x"]
@@ -90,7 +90,7 @@ def main():
     ap.add_argument("--n", type=int, default=2048)
     args = ap.parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    ckpt = sorted(glob.glob(args.ckpt))[-1] if "*" in args.ckpt else args.ckpt
+    ckpt = resolve_ckpt(args.ckpt)
 
     model = TwoBunchFlow.load_from_checkpoint(ckpt, map_location=device).eval().to(device)
     dm = TwoBunchFlowDataModule(processed_h5=args.processed, batch_size=256, num_workers=0)

@@ -39,7 +39,6 @@ import torch
 import yaml
 
 from ..datagen.paths import rl_dir
-from ..datagen.sweep_params import BOUNDS_HIGH, BOUNDS_LOW
 from ._eval_plots import plot_closedloop_trajectory, render_sweep_plots
 from ._train_utils import build_reward_spec, resolve_ckpt
 from .bmad_bridge import BmadBridge
@@ -47,6 +46,7 @@ from .bmad_env import BmadTwoBunchEnv
 from .diff_env import N_KNOB, TwoBunchFlowEnv
 from .eval import _assert_obs_dim, _load_policy
 from .reward import EMIT_KEYS
+from ..surrogate.model import TwoBunchFlow
 
 REPORT = ("bunch_spacing", "T_drive", "T_witness") + EMIT_KEYS
 _BASELINE_CFG = "setLattice_configs/2024-10-14_twoBunch_baseline.yml"
@@ -250,10 +250,10 @@ def _run_one_goal(args, de, spec, flow_ckpt, actor, rms, bridge, artdir, device,
         sd = flow.sample_bunch(knobs, 0, args.n_particles).cpu().numpy()   # (npts, n, 6)
         sw = flow.sample_bunch(knobs, 1, args.n_particles).cpu().numpy()
 
-        lo = torch.tensor(BOUNDS_LOW, device=device); hi = torch.tensor(BOUNDS_HIGH, device=device)
+        lo, hi = flow.knob_low.to(device), flow.knob_high.to(device)   # the policy's own frame
         phys = (lo + knobs * (hi - lo)).cpu().numpy()
         benv = BmadTwoBunchEnv(bridge, spec, num_envs=1, device=device, min_particles=64,
-                               spacing_goal=bmad_goal)
+                               spacing_goal=bmad_goal, knob_low=lo.tolist(), knob_high=hi.tolist())
         MIN = benv.min_particles
         per, bd, bw = [], [], []
         for i in range(args.n_points):
@@ -314,9 +314,11 @@ def _run_one_goal(args, de, spec, flow_ckpt, actor, rms, bridge, artdir, device,
                 print(f"  wrote {png}")
     else:
         ep = args.episode_len or int(de["episode_length"])
+        frame = TwoBunchFlow.load_from_checkpoint(flow_ckpt, map_location="cpu")
         benv = BmadTwoBunchEnv(bridge, spec, num_envs=1, device=device, seed=args.seed,
                                episode_length=ep, action_scale=float(de["action_scale"]),
-                               stochastic_init=True, min_particles=64, spacing_goal=bmad_goal)
+                               stochastic_init=True, min_particles=64, spacing_goal=bmad_goal,
+                               knob_low=frame.knob_low.tolist(), knob_high=frame.knob_high.tolist())
         _assert_obs_dim(benv, actor)
         obs = benv.reset()
         print(f"\n=== closed-loop on Bmad ({ep} steps) ===")

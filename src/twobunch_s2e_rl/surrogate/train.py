@@ -9,7 +9,6 @@ loaded from the preprocess _norm.json so the checkpoint is self-contained.
 from __future__ import annotations
 
 import argparse
-import glob
 
 import torch
 import lightning as L
@@ -19,6 +18,7 @@ from lightning.pytorch.loggers import CSVLogger
 from ..datagen.paths import repo_root
 from .dataset import TwoBunchFlowDataModule
 from .model import TwoBunchFlow
+from ..artifacts import resolve_ckpt
 
 
 def build_model(norm: dict, **overrides) -> TwoBunchFlow:
@@ -79,7 +79,7 @@ def main():
                         lr_schedule=args.lr_schedule, t_max=args.epochs)
     if args.init_ckpt:
         # warm-start weights only (new hparams + fresh optimizer/LR schedule); not a full resume
-        ck = sorted(glob.glob(args.init_ckpt))[-1] if "*" in args.init_ckpt else args.init_ckpt
+        ck = resolve_ckpt(args.init_ckpt)
         state = torch.load(ck, map_location="cpu", weights_only=False)["state_dict"]
         missing, unexpected = model.load_state_dict(state, strict=False)
         print(f"warm-started weights from {ck} (missing={len(missing)}, unexpected={len(unexpected)})")

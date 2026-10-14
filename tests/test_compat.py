@@ -140,9 +140,15 @@ def test_8knob_frame_is_train_time():
     assert (norm["knob_low"][i], norm["knob_high"][i]) == (-38.0, -34.0)
 
 
-@pytest.mark.xfail(strict=True, reason="L2 frame bug: rf_drift_std_vector reads today's table "
-                   "(L2 width 6 deg) instead of the train-time frame (4 deg); fixed in phase 1")
 def test_dr_drift_std_is_train_time():
-    from twobunch_s2e_rl.rl.diff_env import rf_drift_std_vector
-    std = rf_drift_std_vector(0.5, 0.005)
-    assert abs(float(std[1]) - 0.125) < 1e-6
+    """bptt_dr / shac_dr were trained with L2 drift std 0.125 (4-deg train-time L2 box); building
+    their env from cfg.yaml must reproduce that (was 0.083 before the frame fix)."""
+    import yaml
+    from twobunch_s2e_rl.rl._train_utils import build_env_fn
+    for run in ("bptt_dr", "shac_dr"):
+        if not ca.have(f"logs/{run}/cfg.yaml", ca.CKPTS[ca.POLICY_FLOW[run]]):
+            pytest.skip("run or flow not on disk")
+        cfg = yaml.safe_load(ca.path(f"logs/{run}/cfg.yaml").read_text())
+        env_fn = build_env_fn(cfg, str(ca.path(ca.CKPTS[ca.POLICY_FLOW[run]])))
+        std = env_fn.keywords["rf_drift_std"]
+        np.testing.assert_allclose(std.numpy()[:5], [0.1, 0.125, 0.25, 0.25, 0.25], rtol=2e-3)
