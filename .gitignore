@@ -24,3 +24,6 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# vendored third-party installs for envs we do not modify (e.g. cheetah for bmad-qpad-dev)
+.vendor/
