@@ -134,7 +134,9 @@ B5D36 field convention, readback-offset semantics, v1 checkpoint, xtcav-gpsr-tun
 
 | 04:06–04:10 | 3 | Cloud seed 1 finished + eval; screen seed 1 Bmad check; robustness sweep (5 evals). |
 
-| 04:23 | 3 | Screen+injector seed 0 eval (above). Started: screen+injector seed 1 (GPU 1) and a cloud-mode σ_z-weight ablation 0.5 → 1.0 (GPU 0, `delta_xtcav23_cloud_wsz1`, my exploration). |
+| 04:23 | 3 | Screen+injector seed 0 eval (above). |
+| 04:25 | 3 | Started screen+injector seed 1 (GPU 1) and a cloud σ_z-weight ablation (GPU 0) — a first launch at 04:23 silently failed (zsh word-splitting in my launch loop) and was redone. |
+| 04:44 | 3 | σ_z-weight ablation finished + eval (above). |
 
 (Note: an earlier version of this table had wrong, estimated clock times; corrected from git at 01:58.)
 
@@ -181,6 +183,11 @@ within) / 9.0 %; with the unseen injector charge-fraction offset: 6 µm / 10.2 %
 offset σ = 0.035): spacing 8 µm (63 % within 10 µm), σ_z 6.3 % measured / 12.3 % true — slightly
 *worse* than the plain screen policy evaluated with the same unseen offset (6 µm / 10.2 %). One seed:
 no evidence the offset helps; the plain policy is already robust to it. Seed 1 running.
+
+**σ_z-weight ablation** (cloud, weight 0.5 → 1.0, `delta_xtcav23_cloud_wsz1_s0`, my exploration):
+σ_z within-10 % 78–81 → 84 %, p90 13–16 → 12 %, but spacing within-10 µm 97 → 88 %, p90 7 → 14 µm,
+and σ_z still settles in ~26 steps. The reward weight is a trade-off knob, not what limits σ_z
+settling speed (candidates: the weak L1 lever on drive σ_z, 1.1 µm/°, and the action step size).
 
 **Injector sensitivity (Impact-T → Bmad → XTCAVF, 2e4 particles, grid 32; `data/injector_sensitivity_2026-10-14/summary.md`)**,
 at the approved per-episode magnitudes, "absolute" arrival mode (the injector ⟨t⟩ shift kept —
