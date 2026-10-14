@@ -1,8 +1,11 @@
 # Architecture plan: extensible knobs, targets, injector stage, and XTCAV endpoint
 
-Status: **proposed** (2026-10-13/14, branch `dev/2026-10-13`; revised after two review rounds and a
-lab-notebook pass). **First priority: the delta controller on L1/L2 phase (see below).**
-Nothing here is implemented yet.
+Status: **phases 0–3 implemented; phase 5 (injector campaign) piloted** (branch `dev/2026-10-13`;
+plan revised after two review rounds and a lab-notebook pass). **First priority: the delta controller
+on L1/L2 phase (see below).** Decisions made after 2026-10-14 morning (screen v2/v3, injector
+campaign design, actuators via BC11 BLEN / L2 MKB, review fixes) are recorded in
+`results/plan_review_2026-10-14/` and `results/injector_pilot_2026-10-14/PLAN.md` and supersede this
+document where they differ.
 
 ## Implementation status (overnight 2026-10-14; details in `docs/overnight_2026-10-14.md`)
 
@@ -15,7 +18,7 @@ Nothing here is implemented yet.
 | 3 delta controller | done (deviation: separate `rl/delta_env.py` instead of options on `diff_env`); cloud + screen modes trained; Bmad-checked |
 | 3a injector study | done (`sim/injector.py`, `scripts/injector_sensitivity.py`) |
 | 4 cleanup | partly: surrogate yaml + run.json, campaign.json for new campaigns; backfill for old campaigns NOT done |
-| 5 injector campaign | not started; `widen_conditioning` and preprocess embed / merge checks / knob-drop rule are in place |
+| 5 injector campaign | piloted (62/62 rows; `datagen/injector_campaign.py`, `configs/datagen/injector_full.yaml`, 37-knob frame `xtcav23_l0b2_inj12`); full campaign pending the Impact-T convergence study |
 
 ## Goals and constraints
 

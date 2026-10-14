@@ -4,7 +4,7 @@
 # half-difference; transverse-spot blur included). Measurement realism: hidden streak-scale error
 # U(0.8, 1.2) on the z-derived features, shot jitter averaged over M=50 shots. Goals are defined on
 # the MEASURED features; the reward falls back to the ground-truth cloud twin (plus a fixed
-# penalty) where the screen reading is invalid. Otherwise identical to delta_xtcav23_cloud.yaml.
+# penalty) where the screen reading is invalid.
 #
 # Hidden per episode: true start in start_box; other 21 knobs ~ N(golden, readback sigma); control
 # gain error U(0.8, 1.2) (+ a 1-deg readback offset, which a delta controller is immune to).
