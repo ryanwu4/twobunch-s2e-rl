@@ -43,6 +43,11 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 
 ## Problems encountered
 
+6. **My `while pgrep -f <pattern>` waiters never exit**: the waiting shell's own command line contains the
+   pattern. That delayed ablation queue B by ~30 min. The waiters were stopped and queue B started directly.
+   The post-campaign chain is not affected: its `pgrep -f train_bptt` runs from Python, whose command line
+   does not contain the pattern.
+
 5. **env v4 policies are far worse than v3** (21:00). With reachable goals the v4 controllers stall at 18–22 µm
    true spacing error (31–37% within 10 µm; ×2 episode length does not help), against 2.6 µm / 97% for the v3 cloud
    controller (`delta_xtcav23_cloud_s0`). blen_dlog and adapter fail alike, so it is not L1 gain identification.
@@ -52,6 +57,8 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
    trainings (120 iters each, `configs/rl/ablation_2026-10-15/`, logs `logs/2026-10-15/ablation/`): base,
    nodrift, nonoise (measurement model off), noactcost, all3off. More seeds and S2 variants are held until
    this is understood.
+   **Result (on-context eval):** base 21.7 µm / 29% within 10 µm; **nonoise 4.5 µm / 82%**; all3off 4.0 µm / 86%.
+   The measurement model is the cause; sub-ablations noise_only / scale_only are running.
 
 4. **First S1 runs: goals mostly unreachable** (my env-design error). v4 added actuator caps (L1 |dln| ≤ 0.75,
    L2 ≤ 3.5°) and low L2 gains (≥ 0.35) but kept goals anywhere in a 7°-wide start box: only 37–43% were reachable.
