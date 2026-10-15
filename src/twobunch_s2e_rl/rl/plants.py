@@ -73,7 +73,8 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
                        optics_choices: list[dict] | None = None, tdc_voltage_range=None,
                        roi: dict | None = None, arrival_jitter_s: float = 0.0,
                        orientation: str = "truth", deployed_floor_m: float = 60e-6, seed: int = 0,
-                       edge_frac_max: float | None = None, edge_band_m: float = 0.3e-3):
+                       edge_frac_max: float | None = None, edge_band_m: float = 0.3e-3,
+                       cut_sens_px: float | None = None):
     from xtcav_segment.convert import cloud_to_beam
     from xtcav_segment.features import FEATURE_KEYS, calibrate_streak, cloud_features, screen_features
     from xtcav_segment.segment import (back_drift, build_segment_from_spec, element_by_name,
@@ -146,7 +147,7 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
                               resolution_m=resolution_m, split=split, threshold=threshold,
                               row_correct=row_correct, orientation=orientation, roi=roi,
                               deployed_floor_m=deployed_floor_m, edge_frac_max=edge_frac_max,
-                              edge_band_m=edge_band_m)
+                              edge_band_m=edge_band_m, cut_sens_px=cut_sens_px)
         cld = cloud_features(obs, q_d, q_w)
         for k in FEATURE_KEYS:
             obs[f"{k}_cloud"] = cld[k]
@@ -154,7 +155,7 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
         obs["screen_valid"] = scr["screen_valid"]
         obs["screen_valid_deployed"] = scr["screen_valid_deployed"]
         obs["screen_misassign"] = scr["screen_misassign"]
-        for k in ("screen_edge_frac", "screen_clipped"):
+        for k in ("screen_edge_frac", "screen_clipped", "screen_cut_sens"):
             if k in scr:
                 obs[k] = scr[k]
         return obs

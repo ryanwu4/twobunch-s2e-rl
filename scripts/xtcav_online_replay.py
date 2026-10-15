@@ -100,6 +100,7 @@ def main():
             "n_plus": len(st["plus"]), "n_minus": len(st["minus"]), "n_gate_fail": n_fail,
             "spacing_um": 1e6 * f["bunch_spacing"], "drive_sigma_z_um": 1e6 * f["drive_sigma_z"],
             "drive_charge_fraction": f["drive_charge_fraction"], "valid": f["valid"], "edge_frac": f["edge_frac"],
+            "cut_sens_um": 1e6 * f["cut_sens"],
             "single_plus_median_um": 1e6 * float(np.median(sep["plus"])),
             "single_minus_median_um": 1e6 * float(np.median(sep["minus"])),
             "single_image_robust_sigma_um": 1e6 * 0.5 * (iqr(sep["plus"]) + iqr(sep["minus"])),

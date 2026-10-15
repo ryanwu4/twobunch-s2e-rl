@@ -107,7 +107,8 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
                     split: str = "energy", threshold: str = "midpoint",
                     row_correct: bool = False, orientation: str = "truth", roi=None,
                     deployed_floor_m: float = 60e-6, edge_band_m: float = 0.3e-3,
-                    edge_frac_max: float | None = None) -> dict[str, torch.Tensor]:
+                    edge_frac_max: float | None = None,
+                    cut_sens_px: float | None = None) -> dict[str, torch.Tensor]:
     """Two-image (+V / -V) XTCAV measurement, as done on the machine.
 
     xp_*, xm_*: (B, N) DTOTR streak-axis positions with the TCAV at +V and -V; y_*: (B, N) energy
@@ -128,6 +129,8 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
                   this fraction of an image's in-window charge lies within `edge_band_m` of the window's
                   x edge (a band cut by the auto-crop). With roi, the TRUTH validity also requires the
                   charge clipped out of either image to stay below MISASSIGN_MAX.
+      cut_sens_px (energy split + valley; None = off): diagnostic `screen_cut_sens` = half the spacing
+                  change when the cut moves by +-cut_sens_px pixels.
     Returns (B,) features + screen_valid / screen_valid_deployed / screen_misassign."""
     xp = torch.cat([xp_d, xp_w], -1)
     xm = torch.cat([xm_d, xm_w], -1)
@@ -178,6 +181,7 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
                     above = (qv * (v > thr.unsqueeze(-1))).sum(-1)
                     sign = torch.where(above < 0.5 * qv.sum(-1), 1.0, -1.0).to(v.dtype)
             gates.append(torch.sigmoid(sign.unsqueeze(-1) * (v - thr.unsqueeze(-1)) / PIXEL_M))
+            last_cut = (v, thr, sign)
     wp, wm = (gates[0], gates[0]) if split == "energy" else (gates[0], gates[1])
     wdp, wwp, wdm, wwm = qp * (1 - wp), qp * wp, qm * (1 - wm), qm * wm
     wd, ww = 0.5 * (wdp + wdm), 0.5 * (wwp + wwm)          # for the energy-axis quantities
@@ -191,6 +195,17 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
     espread = _wvar(y, wd).clamp_min(1e-30).sqrt() / abs(eta_y) * ref_energy_eV
     frac_d = wd.sum(-1) / (0.5 * (qp + qm)).sum(-1).clamp_min(1e-30)
 
+    cut_sens = None
+    if cut_sens_px is not None and split == "energy" and threshold == "valley":
+        # truth-free split-ambiguity diagnostic: half the spacing change when the energy cut moves by
+        # +-cut_sens_px pixels (small for well-separated bands, large when charge sits at the cut)
+        with torch.no_grad():
+            v, thr, sign = last_cut
+            sp = []
+            for d in (cut_sens_px, -cut_sens_px):
+                g = torch.sigmoid(sign.unsqueeze(-1) * (v - (thr + d * PIXEL_M).unsqueeze(-1)) / PIXEL_M)
+                sp.append(zc(qp * (1 - g), qm * (1 - g)) - zc(qp * g, qm * g))
+            cut_sens = 0.5 * (sp[0] - sp[1]).abs()
     with torch.no_grad():
         misassign = 0.5 * ((q * (wp - truth_w).abs()).sum(-1) + (q * (wm - truth_w).abs()).sum(-1)) / q.sum(-1)
         valid = (spacing.abs() > SEPARATION_FLOOR_M) & (misassign < MISASSIGN_MAX) & peaks_ok
@@ -203,6 +218,8 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
            "screen_valid": valid.float(), "screen_valid_deployed": valid_dep.float(), "screen_misassign": misassign}
     if roi is not None:
         out["screen_edge_frac"], out["screen_clipped"] = edge_frac, clipped
+    if cut_sens is not None:
+        out["screen_cut_sens"] = cut_sens
     return out
 
 

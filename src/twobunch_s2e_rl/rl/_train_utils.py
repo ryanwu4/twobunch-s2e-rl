@@ -262,7 +262,8 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
                 orientation=sc.get("orientation", "truth"),
                 deployed_floor_m=float(sc.get("deployed_floor_m", 60e-6)), seed=seed,
                 edge_frac_max=(float(sc["edge_frac_max"]) if sc.get("edge_frac_max") is not None else None),
-                edge_band_m=float(sc.get("edge_band_m", 0.3e-3)))
+                edge_band_m=float(sc.get("edge_band_m", 0.3e-3)),
+                cut_sens_px=(float(sc["cut_sens_px"]) if sc.get("cut_sens_px") is not None else None))
         v4 = de.get("v4")
         cls = DeltaControlEnv
         extra = {}
