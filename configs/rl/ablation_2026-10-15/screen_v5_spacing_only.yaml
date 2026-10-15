@@ -40,7 +40,7 @@ params:
       - drive_sigma_z
       scale_error_halfwidth: 0.2
     campaign_h5: processed/xtcav23_combined.h5
-    reward_norms_json: results/rl/_shared/norms/metric_norms_delta_xtcav23_screen_v4.json
+    reward_norms_json: results/rl/_shared/norms/metric_norms_delta_xtcav23_screen_v5_spacing_only.json
     surv_T_min: 0.9
     surv_margin: 0.05
     observe:
