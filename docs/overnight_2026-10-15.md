@@ -175,3 +175,8 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
   puts the bad region at L1 ≤ −22 (deep compression, problem 3) and at the clipped large-spacing corner;
   `results/s2_screen_diag_2026-10-15/REPORT.md`. S2 is measurement-limited. Box restriction is Ryan's call (it would
   exclude the matched operating point L1 ≈ −22.35). S2 v5 seeds 1–2 launched on GPU0.
+- 00:50 S1 seeds (corrected eval, final policies, incl. off-context goals): blen_dlog s0–s3 5.0 / 4.6 / 5.0 / 4.9 µm
+  true median (80–83% within 10 µm); adapter s0–s1 5.0 / 4.9 µm (80–82%). Seed spread is small, and the two
+  actuators are equal. GPU1: informational S2 v5 variant with the L1 box restricted to [−22, −19.5]
+  (`configs/rl/ablation_2026-10-15/screen_v5_box22.yaml`), as data for Ryan's box decision.
+  Campaign 1027/3027 Bmad rows at 00:46, ~5 rows/min → ETA ~07:30.
