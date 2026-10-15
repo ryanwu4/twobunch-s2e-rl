@@ -170,3 +170,8 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
   scale error ±30% 5.1 / 80%; 64-step episodes 5.1 / 80%. The 8192-particle CRN check agrees with the per-step
   truth. blen_dlog ≈ adapter everywhere. Ablations (120 iters, corrected eval): measurement off 4.4 µm,
   drift/measurement/action cost all off 3.7 µm; v3 was 2.6 µm with an easier task (no caps, narrower gains).
+- 00:40 S2 v5 trained (seed 0): 8.7 µm true median / 57% within 10 µm (v4r policy in the v5 env: 10.6 / 48%). On
+  truth-valid goals 6.1 µm / 72% (≈ S1); on misassigned goals 10.8 µm, p90 60 µm. A misassignment map over the box
+  puts the bad region at L1 ≤ −22 (deep compression, problem 3) and at the clipped large-spacing corner;
+  `results/s2_screen_diag_2026-10-15/REPORT.md`. S2 is measurement-limited. Box restriction is Ryan's call (it would
+  exclude the matched operating point L1 ≈ −22.35). S2 v5 seeds 1–2 launched on GPU0.
