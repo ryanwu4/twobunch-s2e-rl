@@ -126,3 +126,12 @@ def test_roi_edge_check_flags_clipped_witness():
     assert float(tight["screen_valid_deployed"]) == 0.0 and float(tight["screen_valid"]) == 0.0
     off = _feat(b, roi={"x": 1.5e-3, "y": 5e-3}, threshold="valley", orientation="charge")   # default: off
     assert float(off["screen_valid_deployed"]) == 1.0
+
+
+def test_cut_sensitivity_flags_overlapping_bands():
+    kw = dict(threshold="valley", orientation="charge", cut_sens_px=2.0)
+    sep = _feat(_bunches(dE=150e6), **kw)            # well separated in energy: the cut sits in empty rows
+    ovl = _feat(_bunches(dE=40e6), **kw)             # overlapping bands: charge at the cut, biased spacing
+    assert float(sep["screen_cut_sens"]) < 0.5e-6
+    assert float(ovl["screen_cut_sens"]) > 5e-6 and float(ovl["screen_misassign"]) > 0.1
+    assert "screen_cut_sens" not in _feat(_bunches(), threshold="valley")         # default: off
