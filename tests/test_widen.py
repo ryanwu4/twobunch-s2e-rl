@@ -155,3 +155,27 @@ def test_orig_split_keeps_roles_and_stratifies(tmp_path):
     tr, va, te = set(dm.train.indices), set(dm.val.indices), set(dm.test.indices)
     assert 0 in va and 1 in tr and te == {5} and not (tr & va) and len(tr | va | te) == 6
     assert ({2, 3} <= tr) or ({2, 3} <= va)                      # group 2 kept together
+
+
+def test_paired_delta_metrics_finds_val_pairs(tmp_path):
+    import h5py
+    import numpy as np
+    from twobunch_s2e_rl.surrogate.dataset import TwoBunchFlowDataModule
+    from twobunch_s2e_rl.surrogate.selection import PairedDeltaMetrics
+    h5 = _processed(tmp_path, NEW, drive_mean=[0.0] * 6, n=6)
+    with h5py.File(h5, "a") as h:
+        h["campaign"] = np.array([0, 0, 1, 1, 1, 1], np.int16)
+        h["idx"] = np.arange(6, dtype=np.int32)
+        h.attrs["campaigns"] = "old,new"
+        h["pair_key"] = np.array([-1, -1, 7, 7, 8, 8])
+        h["pair_ref"] = np.array([0, 0, 0, 1, 0, 1], bool)
+        del h["group"]
+        h["group"] = np.array([0, 1, 2, 2, 3, 3], np.int32)
+    dm = TwoBunchFlowDataModule(processed_h5=h5, split="group", val_fraction=0.99)
+    dm.setup()
+    cb = PairedDeltaMetrics(dm, n=32)
+    cb._setup()
+    assert sorted(cb.pairs) == [(2, 3), (4, 5)] and set(cb.old) <= {0, 1}
+    m = _flow()
+    wide = widen_conditioning(m, NEW)
+    assert np.isfinite(cb._pred_spacing(wide, [2, 3])).all()

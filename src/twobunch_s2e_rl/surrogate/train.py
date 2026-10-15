@@ -80,7 +80,11 @@ def main():
     ap.add_argument("--w-cov", type=float, default=0.5)
     ap.add_argument("--bunches", choices=["both", "drive", "witness"], default="both",
                     help="which bunch density paths to train (witness = witness-only ablation)")
-    ap.add_argument("--patience", type=int, default=25)
+    ap.add_argument("--patience", type=int, default=25,
+                    help="early-stopping patience on val_loss; 0 = no early stopping (fixed-epoch fine-tunes)")
+    ap.add_argument("--select-metric", default="val_loss",
+                    help="metric for the best checkpoint: val_loss | val_paired_delta_rms_um | "
+                         "val_old_spacing_mae_um (the last two need --split group; surrogate/selection.py)")
     ap.add_argument("--num-workers", type=int, default=4)
     ap.add_argument("--limit-train-batches", type=float, default=1.0)
     ap.add_argument("--accelerator", default="auto")
@@ -142,14 +146,22 @@ def main():
             raise SystemExit(f"warm start from {ck} incomplete: missing={missing} unexpected={unexpected}")
         print(f"warm-started all weights from {ck}")
 
-    ckpt = ModelCheckpoint(dirpath=f"{args.out}/checkpoints", monitor="val_loss",
-                           mode="min", save_top_k=1,
-                           filename="best-{epoch:03d}-{val_loss:.4f}")
+    callbacks = []
+    if args.split == "group":
+        from .selection import PairedDeltaMetrics
+        callbacks.append(PairedDeltaMetrics(dm))
+    metric = args.select_metric
+    ckpt = ModelCheckpoint(dirpath=f"{args.out}/checkpoints", monitor=metric,
+                           mode="min", save_top_k=1, save_last=True,
+                           filename="best-{epoch:03d}-{" + metric + ":.4f}")
+    callbacks.append(ckpt)
+    if args.patience > 0:
+        callbacks.append(EarlyStopping(monitor="val_loss", mode="min", patience=args.patience))
     trainer = L.Trainer(
         max_epochs=args.epochs, accelerator=args.accelerator, devices=1,
         gradient_clip_val=1.0, limit_train_batches=args.limit_train_batches,
         logger=CSVLogger(args.out, name="csv"),
-        callbacks=[ckpt, EarlyStopping(monitor="val_loss", mode="min", patience=args.patience)],
+        callbacks=callbacks,
         log_every_n_steps=10)
     trainer.fit(model, datamodule=dm)
     print(f"Best checkpoint: {ckpt.best_model_path} (val_loss={ckpt.best_model_score})")

@@ -382,6 +382,12 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
             h.create_dataset("witness_q_ref_nC", data=np.array([r["witness_ref"] for r in records], np.float32))
         h.create_dataset("group", data=split_groups(records))
         h.create_dataset("holdout", data=np.array([r["holdout"] for r in records], bool))
+        # pairs (injector campaigns): a nested row and its paired_golden row share (campaign,
+        # pair_key); pair_ref marks the injector=golden member. -1 = not part of a pair.
+        h.create_dataset("pair_key", data=np.array(
+            [int(r["linac_id"]) if r.get("block") in ("nested", "paired_golden") and r.get("linac_id") is not None
+             else -1 for r in records], np.int64))
+        h.create_dataset("pair_ref", data=np.array([r.get("block") == "paired_golden" for r in records], bool))
         h.create_dataset("n_drive", data=np.array([r["n_drive"] for r in records], np.int32))
         h.create_dataset("n_witness", data=np.array([r["n_witness"] for r in records], np.int32))
         h.create_dataset("idx", data=np.array([r["idx"] for r in records], np.int32))
