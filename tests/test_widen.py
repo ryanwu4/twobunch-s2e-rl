@@ -133,3 +133,25 @@ def test_group_split_keeps_groups_together():
     tr, va = group_split(groups, 0.2, seed=0)
     assert set(groups[tr]).isdisjoint(set(groups[va])) and 15 <= len(va) <= 25
     assert sorted(tr + va) == list(range(100))
+
+
+def test_orig_split_keeps_roles_and_stratifies(tmp_path):
+    """Rows the warm-start flow validated on stay in val, its train rows stay in train, holdout rows
+    in neither; the rest is a group split per campaign."""
+    import h5py
+    import numpy as np
+    from twobunch_s2e_rl.surrogate.dataset import TwoBunchFlowDataModule
+    h5 = _processed(tmp_path, NEW, drive_mean=[0.0] * 6, n=6)
+    with h5py.File(h5, "a") as h:
+        h["campaign"] = np.array([0, 0, 1, 1, 1, 1], np.int16)
+        h["idx"] = np.array([0, 1, 0, 1, 2, 3], np.int32)
+        h["holdout"] = np.array([0, 0, 0, 0, 0, 1], bool)
+        h.attrs["campaigns"] = "old,new"
+        del h["group"]
+        h["group"] = np.array([0, 1, 2, 2, 3, 4], np.int32)
+    dm = TwoBunchFlowDataModule(processed_h5=h5, split="group", val_fraction=0.4,
+                                orig_split={"old/0": "val", "old/1": "train"})
+    dm.setup()
+    tr, va, te = set(dm.train.indices), set(dm.val.indices), set(dm.test.indices)
+    assert 0 in va and 1 in tr and te == {5} and not (tr & va) and len(tr | va | te) == 6
+    assert ({2, 3} <= tr) or ({2, 3} <= va)                      # group 2 kept together

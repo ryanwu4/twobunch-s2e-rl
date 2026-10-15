@@ -21,6 +21,28 @@ import torch
 from torch.utils.data import DataLoader, Dataset, Subset, random_split
 
 
+def reproduce_random_split(n: int, val_fraction: float = 0.1, seed: int = 42):
+    """Row indices of the validation part of the DataModule's `random` split (torch random_split
+    with a seeded generator), e.g. to recover which rows an earlier flow was validated on."""
+    n_val = int(round(n * val_fraction))
+    perm = torch.randperm(n, generator=torch.Generator().manual_seed(seed)).tolist()
+    return sorted(perm[n - n_val:])
+
+
+def orig_split_keys(processed_h5: str, campaigns: list[str], val_fraction=0.1, seed=42):
+    """{"campaign/idx" -> 'train' | 'val'} for an earlier table built from `campaigns` (in order)
+    whose rows carry no campaign column: the idx resets mark the campaign boundaries."""
+    with h5py.File(processed_h5, "r") as h:
+        idx = np.asarray(h["idx"][...])
+        camp = np.asarray(h["campaign"][...]) if "campaign" in h else None
+    if camp is None:
+        camp = np.concatenate([[0], np.cumsum(np.diff(idx) < 0)])
+    if camp.max() + 1 != len(campaigns):
+        raise ValueError(f"{processed_h5}: {camp.max() + 1} campaign blocks, {len(campaigns)} names given")
+    val = set(reproduce_random_split(len(idx), val_fraction, seed))
+    return {f"{campaigns[c]}/{int(i)}": ("val" if r in val else "train") for r, (c, i) in enumerate(zip(camp, idx))}
+
+
 def group_split(groups, val_fraction: float, seed: int):
     """(train_idx, val_idx) with whole groups on one side; val gets ~val_fraction of the rows."""
     groups = np.asarray(groups)
@@ -69,6 +91,11 @@ class TwoBunchFlowDataset(Dataset):
         self.norm = norm
         groups, holdout = None, None
         with h5py.File(processed_h5, "r") as h:
+            names = str(h.attrs.get("campaigns", "")).split(",")
+            idx = np.asarray(h["idx"][...]) if "idx" in h else np.arange(len(knobs))
+            self.row_campaign = np.asarray(h["campaign"][...]) if "campaign" in h else np.zeros(len(knobs), int)
+            self.row_keys = [f"{names[c] if c < len(names) else ''}/{int(i)}"
+                             for c, i in zip(self.row_campaign, idx)]
             if "group" in h:
                 groups = np.asarray(h["group"][...])
             if "holdout" in h:
@@ -115,7 +142,7 @@ class TwoBunchFlowDataset(Dataset):
 class TwoBunchFlowDataModule(L.LightningDataModule):
     def __init__(self, processed_h5="processed/twobunch_flow.h5", norm_json=None,
                  batch_size=64, val_fraction=0.1, num_workers=0, split_seed=42, scaler=None,
-                 split="random"):
+                 split="random", orig_split=None):
         super().__init__()
         self.save_hyperparameters()
         self.full = None
@@ -137,9 +164,19 @@ class TwoBunchFlowDataModule(L.LightningDataModule):
         elif self.hparams.split == "group":
             if not self.full.has_groups:
                 raise ValueError(f"{self.hparams.processed_h5} has no 'group' column (re-run preprocess)")
-            keep = np.flatnonzero(~self.full.holdout)
-            tr, va = group_split(self.full.groups[keep], self.hparams.val_fraction, self.hparams.split_seed)
-            self.train, self.val = Subset(self.full, keep[tr].tolist()), Subset(self.full, keep[va].tolist())
+            # rows an earlier (warm-start) flow trained / validated on keep that role (no leak into
+            # val); the rest: group split stratified by campaign; holdout rows in neither
+            orig = self.hparams.orig_split or {}
+            role = np.array([orig.get(k, "") for k in self.full.row_keys])
+            tr_idx = list(np.flatnonzero((role == "train") & ~self.full.holdout))
+            va_idx = list(np.flatnonzero((role == "val") & ~self.full.holdout))
+            free = (role == "") & ~self.full.holdout
+            for c in np.unique(self.full.row_campaign[free]):
+                rows = np.flatnonzero(free & (self.full.row_campaign == c))
+                tr, va = group_split(self.full.groups[rows], self.hparams.val_fraction,
+                                     self.hparams.split_seed + int(c))
+                tr_idx += rows[tr].tolist(); va_idx += rows[va].tolist()
+            self.train, self.val = Subset(self.full, sorted(tr_idx)), Subset(self.full, sorted(va_idx))
             self.test = Subset(self.full, np.flatnonzero(self.full.holdout).tolist())
         else:
             raise ValueError(f"split must be 'random' or 'group', got {self.hparams.split!r}")

@@ -23,7 +23,7 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
 
 from ..datagen.paths import repo_root
-from .dataset import SCALER_KEYS, TwoBunchFlowDataModule
+from .dataset import SCALER_KEYS, TwoBunchFlowDataModule, orig_split_keys
 from .model import TwoBunchFlow
 from ..artifacts import resolve_ckpt, write_run_json
 import yaml
@@ -92,6 +92,9 @@ def main():
                          "particle scalers are used to standardize the data (one frame) and its knob "
                          "frame must equal the processed table's (widen it first: "
                          "scripts/widen_flow_ckpt.py)")
+    ap.add_argument("--orig-split", default=None, metavar="H5=CAMP1,CAMP2",
+                    help="earlier table (and its campaigns, in order) the warm-start flow was trained on "
+                         "with the default random split: its val rows stay in val, its train rows in train")
     ap.add_argument("--split", choices=["random", "group"], default="random",
                     help="train/val split: 'group' keeps each injector point (and its paired rows) on "
                          "one side (preprocess `group` column)")
@@ -112,8 +115,13 @@ def main():
         ck = resolve_ckpt(args.init_ckpt)
         init_state = torch.load(ck, map_location="cpu", weights_only=False)["state_dict"]
         scaler = {k: init_state[k].tolist() for k in SCALER_KEYS}
+    orig = None
+    if args.orig_split:
+        h5, camps = args.orig_split.split("=", 1)
+        orig = orig_split_keys(h5, camps.split(","))
     dm = TwoBunchFlowDataModule(processed_h5=args.processed, batch_size=args.batch_size,
-                                num_workers=args.num_workers, scaler=scaler, split=args.split)
+                                num_workers=args.num_workers, scaler=scaler, split=args.split,
+                                orig_split=orig)
     dm.setup()
     if init_state is not None:
         hp = torch.load(ck, map_location="cpu", weights_only=False).get("hyper_parameters", {})
