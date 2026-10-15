@@ -230,3 +230,7 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
    (c) blen_dlog vs adapter: equal in S1 and S2, keep blen_dlog (Ryan's choice)?
    (d) the screen σz goal (blurred; ~38% within 10%) is cheap to keep (spacing-only is no better).
 3. The scratch_s0 control (500 epochs) takes ~15 h after the fine-tunes; stop it if the GPUs are needed.
+- 10:40 (Ryan back) bunch-split figures (`results/bunch_split_changes_2026-10-15/`). While making them, found that the
+  v3 summed-+V step cut caused 3 valley jumps on TEST_15668 (steps 25/26/29) that the per-image cuts did not have.
+  The online default is now the median of the per-image +V cuts (replay v6): E300_15673 stays fixed, the TEST jumps
+  are gone, and all 33 TEST steps are kept.
