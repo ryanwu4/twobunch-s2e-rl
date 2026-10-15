@@ -18,6 +18,8 @@
 # Start box L1 [-23.5, -19]: sim2real (BC11 servo) maps the real 04-15 L1 -26 deg to sim -22.35 at matched
 # compression; below ~-23 the sim is over-compressed (Bmad pilot at -26.8: dE 0.44%, spacing ~57 um, no split
 # works). L2 [-40.5, -33.5] covers the sim-frame L2_ref fits (-37.9 / -38.4 / -40.4).
+# Goals within reach (goal_radius L1 2.0 / L2 2.5 deg of the start; the first S1 runs drew goals anywhere in a
+# 7-deg box, and only 37-43% were reachable under the actuator caps). Start box L1 [-23.5, -19] (sim2real).
 params:
   diff_env:
     name: DeltaControlEnv
@@ -123,6 +125,9 @@ params:
           - 0.35
           - 1.1
           cum_limit: 3.5
+      goal_radius:
+        L1PhaseSet: 2.0
+        L2PhaseSet: 2.5
     screen:
       spec: configs/segment/segment_baseline.json
       tdc_voltage_V: 22000000.0
@@ -156,7 +161,7 @@ params:
     device: cuda:0
     render: false
     train: true
-    logdir: logs/2026-10-15/delta_xtcav23_screen_v4_blen
+    logdir: logs/2026-10-15/delta_xtcav23_screen_v4r_blen
   config:
     name: DeltaBPTT
     num_actors: 12

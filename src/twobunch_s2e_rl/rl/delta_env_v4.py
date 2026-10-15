@@ -42,7 +42,8 @@ class DeltaControlEnvV4(DeltaControlEnv):
     def __init__(self, num_envs: int, *, actuators: dict, drift_per_step: dict | None = None,
                  step_noise_floor: dict | None = None, outlier_prob: float = 0.0,
                  outlier_scale: float = 5.0, reward_on: str = "true", action_cost: float = 0.0,
-                 offcontext_goal_frac: float = 0.0, history: int = 1, **kw):
+                 offcontext_goal_frac: float = 0.0, history: int = 1, goal_radius: dict | None = None,
+                 **kw):
         if reward_on not in ("true", "measured"):
             raise ValueError(f"reward_on must be 'true' or 'measured', got {reward_on!r}")
         self._v4_ready = False
@@ -73,6 +74,11 @@ class DeltaControlEnvV4(DeltaControlEnv):
         self._p_out, self._out_scale = float(outlier_prob), float(outlier_scale)
         self._reward_on, self._a_cost = reward_on, float(action_cost)
         self._off_goal = float(offcontext_goal_frac)
+        # goals within reach of the start (the actuator caps make far goals unreachable): the goal's
+        # control point = start + U(+-radius) per control, clipped to the start box. None = anywhere in
+        # the start box (v1-v3 behaviour).
+        self._goal_radius = (torch.tensor([float(goal_radius[c]) for c in controls], **f)
+                             if goal_radius else None)
         self._k = max(int(history), 1)
         super().__init__(num_envs, **kw)
 
@@ -159,9 +165,31 @@ class DeltaControlEnvV4(DeltaControlEnv):
             old = self._last_achieved.get(k)
             self._last_achieved[k] = v if old is None or old.shape != v.shape else torch.where(
                 m.view(-1, *([1] * (v.dim() - 1))), v, old)
+        if self._goal_radius is not None:
+            self._reachable_goals(m)
         if self._off_goal > 0:
             self._offcontext_goals(m)
         return self._compute_obs()
+
+    @torch.no_grad()
+    def _reachable_goals(self, m):
+        """Redraw the reset envs' goal control points within goal_radius of the start, then the goals
+        (noise-free measured value + the true value there, as the base reset does)."""
+        B, n = self.num_envs, len(self.controls)
+        u = 2 * self._rand(B, n) - 1
+        gc = torch.minimum(torch.maximum(self._start + u * self._goal_radius, self._start_lo), self._start_hi)
+        self._goal_ctrl = torch.where(m.unsqueeze(-1), gc, self._goal_ctrl)
+        g_obs = self._plant(self._goal_ctrl, noise=False)
+        g_view = DeltaControlEnv._reward_view(self, g_obs)
+        for key, g, _ in self._goal_terms:
+            self._goals[g] = torch.where(m, g_view[key], self._goals[g])
+            truth = g_obs.get(f"{key}_cloud", g_obs[f"{key}_true"])
+            self._goals_cloud[g] = torch.where(m, truth, self._goals_cloud[g])
+        _, extra, err, _ = self._evaluate(self._cmd.detach())
+        mc = m.unsqueeze(-1)
+        self._last_extra = torch.where(mc, extra, self._last_extra)
+        self._err = torch.where(mc, err, self._err)
+        self._err_prev = torch.where(mc, err, self._err_prev)
 
     @torch.no_grad()
     def _offcontext_goals(self, m):

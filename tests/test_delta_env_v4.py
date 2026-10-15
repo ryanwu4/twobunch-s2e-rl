@@ -75,3 +75,13 @@ def test_drift_and_noise_floor_and_offcontext_goals_run():
     for _ in range(4):                                                 # through an episode reset
         obs, r, done, info = env.step(torch.zeros(16, 2))
     assert torch.isfinite(obs).all()
+
+
+def test_goal_radius_keeps_goals_near_the_start():
+    env = _env(num_envs=64, goal_radius={"L1PhaseSet": 0.5, "L2PhaseSet": 0.7})
+    d = (env._goal_ctrl - env._start).abs()
+    assert (d[:, 0] <= 0.5 + 1e-5).all() and (d[:, 1] <= 0.7 + 1e-5).all()
+    for _ in range(7):                                   # through an episode reset
+        env.step(torch.zeros(64, 2))
+    d = (env._goal_ctrl - env._start).abs()
+    assert (d[:, 0] <= 0.5 + 1e-5).all() and (d[:, 1] <= 0.7 + 1e-5).all()

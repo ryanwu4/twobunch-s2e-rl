@@ -9,6 +9,8 @@
 # goal; explicit tolerances (1 unit = 10 um spacing = 10% sigma_z = 1% transmission loss below 0.95 --
 # 0.95 because this flow's 'max'-normalized T labels saturate at ~0.986 with no loss); action cost
 # 0.02 a^2; 20% of goals from another hidden context; 8-step history in the obs.
+# Goals within reach (goal_radius L1 2.0 / L2 2.5 deg of the start; the first S1 runs drew goals anywhere in a
+# 7-deg box, and only 37-43% were reachable under the actuator caps). Start box L1 [-23.5, -19] (sim2real).
 params:
   diff_env:
     name: DeltaControlEnv
@@ -26,7 +28,7 @@ params:
       L2PhaseSet: 0.3
     start_box:
       L1PhaseSet:
-      - -26.0
+      - -23.5
       - -19.0
       L2PhaseSet:
       - -40.5
@@ -107,12 +109,15 @@ params:
           - 0.35
           - 1.1
           cum_limit: 3.5
+      goal_radius:
+        L1PhaseSet: 2.0
+        L2PhaseSet: 2.5
   general:
     seed: 0
     device: cuda:0
     render: false
     train: true
-    logdir: logs/2026-10-15/delta_xtcav23_cloud_v4_blen
+    logdir: logs/2026-10-15/delta_xtcav23_cloud_v4r_blen
   config:
     name: DeltaBPTT
     num_actors: 32

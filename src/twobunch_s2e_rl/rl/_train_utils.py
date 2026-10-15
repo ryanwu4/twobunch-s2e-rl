@@ -273,7 +273,7 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
                          outlier_scale=float(ms.get("outlier_scale", 5.0)),
                          reward_on=v4.get("reward_on", "true"), action_cost=float(v4.get("action_cost", 0.0)),
                          offcontext_goal_frac=float(v4.get("offcontext_goal_frac", 0.0)),
-                         history=int(v4.get("history", 1)))
+                         history=int(v4.get("history", 1)), goal_radius=v4.get("goal_radius"))
         return cls(
             num_envs, **extra, device=device, seed=seed, episode_length=episode_length, no_grad=no_grad,
             observe_fn=observe_fn, fallback_keys=tuple(ms.get("fallback_keys", ())),
