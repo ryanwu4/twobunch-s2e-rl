@@ -157,3 +157,7 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
   env: per-image robust σ 6–15 µm (env 15), per-step ~1–2.6 µm at M = 30 (env floor 6 µm: conservative).
   Unsolved: valley-jump misassignment at TEST_15668 steps 25/26/29 that the deployed rule calls valid (drive
   fraction jumps; candidate truth-free check).
+- 23:40 crop-edge check added to the online features too and replayed on the real data
+  (`results/online_replay_v4_2026-10-15/REPORT.md`): it flags only E300_15673 steps 1–6 (277–304 µm; the real
+  images touch the auto-crop edge there too) and nothing else. The sim's and the real data's large-spacing
+  clipping agree.
