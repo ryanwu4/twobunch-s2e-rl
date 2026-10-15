@@ -74,12 +74,23 @@ def band_stats(img: np.ndarray, x_m: np.ndarray, cut_row: int | None = None,
     return out
 
 
-def step_cut(plus_imgs: list[np.ndarray]) -> tuple[int | None, bool]:
-    """The step's energy cut (decision D2: from the +V images, applied to +V AND -V): the valley rule on
-    the summed y projection of the step's +V images. The -V y projection differs from +V (the TCAV's
+def step_cut(plus_imgs: list[np.ndarray], method: str = "median") -> tuple[int | None, bool]:
+    """The step's energy cut (decision D2: from the +V images, applied to +V AND -V). method "median"
+    (default): median of the per-image +V valley cuts; "sum": the valley rule on the summed +V y projection
+    (replay v3; on TEST_15668 the sum washes out the real valley and the cut jumps to another dip). The -V y projection differs from +V (the TCAV's
     x-dependent energy kick flips with the sign), so a per-image -V valley can lock onto another dip."""
     if not plus_imgs:
         return None, False
+    if method == "median":
+        # median of the per-image +V valley cuts; needs a valley in at least half of the images. Robust
+        # against summing jittered images, which can wash out the real valley so another dip wins.
+        cuts = [valley_threshold(np.clip(np.asarray(i, float), 0, None).sum(axis=1))[0] for i in plus_imgs]
+        cuts = [c for c in cuts if c is not None]
+        if 2 * len(cuts) < len(plus_imgs):
+            return None, False
+        return int(round(float(np.median(cuts)))), True
+    if method != "sum":
+        raise ValueError(f"method must be 'sum' or 'median', got {method!r}")
     return valley_threshold(np.sum([np.clip(np.asarray(i, float), 0, None).sum(axis=1) for i in plus_imgs], axis=0))
 
 

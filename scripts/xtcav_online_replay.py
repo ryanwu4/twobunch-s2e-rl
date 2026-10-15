@@ -32,8 +32,9 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--M", type=int, default=15, help="images per sign in the bootstrap step estimate")
     ap.add_argument("--limit-per-step", type=int, default=None)
-    ap.add_argument("--cut", default="step", choices=["step", "image"],
-                    help="step: one cut per step from the +V images (D2); image: per-image valley")
+    ap.add_argument("--cut", default="step_median", choices=["step", "step_median", "image"],
+                    help="step_median (default): median of the per-image +V cuts, shared with -V (D2); step: valley "
+                         "of the summed +V projection (replay v3); image: per-image valley (v1/v2)")
     ap.add_argument("--qa-steps", default="", help="comma list of steps: save median +V/-V images + cuts")
     a_ = ap.parse_args()
     exp, num = a_.dataset.rsplit("_", 1)
@@ -69,9 +70,10 @@ def main():
             except Exception:
                 n_fail += 1
         cut = None
-        if a_.cut == "step" and loaded:
+        if a_.cut in ("step", "step_median") and loaded:
             shp = loaded[0][1].shape
-            cut, ok = step_cut([d for sg, d, _ in loaded if sg == "plus" and d.shape == shp])
+            cut, ok = step_cut([d for sg, d, _ in loaded if sg == "plus" and d.shape == shp],
+                               method="median" if a_.cut == "step_median" else "sum")
             if not ok:
                 n_fail += len(loaded)
                 loaded = []
