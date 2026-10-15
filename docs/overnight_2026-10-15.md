@@ -17,6 +17,12 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 
 ## Decisions taken in Ryan's absence (numbered; each with the reason)
 
+8. **GPU priority: S2 v5 over adapter seeds 2–3** (23:10). With corrected eval, blen_dlog ≈ adapter on S1
+   (5.1 vs 4.9 µm true median, one seed each), so Ryan's choice (blen_dlog) gets 4 seeds (s0–s3) and adapter 2
+   (s0, s1); the adapter s2/s3 logdirs hold a SKIPPED placeholder. GPU0 then trains S2 v5.
+9. **S2 v5 goal sampling: goals must be readable by the deployed analysis** (`goal_valid_retries 4`), as an
+   operator would not set a goal the screen cannot measure. Off-context goals are kept at 20%.
+
 1. **env v4 is a subclass** (`rl/delta_env_v4.py`, `diff_env.v4:` block), so v1–v3 envs and their policies
    stay byte-identical.
 2. **Both L1 actuator models are trained, not just Ryan's choice.** Ryan chose "dln(BC11 BLEN setpoint) as the
@@ -42,6 +48,18 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
    per physics round 2 M3). Action cost 0.02·a², 20% off-context goals, 8-step history, reward on truth.
 
 ## Problems encountered
+
+7. **S2 screen readings at large spacing are clipped by the auto-crop and still called valid** (23:00). With
+   corrected eval, S2 v4r reaches 11.6 µm true median spacing error (p90 54 µm). Even noise-free, the measured
+   goal differs from the true goal by 23.5 µm median (p90 146 µm). The worst case is true spacing ≥ 300 µm:
+   |meas − true| p90 650 µm, because the 4.6 mm half-width crop (= the deployed auto-crop, 150 px) cuts the
+   witness at streak 15–20× (22–30 MV). This is a real limitation, not a sim artifact: the real 300 µm steps of
+   E300_15673 were at streak 14.4 and fit inside. The deployed rule (two peaks, |spacing| > 60 µm) cannot see it.
+   Fix (S2 v5, `configs/rl/delta_xtcav23_screen_v5_blen.yaml`): a truth-free crop-edge check (`edge_frac_max`
+   0.01: > 1% of in-window charge within 0.3 mm of the crop edge → invalid); truth validity also counts clipped
+   charge; `goal_valid_retries 4` redraws goals the deployed analysis cannot read. Goal-point bias p90 270 → 75 µm,
+   deployed-valid goals 60 → 91%. The remaining bias is energy-gate misassignment at 60–200 µm (problem 3).
+   The online image features need the same edge check (todo).
 
 6. **My `while pgrep -f <pattern>` waiters never exit**: the waiting shell's own command line contains the
    pattern. That delayed ablation queue B by ~30 min. The waiters were stopped and queue B started directly.
