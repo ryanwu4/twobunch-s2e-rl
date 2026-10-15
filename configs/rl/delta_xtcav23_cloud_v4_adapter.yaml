@@ -1,0 +1,142 @@
+# S1 (env v4, CLOUD mode) on the current xtcav23 flow: machine actuator + measurement model.
+# L1 action = dln(BC11 BLEN setpoint) (BC11 loop on): dL1 = -g dln, g ~ U(1.5, 4) deg/ln (DAQ 04-15/05-01
+# run medians 2.2-3.4 deg/ln, local 1.9-3.7); observed dL1 = FAST_PACT readback (noise 0.02 deg/step,
+# loop drift compensation 0.04 deg/step); cumulative |dln| <= 0.75 (~ +-2.5 deg).
+# L2 = relative L2_PHASE.MKB (BC14 loop off): gain ~ U(0.35, 1.1) (SBST trims; physics round 2 M5); |cum| <= 3.5 deg.
+# Hidden drift: L1 0.02 deg/step (residual with the loop on), L2 0.05 deg/step (ASSUMED; unmeasured).
+# Measurement: audit levels -- shot spacing 15 um / drive sigma_z 6 um over M = 30 valid images, per-step
+# floor 6 / 2.5 um, 1% outlier steps, streak scale U(0.8, 1.2). Reward on the TRUE features vs the true
+# goal; explicit tolerances (1 unit = 10 um spacing = 10% sigma_z = 1% transmission loss below 0.95 --
+# 0.95 because this flow's 'max'-normalized T labels saturate at ~0.986 with no loss); action cost
+# 0.02 a^2; 20% of goals from another hidden context; 8-step history in the obs.
+# VARIANT: L1 via the round-2 ML 'adapter' (policy asks dL1 deg; forgetting-LS gain estimate).
+params:
+  diff_env:
+    name: DeltaControlEnv
+    plant: flow
+    flow_ckpt: trained/xtcav23/checkpoints/best-epoch=498-val_loss=0.1747.ckpt
+    baseline_set: xtcav23
+    episode_length: 32
+    stochastic_env: true
+    n_particles: 512
+    controls:
+    - L1PhaseSet
+    - L2PhaseSet
+    action_step:
+      L1PhaseSet: 0.3
+      L2PhaseSet: 0.3
+    start_box:
+      L1PhaseSet:
+      - -26.0
+      - -19.0
+      L2PhaseSet:
+      - -40.5
+      - -33.5
+    gain_halfwidth: 0.2
+    measurement:
+      shot_noise:
+        bunch_spacing: 1.5e-05
+        drive_sigma_z: 6.0e-06
+      shots_per_step: 30
+      step_noise_floor:
+        bunch_spacing: 6.0e-06
+        drive_sigma_z: 2.5e-06
+      outlier_prob: 0.01
+      outlier_scale: 5.0
+      scale_error_keys:
+      - bunch_spacing
+      - drive_sigma_z
+      scale_error_halfwidth: 0.2
+    campaign_h5: processed/xtcav23_combined.h5
+    reward_norms_json: results/rl/_shared/norms/metric_norms_delta_xtcav23_v4.json
+    surv_T_min: 0.9
+    surv_margin: 0.05
+    observe: []
+    objectives:
+    - key: bunch_spacing
+      kind: target
+      weight: 1.0
+      goal:
+      - 5.0e-05
+      - 0.0004
+      scale: 1.0e-05
+    - key: drive_sigma_z
+      kind: target
+      weight: 1.0
+      goal:
+      - 5.0e-06
+      - 0.0002
+      scale: 0.0414
+    - key: T_drive
+      kind: hinge
+      weight: 1.0
+      hinge_at: 0.95
+      scale: 0.01
+      observe: false
+    - key: T_witness
+      kind: hinge
+      weight: 1.0
+      hinge_at: 0.95
+      scale: 0.01
+      observe: false
+    - key: knobs
+      kind: boundary
+      weight: 0.5
+      margin: 0.05
+    v4:
+      reward_on: 'true'
+      action_cost: 0.02
+      offcontext_goal_frac: 0.2
+      history: 8
+      drift_per_step:
+        L1PhaseSet: 0.02
+        L2PhaseSet: 0.05
+      actuators:
+        L1PhaseSet:
+          type: adapter
+          step: 0.3
+          gain_range:
+          - 1.5
+          - 4.0
+          readback_noise: 0.02
+          readback_drift: 0.04
+          cum_limit: 2.5
+        L2PhaseSet:
+          type: direct
+          step: 0.3
+          gain_range:
+          - 0.35
+          - 1.1
+          cum_limit: 3.5
+  general:
+    seed: 0
+    device: cuda:0
+    render: false
+    train: true
+    logdir: logs/2026-10-15/delta_xtcav23_cloud_v4_adapter
+  config:
+    name: DeltaBPTT
+    num_actors: 32
+    steps_num: 32
+    max_epochs: 300
+    actor_learning_rate: 5e-4
+    lr_schedule: linear
+    gamma: 0.99
+    obs_rms: true
+    truncate_grads: true
+    grad_norm: 1.0
+    rew_scale: 1.0
+    save_interval: 50
+    betas:
+    - 0.7
+    - 0.95
+    player:
+      games_num: 64
+      deterministic: true
+  network:
+    actor_mlp:
+      units:
+      - 128
+      - 128
+      activation: elu
+    actor_logstd_init: -1.0

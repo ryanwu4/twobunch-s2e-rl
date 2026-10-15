@@ -233,7 +233,7 @@ class RewardTerm:
 
     def penalty(self, obs: dict[str, torch.Tensor]) -> torch.Tensor:
         if self.mode == "hinge":                                   # survival floor on T_k
-            return torch.relu(self.hinge_at - obs[self.key])
+            return torch.relu(self.hinge_at - obs[self.key]) / self.std   # std = 1 unless `scale`
         if self.mode == "boundary":                                # knob trust-region (fix #3)
             k = obs[self.key]                                      # (B, n_knob) in [0,1]
             prox = (torch.relu(k - (1.0 - self.margin)) + torch.relu(self.margin - k)) / self.margin
@@ -328,12 +328,14 @@ def _term_from_spec(e: dict, norms: dict, floors: dict, *, surv_T_min: float, su
     if kind == "boundary":
         return RewardTerm(key, "boundary", weight=w, margin=float(e.get("margin", boundary_margin)))
     if kind == "hinge":
-        return RewardTerm(key, "hinge", "identity", weight=w,
+        return RewardTerm(key, "hinge", "identity", weight=w, std=float(e.get("scale", 1.0)),
                           hinge_at=float(e.get("hinge_at", surv_T_min + surv_margin)))
     if key not in norms:
         raise KeyError(f"objective metric {key!r} has no campaign norm; available: {sorted(norms)}")
     s = norms[key]
     tr, m, sd = s["transform"], s["mean"], s["std"]
+    if "scale" in e:          # explicit tolerance (transform units): 1 penalty unit = 1 tolerance
+        sd = float(e["scale"])
     if kind == "target":
         goal_key, goal_range, goal_space = None, None, "linear"
         if e.get("goal") is not None:

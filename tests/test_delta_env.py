@@ -237,3 +237,15 @@ def test_injected_charges_follow_drive_fraction_under_per_sample():
     torch.testing.assert_close(qw, torch.tensor([1.6 * 0.34 * 0.999, 1.6 * 0.20 * 0.999]), rtol=1e-5, atol=0)
     const = injected_charges_nC({"drive_full_charge_nC": 1.2, "witness_full_charge_nC": 0.4}, keys[:1], lo[:1], hi[:1])
     torch.testing.assert_close(const(torch.zeros(3, 1))[0], torch.full((3,), 1.2))
+
+
+def test_explicit_tolerance_scales():
+    norms = {"bunch_spacing": {"transform": "identity", "mean": 2e-4, "std": 1e-4},
+             "T_drive": {"transform": "identity", "mean": 0.9, "std": 0.1}}
+    objs = [{"key": "bunch_spacing", "kind": "target", "goal": [1e-4, 3e-4], "scale": 1e-5},
+            {"key": "T_drive", "kind": "hinge", "hinge_at": 0.98, "scale": 0.01}]
+    spec = build_twobunch_reward_spec(norms, {}, objectives=objs)
+    obs = {"bunch_spacing": torch.tensor([2.1e-4]), "spacing_goal": torch.tensor([2e-4]),
+           "T_drive": torch.tensor([0.97])}
+    r, _ = spec(obs)
+    torch.testing.assert_close(r, torch.tensor([-2.0]))      # 10 um = 1 unit; 1% loss = 1 unit
