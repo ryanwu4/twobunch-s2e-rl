@@ -36,10 +36,19 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 5. **Transmission hinge at 0.95 (not 0.98) in S1**: S1 runs on the current xtcav23 flow, whose 'max'-normalized
    T labels saturate at ~0.986 with no loss (assumptions scan B1). The per_sample relabel fixes this for the
    injector flow; the hinge goes back to ~0.98 there.
+7. **Goal radius L1 2.0° / L2 2.5°** (see problem 4): goals the capped actuators can reach in 32 steps for most
+   gains; the 20% off-context goals remain as the harder deployment case.
 6. **S1 start box** L1 [−26, −19], L2 [−40.5, −33.5] (inside the plant box; covers the 04-15 operating points
    per physics round 2 M3). Action cost 0.02·a², 20% off-context goals, 8-step history, reward on truth.
 
 ## Problems encountered
+
+4. **First S1 runs: goals mostly unreachable** (my env-design error). v4 added actuator caps (L1 |dln| ≤ 0.75,
+   L2 ≤ 3.5°) and low L2 gains (≥ 0.35) but kept goals anywhere in a 7°-wide start box: only 37–43% were reachable.
+   Final TRUE spacing error 25 µm median / 26% within 10 µm overall, but on reachable goals 7.4 µm (blen_dlog) /
+   6.6 µm (adapter), 67–70% within 10 µm (vs unreachable 16–19 µm). Fixed: `goal_radius` (L1 2.0°, L2 2.5° around
+   the start, inside the start box; a39691b). The S2 run started with the flaw was stopped after ~5 min
+   (`logs/2026-10-15/delta_xtcav23_screen_v4_blen_s0`, partial, ignore); reruns are the `*_v4r_*` logdirs.
 
 3. **The controller-region widening to L1 −26.5° (round-2 physics M3, adopted for the campaign) rests on raw
    machine phase readbacks; the sim2real BC11-servo result maps the real 04-15 L1 −26° to sim ≈ −22.35° at
@@ -86,3 +95,6 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 - 19:45 post-campaign chain started (waits); surrogate gate script written + smoke-run.
 - Impact-T at 5e4 / grid 64, 64 concurrent: ~2080 s per beam (the grid solve dominates; 1e5 was 2450 s) →
   ~2.3 h of Impact-T, then the Bmad rows; campaign ETA ~08:00.
+- 20:00 S1 (first) evaluated: see problem 4. Actuator comparison on reachable goals: adapter 6.6 µm / 70% vs
+  blen_dlog 7.4 µm / 67% (one seed each; not significant). Relaunched with reachable goals: S2 screen blen_dlog
+  (GPU 0) and S1r blen → adapter (GPU 1, sequential).
