@@ -20,6 +20,9 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 8. **GPU priority: S2 v5 over adapter seeds 2–3** (23:10). With corrected eval, blen_dlog ≈ adapter on S1
    (5.1 vs 4.9 µm true median, one seed each), so Ryan's choice (blen_dlog) gets 4 seeds (s0–s3) and adapter 2
    (s0, s1); the adapter s2/s3 logdirs hold a SKIPPED placeholder. GPU0 then trains S2 v5.
+10. **No surrogate-code changes tonight** (paired-Δ auxiliary loss deferred): the post-campaign chain runs
+   `surrogate.train` / `preprocess` from the live repo (not a worktree) around 10:15, so editing that code now
+   risks the morning fine-tunes. The selection metric `val_paired_delta_rms_um` already targets the paired effect.
 9. **S2 v5 goal sampling: goals must be readable by the deployed analysis** (`goal_valid_retries 4`), as an
    operator would not set a goal the screen cannot measure. Off-context goals are kept at 20%.
 
