@@ -98,3 +98,10 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 - 20:00 S1 (first) evaluated: see problem 4. Actuator comparison on reachable goals: adapter 6.6 µm / 70% vs
   blen_dlog 7.4 µm / 67% (one seed each; not significant). Relaunched with reachable goals: S2 screen blen_dlog
   (GPU 0) and S1r blen → adapter (GPU 1, sequential).
+- 20:10 online features: per-image `band_stats` + per-step `step_features` (median per sign, then the ±V
+  half-difference; on the machine +V and −V images are ~11 s apart, not the same beam). Test: reduces exactly
+  to the pair function. `scripts/xtcav_online_replay.py` replays it on the real E300 L2 scans with the deployed
+  preprocessing + Tier-0 calibration → `results/online_replay_2026-10-15/` (running, CPU 1 thread nice 10).
+  Smoke (30 shots/sign/step, E300_15671): step 1 spacing 99.8 µm with +V/−V single-sign estimates 98 / 101 µm
+  (consistent); single-image robust σ 3–6 µm on clean steps, ~55–80 µm on the near-full-compression steps
+  where the energy gate often fails (10–21 of 30 images).
