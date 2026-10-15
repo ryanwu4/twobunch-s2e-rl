@@ -1,0 +1,185 @@
+# S1 (env v4, SCREEN mode (S2)) on the current xtcav23 flow: machine actuator + measurement model.
+# L1 action = dln(BC11 BLEN setpoint) (BC11 loop on): dL1 = -g dln, g ~ U(1.5, 4) deg/ln (DAQ 04-15/05-01
+# run medians 2.2-3.4 deg/ln, local 1.9-3.7); observed dL1 = FAST_PACT readback (noise 0.02 deg/step,
+# loop drift compensation 0.04 deg/step); cumulative |dln| <= 0.75 (~ +-2.5 deg).
+# L2 = relative L2_PHASE.MKB (BC14 loop off): gain ~ U(0.35, 1.1) (SBST trims; physics round 2 M5); |cum| <= 3.5 deg.
+# Hidden drift: L1 0.02 deg/step (residual with the loop on), L2 0.05 deg/step (ASSUMED; unmeasured).
+# Measurement: audit levels -- shot spacing 15 um / drive sigma_z 6 um over M = 30 valid images, per-step
+# floor 6 / 2.5 um, 1% outlier steps, streak scale U(0.8, 1.2). Reward on the TRUE features vs the true
+# goal; explicit tolerances (1 unit = 10 um spacing = 10% sigma_z = 1% transmission loss below 0.95 --
+# 0.95 because this flow's 'max'-normalized T labels saturate at ~0.986 with no loss); action cost
+# 0.02 a^2; 20% of goals from another hidden context; 8-step history in the obs.
+# Screen (S2): per-episode optics choice (golden | 15673: Q0D/Q2D x1.056) + 1% FF quad jitter; TCAV effective
+# voltage U(22, 30) MV (sim2real: real V_eff 27-30 MV vs the 22 MV readback) with each env's streak calibrated for
+# its optics/voltage (x the hidden scale error); 85 fs common-mode TCAV arrival jitter (0.35 deg X-band phase jitter);
+# DTOTR2 window 300x160 px around the image centroid; energy gate (valley, witness = lower-charge side, row
+# correction, +15 um resolution); validity in the obs = the deployed rule (two peaks, |spacing| > 60 um);
+# charge-fraction noise 0.07/shot + 0.02 floor (audit). 1024 particles/bunch, 12 actors (memory).
+# Start box L1 [-23.5, -19]: sim2real (BC11 servo) maps the real 04-15 L1 -26 deg to sim -22.35 at matched
+# compression; below ~-23 the sim is over-compressed (Bmad pilot at -26.8: dE 0.44%, spacing ~57 um, no split
+# works). L2 [-40.5, -33.5] covers the sim-frame L2_ref fits (-37.9 / -38.4 / -40.4).
+params:
+  diff_env:
+    name: DeltaControlEnv
+    plant: xtcav_screen
+    flow_ckpt: trained/xtcav23/checkpoints/best-epoch=498-val_loss=0.1747.ckpt
+    baseline_set: xtcav23
+    episode_length: 32
+    stochastic_env: true
+    n_particles: 1024
+    controls:
+    - L1PhaseSet
+    - L2PhaseSet
+    action_step:
+      L1PhaseSet: 0.3
+      L2PhaseSet: 0.3
+    start_box:
+      L1PhaseSet:
+      - -23.5
+      - -19.0
+      L2PhaseSet:
+      - -40.5
+      - -33.5
+    gain_halfwidth: 0.2
+    measurement:
+      shot_noise:
+        bunch_spacing: 1.5e-05
+        drive_sigma_z: 6.0e-06
+        drive_charge_fraction: 0.07
+      shots_per_step: 30
+      step_noise_floor:
+        bunch_spacing: 6.0e-06
+        drive_sigma_z: 2.5e-06
+        drive_charge_fraction: 0.02
+      outlier_prob: 0.01
+      outlier_scale: 5.0
+      scale_error_keys:
+      - bunch_spacing
+      - drive_sigma_z
+      scale_error_halfwidth: 0.2
+    campaign_h5: processed/xtcav23_combined.h5
+    reward_norms_json: results/rl/_shared/norms/metric_norms_delta_xtcav23_screen_v4.json
+    surv_T_min: 0.9
+    surv_margin: 0.05
+    observe:
+    - drive_charge_fraction
+    objectives:
+    - key: bunch_spacing
+      kind: target
+      weight: 1.0
+      goal:
+      - 5.0e-05
+      - 0.0004
+      scale: 1.0e-05
+    - key: drive_sigma_z
+      kind: target
+      weight: 1.0
+      goal:
+      - 5.0e-06
+      - 0.0002
+      scale: 0.0414
+    - key: T_drive
+      kind: hinge
+      weight: 1.0
+      hinge_at: 0.95
+      scale: 0.01
+      observe: false
+    - key: T_witness
+      kind: hinge
+      weight: 1.0
+      hinge_at: 0.95
+      scale: 0.01
+      observe: false
+    - key: knobs
+      kind: boundary
+      weight: 0.5
+      margin: 0.05
+    - key: screen_valid_deployed
+      kind: hinge
+      weight: 1.0
+      hinge_at: 1.0
+    v4:
+      reward_on: 'true'
+      action_cost: 0.02
+      offcontext_goal_frac: 0.2
+      history: 8
+      drift_per_step:
+        L1PhaseSet: 0.02
+        L2PhaseSet: 0.05
+      actuators:
+        L1PhaseSet:
+          type: blen_dlog
+          step: 0.1
+          gain_range:
+          - 1.5
+          - 4.0
+          readback_noise: 0.02
+          readback_drift: 0.04
+          cum_limit: 0.75
+        L2PhaseSet:
+          type: direct
+          step: 0.3
+          gain_range:
+          - 0.35
+          - 1.1
+          cum_limit: 3.5
+    screen:
+      spec: configs/segment/segment_baseline.json
+      tdc_voltage_V: 22000000.0
+      tdc_voltage_range:
+      - 22000000.0
+      - 30000000.0
+      optics_choices:
+      - {}
+      - Q0D: 1.0559
+        Q2D: 1.0559
+        Q1D: 0.9991
+        Q2FF: 0.9971
+        Q1FF: 0.997
+        Q0FF: 0.9971
+      quad_jitter:
+        Q2FF: 0.01
+        Q1FF: 0.01
+        Q0FF: 0.01
+      roi:
+        x: 0.0046
+        y: 0.00244
+      arrival_jitter_s: 8.5e-14
+      split: energy
+      threshold: valley
+      row_correct: true
+      extra_resolution_m: 1.5e-05
+      orientation: charge
+      deployed_floor_m: 6.0e-05
+  general:
+    seed: 0
+    device: cuda:0
+    render: false
+    train: true
+    logdir: logs/2026-10-15/delta_xtcav23_screen_v4_blen
+  config:
+    name: DeltaBPTT
+    num_actors: 12
+    steps_num: 32
+    max_epochs: 300
+    actor_learning_rate: 5e-4
+    lr_schedule: linear
+    gamma: 0.99
+    obs_rms: true
+    truncate_grads: true
+    grad_norm: 1.0
+    rew_scale: 1.0
+    save_interval: 50
+    betas:
+    - 0.7
+    - 0.95
+    player:
+      games_num: 64
+      deterministic: true
+  network:
+    actor_mlp:
+      units:
+      - 128
+      - 128
+      activation: elu
+    actor_logstd_init: -1.0

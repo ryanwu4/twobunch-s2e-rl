@@ -105,7 +105,8 @@ def _row_mean(x, y, q):
 def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float, eta_y: float,
                     ref_energy_eV: float, resolution_m: float = 0.0,
                     split: str = "energy", threshold: str = "midpoint",
-                    row_correct: bool = False) -> dict[str, torch.Tensor]:
+                    row_correct: bool = False, orientation: str = "truth", roi=None,
+                    deployed_floor_m: float = 60e-6) -> dict[str, torch.Tensor]:
     """Two-image (+V / -V) XTCAV measurement, as done on the machine.
 
     xp_*, xm_*: (B, N) DTOTR streak-axis positions with the TCAV at +V and -V; y_*: (B, N) energy
@@ -114,13 +115,31 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
     S^2 sigma_z^2 + sigma_x,off^2 — the transverse spot is the instrument resolution and stays in
     (blur included, as deployed). `resolution_m` adds any further blur in quadrature (default 0).
     `threshold` / `row_correct`: see the module docstring (defaults = v1 behaviour, kept so runs
-    trained with it reproduce). Returns (B,) features + screen_valid / screen_misassign."""
+    trained with it reproduce). `streak` may be a (B,) tensor (per-env optics / voltage).
+    v4 options (defaults = v1-v3 behaviour):
+      orientation "charge": the witness is the LOWER-charge side of the cut (truth-free; the deployed
+                  analysis knows drive = majority charge) instead of the true witness centroid.
+      roi {x: half-width, y: half-width} [m]: camera window centred on each image's charge centroid
+                  (detached, as the auto-crop): particles outside carry no charge in that image.
+      screen_valid_deployed: what the online analysis can check -- two peaks found and the measured
+                  |spacing| above `deployed_floor_m` (round 2: real invalid region ~50-80 um).
+    Returns (B,) features + screen_valid / screen_valid_deployed / screen_misassign."""
     xp = torch.cat([xp_d, xp_w], -1)
     xm = torch.cat([xm_d, xm_w], -1)
     y = torch.cat([y_d, y_w], -1)
     nd, nw = xp_d.shape[-1], xp_w.shape[-1]
     q = torch.cat([(q_d / nd).unsqueeze(-1).expand(-1, nd), (q_w / nw).unsqueeze(-1).expand(-1, nw)], -1)
     truth_w = torch.cat([torch.zeros_like(xp_d), torch.ones_like(xp_w)], -1)
+    qp = qm = q
+    if roi is not None:
+        with torch.no_grad():
+            hx, hy = float(roi["x"]), float(roi["y"])
+            cy = _wmean(y, q).unsqueeze(-1)
+            inside = lambda x: ((x - _wmean(x, q).unsqueeze(-1)).abs() < hx) & ((y - cy).abs() < hy)
+            mp, mm = inside(xp).to(q.dtype), inside(xm).to(q.dtype)
+        qp, qm = q * mp, q * mm
+    if orientation not in ("truth", "charge"):
+        raise ValueError(f"orientation must be 'truth' or 'charge', got {orientation!r}")
     if row_correct:
         r = _row_mean(0.5 * (xp + xm), y, q)
         xp, xm = xp - r, xm - r
@@ -137,17 +156,21 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
     else:
         raise ValueError(f"split must be 'energy' or 'zlobe', got {split!r}")
     gates = []
-    for v in axes:
+    for v, qv in zip(axes, [qp] if split == "energy" else [qp, qm]):
         if threshold == "midpoint":
             gates.append(_gate(v, v[:, :nd], v[:, nd:], PIXEL_M))
         else:
-            thr, ok = _valley(v, q)
+            thr, ok = _valley(v, qv)
             peaks_ok &= ok
-            with torch.no_grad():   # orientation only (deployed: witness = the lower-energy band)
-                sign = torch.sign(v[:, nd:].mean(-1) - thr)
+            with torch.no_grad():   # orientation only
+                if orientation == "truth":
+                    sign = torch.sign(v[:, nd:].mean(-1) - thr)
+                else:               # witness = the lower-charge side of the cut
+                    above = (qv * (v > thr.unsqueeze(-1))).sum(-1)
+                    sign = torch.where(above < 0.5 * qv.sum(-1), 1.0, -1.0).to(v.dtype)
             gates.append(torch.sigmoid(sign.unsqueeze(-1) * (v - thr.unsqueeze(-1)) / PIXEL_M))
     wp, wm = (gates[0], gates[0]) if split == "energy" else (gates[0], gates[1])
-    wdp, wwp, wdm, wwm = q * (1 - wp), q * wp, q * (1 - wm), q * wm
+    wdp, wwp, wdm, wwm = qp * (1 - wp), qp * wp, qm * (1 - wm), qm * wm
     wd, ww = 0.5 * (wdp + wdm), 0.5 * (wwp + wwm)          # for the energy-axis quantities
 
     # centroids: half-difference of the +V and -V images; widths: mean of the two variances
@@ -157,14 +180,15 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
     sig_z = (var_d + resolution_m ** 2).clamp_min(1e-30).sqrt()
     de = (_wmean(y, wd) - _wmean(y, ww)) / eta_y * ref_energy_eV
     espread = _wvar(y, wd).clamp_min(1e-30).sqrt() / abs(eta_y) * ref_energy_eV
-    frac_d = wd.sum(-1) / q.sum(-1)
+    frac_d = wd.sum(-1) / (0.5 * (qp + qm)).sum(-1).clamp_min(1e-30)
 
     with torch.no_grad():
         misassign = 0.5 * ((q * (wp - truth_w).abs()).sum(-1) + (q * (wm - truth_w).abs()).sum(-1)) / q.sum(-1)
         valid = ((spacing.abs() > SEPARATION_FLOOR_M) & (misassign < MISASSIGN_MAX) & peaks_ok).float()
+        valid_dep = ((spacing.abs() > deployed_floor_m) & peaks_ok).float()
     return {"bunch_spacing": spacing, "drive_sigma_z": sig_z, "energy_difference": de,
             "drive_energy_spread": espread, "drive_charge_fraction": frac_d,
-            "screen_valid": valid, "screen_misassign": misassign}
+            "screen_valid": valid, "screen_valid_deployed": valid_dep, "screen_misassign": misassign}
 
 
 def cloud_features(obs: dict[str, torch.Tensor], q_d, q_w) -> dict[str, torch.Tensor]:

@@ -69,7 +69,10 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
                        tdc_voltage_V: float = 22e6, tdc_phase_deg: float = 0.0,
                        resolution_m: float = 0.0, split: str = "energy",
                        threshold: str = "midpoint", row_correct: bool = False,
-                       quad_jitter: dict[str, float] | None = None):
+                       quad_jitter: dict[str, float] | None = None,
+                       optics_choices: list[dict] | None = None, tdc_voltage_range=None,
+                       roi: dict | None = None, arrival_jitter_s: float = 0.0,
+                       orientation: str = "truth", deployed_floor_m: float = 60e-6, seed: int = 0):
     from xtcav_segment.convert import cloud_to_beam
     from xtcav_segment.features import FEATURE_KEYS, calibrate_streak, cloud_features, screen_features
     from xtcav_segment.segment import (back_drift, build_segment_from_spec, element_by_name,
@@ -84,8 +87,16 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
     set_tdc(segment, tdc_voltage_V, tdc_phase_deg)
     tdc = element_by_name(segment, "XTCAVF")
     tdc.voltage = torch.tensor([[tdc_voltage_V], [-tdc_voltage_V]], device=device, dtype=torch.float64)
-    quads = {name: element_by_name(segment, name) for name in (quad_jitter or {})}
+    # hidden per-episode optics / TCAV state (env v4): an optics choice (quad strength factors from
+    # the exported specs, e.g. 15673 = Q0D/Q2D x1.056), a TCAV effective voltage, quad jitter on top
+    choices = list(optics_choices or [{}])
+    qnames = sorted(set(quad_jitter or {}) | {k for c in choices for k in c})
+    quads = {name: element_by_name(segment, name) for name in qnames}
     k1_golden = {name: q.k1.detach().clone() for name, q in quads.items()}
+    jit = dict(quad_jitter or {})
+    v_lo, v_hi = (tdc_voltage_range or (tdc_voltage_V, tdc_voltage_V))
+    state = {}
+    gen = torch.Generator(device=device).manual_seed(int(seed) + 1)
     norm = json.loads(open(norm_json).read())
     q_inj = injected_charges_nC(norm, flow.hparams.knob_keys or [], flow.knob_low.cpu(), flow.knob_high.cpu())
 
@@ -96,12 +107,22 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
         out = segment.track(back_drift(beam, l_tdc))     # exit-plane V=0 clouds -> TDC entrance
         return out.x[0].float(), out.x[1].float(), out.y[0].float()
 
-    # streak calibration at the box centre (the sim analogue of the phase-scan calibration)
+    # streak calibration at the box centre (the sim analogue of the phase-scan calibration); one per
+    # optics choice at the nominal voltage (the streak scales with V); the machine calibrates the
+    # optics it runs, so each env's measurement uses its own optics' streak (x the hidden scale error)
     with torch.no_grad():
         k0 = torch.full((1, flow.hparams.condition_dim), 0.5, device=device)
         d0 = flow.sample_bunch(k0, 0, 4096)
-        xp, xm, _ = track(d0, torch.full((1, 4096), 1e-13, device=device))
-        streak = calibrate_streak(0.5 * (xp - xm).double(), d0[..., 2].double())
+        streaks = []
+        for c in choices:
+            for name, q in quads.items():
+                q.k1 = k1_golden[name] * float(c.get(name, 1.0))
+            xp, xm, _ = track(d0, torch.full((1, 4096), 1e-13, device=device))
+            streaks.append(calibrate_streak(0.5 * (xp - xm).double(), d0[..., 2].double()))
+        for name, q in quads.items():
+            q.k1 = k1_golden[name]
+        streak = streaks[0]
+    streak_c = torch.tensor(streaks, device=device, dtype=torch.float32)
 
     def observe(knobs_norm):
         obs, drive, witness = _flow_observables(flow, knobs_norm, n_particles)
@@ -111,27 +132,52 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
         qpp = torch.cat([(q_d * NC_TO_C / nd).unsqueeze(-1).expand(-1, nd),
                          (q_w * NC_TO_C / nw).unsqueeze(-1).expand(-1, nw)], -1)
         xp, xm, y = track(torch.cat([drive, witness], -2), qpp)     # both bunches in one beam
+        S = state.get("streak", streak)
+        if arrival_jitter_s > 0:          # common-mode TCAV-vs-beam timing: moves the whole streak
+            B = xp.shape[0]
+            Sb = S.unsqueeze(-1) if torch.is_tensor(S) else S
+            with torch.no_grad():
+                dtp = torch.randn(B, 1, generator=gen, device=xp.device) * arrival_jitter_s * 299792458.0
+                dtm = torch.randn(B, 1, generator=gen, device=xp.device) * arrival_jitter_s * 299792458.0
+            xp, xm = xp + Sb * dtp, xm - Sb * dtm
         scr = screen_features(xp[:, :nd], xm[:, :nd], y[:, :nd], xp[:, nd:], xm[:, nd:], y[:, nd:],
-                              q_d, q_w, streak=streak, eta_y=eta_y, ref_energy_eV=e_ref,
+                              q_d, q_w, streak=S, eta_y=eta_y, ref_energy_eV=e_ref,
                               resolution_m=resolution_m, split=split, threshold=threshold,
-                              row_correct=row_correct)
+                              row_correct=row_correct, orientation=orientation, roi=roi,
+                              deployed_floor_m=deployed_floor_m)
         cld = cloud_features(obs, q_d, q_w)
         for k in FEATURE_KEYS:
             obs[f"{k}_cloud"] = cld[k]
             obs[k] = scr[k]
         obs["screen_valid"] = scr["screen_valid"]
+        obs["screen_valid_deployed"] = scr["screen_valid_deployed"]
         obs["screen_misassign"] = scr["screen_misassign"]
         return obs
 
+    v4_state = len(choices) > 1 or v_hi > v_lo
+
     def resample(mask: torch.Tensor, generator: torch.Generator):
-        """Redraw the hidden quad strengths of the envs in `mask` (B,) bool; others keep theirs."""
+        """Redraw the hidden optics / voltage / quad strengths of the envs in `mask` (B,) bool."""
+        B = mask.shape[0]
+        if v4_state:
+            ch = torch.randint(len(choices), (B,), generator=generator, device=mask.device)
+            v = v_lo + (v_hi - v_lo) * torch.rand(B, generator=generator, device=mask.device, dtype=torch.float64)
+            old_ch, old_v = state.get("choice", ch), state.get("v", v)
+            state["choice"] = torch.where(mask, ch, old_ch) if old_ch.shape == ch.shape else ch
+            state["v"] = torch.where(mask, v, old_v) if old_v.shape == v.shape else v
+            tdc.voltage = torch.stack([state["v"], -state["v"]])                    # (2, B)
+            state["streak"] = streak_c[state["choice"]] * (state["v"] / tdc_voltage_V).float()
         for name, q in quads.items():
-            k1 = k1_golden[name] * (1 + quad_jitter[name] * torch.randn(
-                mask.shape[0], generator=generator, device=mask.device, dtype=torch.float64))
-            old = q.k1 if q.k1.dim() == 1 and q.k1.shape[0] == mask.shape[0] else k1_golden[name].expand_as(k1)
+            fac = torch.ones(B, device=mask.device, dtype=torch.float64)
+            if v4_state:
+                fac = torch.tensor([float(c.get(name, 1.0)) for c in choices], device=mask.device,
+                                   dtype=torch.float64)[state["choice"]]
+            k1 = k1_golden[name] * fac * (1 + jit.get(name, 0.0) * torch.randn(
+                B, generator=generator, device=mask.device, dtype=torch.float64))
+            old = q.k1 if q.k1.dim() == 1 and q.k1.shape[0] == B else k1_golden[name].expand_as(k1)
             q.k1 = torch.where(mask, k1, old)
 
-    observe.resample = resample if quads else None
+    observe.resample = resample if (quads or v4_state) else None
     observe.streak = streak
     observe.eta_y = eta_y
     return observe

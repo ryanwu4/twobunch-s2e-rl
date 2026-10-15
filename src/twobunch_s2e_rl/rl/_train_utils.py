@@ -256,7 +256,11 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
                 tdc_voltage_V=float(sc.get("tdc_voltage_V", 22e6)), split=sc.get("split", "zlobe"),
                 resolution_m=float(sc.get("extra_resolution_m", 0.0)),
                 threshold=sc.get("threshold", "midpoint"), row_correct=bool(sc.get("row_correct", False)),
-                quad_jitter=sc.get("quad_jitter"))
+                quad_jitter=sc.get("quad_jitter"), optics_choices=sc.get("optics_choices"),
+                tdc_voltage_range=sc.get("tdc_voltage_range"), roi=sc.get("roi"),
+                arrival_jitter_s=float(sc.get("arrival_jitter_s", 0.0)),
+                orientation=sc.get("orientation", "truth"),
+                deployed_floor_m=float(sc.get("deployed_floor_m", 60e-6)), seed=seed)
         v4 = de.get("v4")
         cls = DeltaControlEnv
         extra = {}
