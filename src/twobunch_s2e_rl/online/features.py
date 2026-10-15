@@ -39,6 +39,41 @@ def valley_threshold(proj: np.ndarray, smooth_px: float = 2.0, min_rel_prominenc
     return lo + int(np.argmin(p[lo:hi + 1])), True
 
 
+def band_stats(img: np.ndarray, x_m: np.ndarray, cut_row: int | None = None) -> dict | None:
+    """Per-image band statistics: the energy cut (valley rule, or a given cut_row), witness = the
+    lower-charge band; drive / witness x centroid, drive x variance, drive charge fraction."""
+    im = np.clip(np.asarray(img, float), 0, None)
+    if cut_row is None:
+        cut_row, ok = valley_threshold(im.sum(axis=1))
+        if not ok:
+            return None
+    below = np.arange(im.shape[0]) <= cut_row
+    wit = below if im[below].sum() < im[~below].sum() else ~below
+    pd_, pw = im[~wit].sum(axis=0), im[wit].sum(axis=0)
+    qd, qw = pd_.sum(), pw.sum()
+    if qd <= 0 or qw <= 0:
+        return None
+    md = np.average(x_m, weights=pd_)
+    return {"cut_row": int(cut_row), "x_d": float(md), "x_w": float(np.average(x_m, weights=pw)),
+            "var_d": float(np.average((x_m - md) ** 2, weights=pd_)), "frac_d": float(qd / (qd + qw))}
+
+
+def step_features(plus: list[dict], minus: list[dict], streak: float, floor_m: float = 60e-6,
+                  agg=np.median) -> dict:
+    """Step-level features from the band stats of the step's +V images and -V images (on the machine
+    they are ~11 s apart, not the same beam): robust (median) aggregation per sign, then the
+    half-difference. Valid if both signs have images and |spacing| > floor."""
+    plus, minus = [p for p in plus if p], [m for m in minus if m]
+    if not plus or not minus:
+        return {"valid": 0.0, "n_plus": len(plus), "n_minus": len(minus)}
+    a = lambda L, k: float(agg([d[k] for d in L]))
+    spacing = ((a(plus, "x_d") - a(minus, "x_d")) - (a(plus, "x_w") - a(minus, "x_w"))) / (2 * streak)
+    sig_z = np.sqrt(0.5 * (a(plus, "var_d") + a(minus, "var_d"))) / abs(streak)
+    frac = 0.5 * (a(plus, "frac_d") + a(minus, "frac_d"))
+    return {"bunch_spacing": spacing, "drive_sigma_z": float(sig_z), "drive_charge_fraction": frac,
+            "valid": float(abs(spacing) > floor_m), "n_plus": len(plus), "n_minus": len(minus)}
+
+
 def image_features(img_plus: np.ndarray, img_minus: np.ndarray, x_m: np.ndarray, y_m: np.ndarray,
                    streak: float, floor_m: float = 60e-6) -> dict:
     """Features of one +V / -V image pair. img_*: (ny, nx) nonnegative intensities; x_m, y_m: pixel
