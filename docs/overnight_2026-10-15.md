@@ -183,3 +183,7 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 - 01:45 S2 v5 s1 9.2 µm / 53%. The restricted-box variant (L1 [−22, −19.5]) is 8.6 µm / 55%, no better: under context
   variation, misassignment is spread through the box. Recorded in the S2 diag report. GPU1: S2 v5 adapter (screen-mode
   actuator comparison).
+- 02:30 split-ambiguity diagnostic `cut_sens` (spacing change when the energy cut moves ±2 px; sim + online, off by
+  default). Sim: AUC 0.875 for bias > 10 µm; a 3.3 µm threshold keeps 70% and cuts the bias p90 40 → 12 µm. Real
+  replay: it does NOT catch the TEST_15668 valley jumps (2.8 / 2.8 / 1.4 µm vs clean 0.1–2.2) and would flag most of
+  E300_15673's large-spacing steps → not adopted (`results/online_replay_v5_2026-10-15/REPORT.md`).
