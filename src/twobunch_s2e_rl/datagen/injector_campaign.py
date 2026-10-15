@@ -513,9 +513,9 @@ def software_versions() -> dict:
             v[pkg] = md.version(pkg)
         except md.PackageNotFoundError:
             v[pkg] = None
-    exe = sh.which("ImpactTexe")
-    v["ImpactTexe"] = {"path": exe, "sha256": _sha(exe) if exe else None}
-    v["conda_prefix"] = os.environ.get("CONDA_PREFIX") or sys.prefix
+    exe = sh.which("ImpactTexe") or str(Path(sys.executable).parent / "ImpactTexe")
+    v["ImpactTexe"] = {"path": exe, "sha256": _sha(exe)}
+    v["python_prefix"] = sys.prefix
     return v
 
 
