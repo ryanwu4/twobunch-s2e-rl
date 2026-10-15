@@ -195,3 +195,6 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
   guard because the objective list changed; it now has its own norms file. The failed logdir is renamed `.failed_norms`.)
 - 04:30 S2 v5 at 600 iters (s0): 7.6 µm / 62% within 10 µm (300-iter seeds 8.3–9.2 / 53–59%). The median improves,
   the p90 (~43 µm) does not. Seeds 1–2 at 600 iters launched (both GPUs, done ~06:20, before the fine-tunes).
+- 06:25 S2 v5 at 600 iters, 3 seeds: 7.6 / 7.3 / 7.2 µm true median, 62 / 61 / 63% within 10 µm (300 iters:
+  8.3–9.2 / 53–59%). Consistent ~1.5 µm gain → **recommend 600 iters for S2**. True p90 31–43 µm (the
+  measurement-limited tail). GPUs now idle, left for the post-campaign fine-tunes.
