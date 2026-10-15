@@ -31,6 +31,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--M", type=int, default=15, help="images per sign in the bootstrap step estimate")
     ap.add_argument("--limit-per-step", type=int, default=None)
+    ap.add_argument("--qa-steps", default="", help="comma list of steps: save median +V/-V images + cuts")
     a_ = ap.parse_args()
     exp, num = a_.dataset.rsplit("_", 1)
     ds = rf.DATASET(str(rf.XTCAV_ROOT), exp, num)
@@ -48,9 +49,11 @@ def main():
     refs = rf.xtcav.build_step_distortion_references(a, cls, steps_per_shot=steps)
     plus = set(int(i) for i in cls["ix_plus"])
     rng = np.random.default_rng(0)
+    qa_imgs = {}
     out = {"dataset": a_.dataset, "cal_um_per_deg": cal, "cal_scaled": S, "M": a_.M, "steps": {}}
     for step in sorted(set(int(s) for s in np.unique(steps))):
         st = {"plus": [], "minus": []}
+        qa = {"plus": [], "minus": []} if str(step) in a_.qa_steps.split(",") else None
         ix = []
         for grp in (cls["ix_plus"], cls["ix_neg"]):           # cap per sign, not overall
             ix += [int(i) for i in grp if steps[int(i)] == step][:a_.limit_per_step]
@@ -66,6 +69,8 @@ def main():
                 n_fail += 1
                 continue
             st["plus" if i in plus else "minus"].append(b)
+            if qa is not None and img.data.shape == (qa["plus"] + qa["minus"] or [img.data])[0].shape:
+                qa["plus" if i in plus else "minus"].append((img.data.copy(), b["cut_row"]))
         if not st["plus"] or not st["minus"]:
             continue
         # x in mm-on-screen -> z via S; +V streak +S, -V streak -S (signed, D3)
@@ -87,12 +92,34 @@ def main():
             "single_minus_median_um": 1e6 * float(np.median(sep["minus"])),
             "single_image_robust_sigma_um": 1e6 * 0.5 * (iqr(sep["plus"]) + iqr(sep["minus"])),
             "step_bootstrap_sigma_um": 1e6 * float(np.std(boot)),
+            "offsets_plus_um": [round(1e6 * (d["x_d"] - d["x_w"]) / S, 1) for d in st["plus"]],
+            "offsets_minus_um": [round(1e6 * (d["x_d"] - d["x_w"]) / S, 1) for d in st["minus"]],
+            "cut_rows_plus": [d["cut_row"] for d in st["plus"]],
+            "cut_rows_minus": [d["cut_row"] for d in st["minus"]],
         }
+        if qa is not None:
+            qa_imgs[step] = qa
         print(step, json.dumps({k: (round(v, 2) if isinstance(v, float) else v)
                                 for k, v in out["steps"][step].items()}), flush=True)
     o = Path(a_.out)
     o.mkdir(parents=True, exist_ok=True)
     (o / f"{a_.dataset}.json").write_text(json.dumps(out, indent=1))
+    if qa_imgs:
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(len(qa_imgs), 4, figsize=(14, 2.8 * len(qa_imgs)), squeeze=False)
+        for r, (step, qa) in enumerate(sorted(qa_imgs.items())):
+            for c, sg in enumerate(("plus", "minus")):
+                if not qa[sg]:
+                    continue
+                med = np.median([im for im, _ in qa[sg]], axis=0)
+                ax[r, 2 * c].imshow(med, aspect="auto", origin="lower", cmap="magma")
+                for _, k in qa[sg][:20]:
+                    ax[r, 2 * c].axhline(k, color="c", lw=0.4, alpha=0.5)
+                ax[r, 2 * c].set_title(f"step {step} {sg}: median of {len(qa[sg])}", fontsize=8)
+                ax[r, 2 * c + 1].plot(med.sum(axis=1))
+                ax[r, 2 * c + 1].set_title("y projection (cuts: cyan on image)", fontsize=8)
+        fig.tight_layout()
+        fig.savefig(o / f"{a_.dataset}_qa.png", dpi=110)
 
 
 if __name__ == "__main__":

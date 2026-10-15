@@ -62,12 +62,15 @@ def step_features(plus: list[dict], minus: list[dict], streak: float, floor_m: f
                   agg=np.median) -> dict:
     """Step-level features from the band stats of the step's +V images and -V images (on the machine
     they are ~11 s apart, not the same beam): robust (median) aggregation per sign, then the
-    half-difference. Valid if both signs have images and |spacing| > floor."""
+    half-difference of the per-image band offsets. Valid if both signs have images and |spacing| > floor."""
     plus, minus = [p for p in plus if p], [m for m in minus if m]
     if not plus or not minus:
         return {"valid": 0.0, "n_plus": len(plus), "n_minus": len(minus)}
     a = lambda L, k: float(agg([d[k] for d in L]))
-    spacing = ((a(plus, "x_d") - a(minus, "x_d")) - (a(plus, "x_w") - a(minus, "x_w"))) / (2 * streak)
+    # aggregate the per-image band offset x_d - x_w (crop- and image-position-independent; equal to
+    # differencing the aggregated centroids for a mean, robust to band-swap outliers for a median)
+    off = lambda L: float(agg([d["x_d"] - d["x_w"] for d in L]))
+    spacing = (off(plus) - off(minus)) / (2 * streak)
     sig_z = np.sqrt(0.5 * (a(plus, "var_d") + a(minus, "var_d"))) / abs(streak)
     frac = 0.5 * (a(plus, "frac_d") + a(minus, "frac_d"))
     return {"bunch_spacing": spacing, "drive_sigma_z": float(sig_z), "drive_charge_fraction": frac,
