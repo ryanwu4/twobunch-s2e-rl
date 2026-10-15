@@ -193,3 +193,5 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
   screen σz reaches only ~35% within 10%). Both finish well before the post-campaign fine-tunes need the GPUs.
 - 03:40 S2 spacing-only goal: 9.1 µm / 54%, the same as with the σz goal. (The first launch was refused by the norms-cache
   guard because the objective list changed; it now has its own norms file. The failed logdir is renamed `.failed_norms`.)
+- 04:30 S2 v5 at 600 iters (s0): 7.6 µm / 62% within 10 µm (300-iter seeds 8.3–9.2 / 53–59%). The median improves,
+  the p90 (~43 µm) does not. Seeds 1–2 at 600 iters launched (both GPUs, done ~06:20, before the fine-tunes).
