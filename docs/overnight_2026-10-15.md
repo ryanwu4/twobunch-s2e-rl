@@ -208,3 +208,9 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 - 06:25 S2 v5 at 600 iters, 3 seeds: 7.6 / 7.3 / 7.2 µm true median, 62 / 61 / 63% within 10 µm (300 iters:
   8.3–9.2 / 53–59%). Consistent ~1.5 µm gain → **recommend 600 iters for S2**. True p90 31–43 µm (the
   measurement-limited tail). GPUs now idle, left for the post-campaign fine-tunes.
+- 08:20 fine-tunes ft_s0/ft_s1 running (≈1.8 min/epoch → 150 epochs done ~12:40; then ft_s2 + scratch_s0, whose
+  500 epochs take ~15 h). After 6 epochs: val_paired_delta_rms 13.8 → 11.8 µm (signal 14.3 µm), old-val spacing MAE
+  flat at ~9 µm. Gate baseline on the widened (= old) flow (`results/surrogate_gates_2026-10-15/widened_base/`):
+  old-val spacing MAE 9.1 µm (CRN 2048 particles; the 7.4 µm smoke value used another metric), σz rel 10.7%;
+  test pairs n=48, R² −0.03 (signal 15.7 µm) → paired-Δ gate FAIL, T-calibration 0.021 → FAIL (by 0.001). As
+  expected, the old flow has no injector dependence.
