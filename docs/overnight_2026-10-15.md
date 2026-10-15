@@ -187,3 +187,4 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
   default). Sim: AUC 0.875 for bias > 10 µm; a 3.3 µm threshold keeps 70% and cuts the bias p90 40 → 12 µm. Real
   replay: it does NOT catch the TEST_15668 valley jumps (2.8 / 2.8 / 1.4 µm vs clean 0.1–2.2) and would flag most of
   E300_15673's large-spacing steps → not adopted (`results/online_replay_v5_2026-10-15/REPORT.md`).
+- 02:30 S2 v5 seeds (blen_dlog): s0 8.7 / s1 9.2 / s2 8.3 µm true median spacing error, 57 / 53 / 59% within 10 µm.
