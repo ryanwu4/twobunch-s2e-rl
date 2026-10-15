@@ -89,6 +89,8 @@ def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, o
             "err_final_p90": float(np.percentile(e_meas[-1], 90)),
             "err_final_true_median": float(np.median(e_true[-1])),
             "frac_within_tol_final": float(within[-1].mean()),
+            "frac_within_tol_final_true": float((e_true[-1] <= tol).mean()),
+            "err_final_true_p90": float(np.percentile(e_true[-1], 90)),
             "frac_settled": float((settled >= 0).mean()),
             "steps_to_settle_median": (float(np.median(settled[settled >= 0]))
                                        if (settled >= 0).any() else None),
