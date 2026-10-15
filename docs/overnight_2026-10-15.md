@@ -115,3 +115,9 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
   Smoke (30 shots/sign/step, E300_15671): step 1 spacing 99.8 µm with +V/−V single-sign estimates 98 / 101 µm
   (consistent); single-image robust σ 3–6 µm on clean steps, ~55–80 µm on the near-full-compression steps
   where the energy gate often fails (10–21 of 30 images).
+- 21:20 real-DAQ replay done (`results/online_replay_v3_2026-10-15/REPORT.md`). Fix found: the energy cut must
+  be one per step from the +V images and shared with −V (D2). A per-image −V valley locks onto another dip because
+  the TCAV's energy kick flips with V, which wrecked E300_15673 steps 9–18 (fixed: smooth 240 → 143 µm). Noise vs
+  env: per-image robust σ 6–15 µm (env 15), per-step ~1–2.6 µm at M = 30 (env floor 6 µm: conservative).
+  Unsolved: valley-jump misassignment at TEST_15668 steps 25/26/29 that the deployed rule calls valid (drive
+  fraction jumps; candidate truth-free check).
