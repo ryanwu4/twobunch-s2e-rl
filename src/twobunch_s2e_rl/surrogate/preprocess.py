@@ -99,6 +99,7 @@ def parse_one(json_path: str, p: int, rng: np.random.Generator, keys: list,
         "witness_q_ref": float((d.get("specs", {}).get(transmission_ref, {}).get("PWitness_charge_nC")) or np.nan),
         # split-group fields (injector campaigns)
         "block": d.get("block"), "injector_point": d.get("injector_point"), "linac_id": d.get("linac_id"),
+        "holdout": bool(d.get("holdout", False)),     # pre-registered test rows (injector campaigns)
     }
 
     if not (drive_present or witness_viable):
@@ -380,6 +381,7 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
             h.create_dataset("drive_q_ref_nC", data=np.array([r["drive_ref"] for r in records], np.float32))
             h.create_dataset("witness_q_ref_nC", data=np.array([r["witness_ref"] for r in records], np.float32))
         h.create_dataset("group", data=split_groups(records))
+        h.create_dataset("holdout", data=np.array([r["holdout"] for r in records], bool))
         h.create_dataset("n_drive", data=np.array([r["n_drive"] for r in records], np.int32))
         h.create_dataset("n_witness", data=np.array([r["n_witness"] for r in records], np.int32))
         h.create_dataset("idx", data=np.array([r["idx"] for r in records], np.int32))

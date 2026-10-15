@@ -1,12 +1,12 @@
 # Held-out injector EVALUATION set — DRAFT, NOT LAUNCHED (PLAN.md "Evaluation").
-# One-at-a-time sweeps of the 6 active injector knobs (+-1x and +-1.5x DR) crossed with 6 linac
-# points (xtcav23 baseline + 5 LHS), every linac point also at injector = golden:
-#   (1 + 24) injector points x 6 linac points = 150 Bmad rows, 25 Impact-T beams (+6 bridge rows).
+# One-at-a-time sweeps of the 6 active injector knobs at the campaign-box edges crossed with 18 shared
+# linac points (baseline + 6 full box + 11 controller region), plus an L1/L2 Jacobian block:
+#   15 injector points x 18 = 270 crossed + 18 bridge + 168 jacobian = 456 Bmad rows, 15 Impact-T beams.
 # Gives Bmad-truth sensitivity curves / partial derivatives per injector knob per linac point.
 name: injector_evalset
 output_dir: data/injector_evalset
-sweep_set: xtcav23_l0b2_inj12
-linac_sweep_set: xtcav23_l0b2
+sweep_set: xtcav23e_l0b2_inj12
+linac_sweep_set: xtcav23e_l0b2
 injector_sweep_set: inj12
 n_workers: 64
 
@@ -20,46 +20,44 @@ design:
   seed: 20261021
   injector:
     golden: true
+    # one-at-a-time at the campaign-box edge (+-1.5x DR; the pilot showed linear response) + the
+    # measured drive-fraction operating point; 1 LHS point for the Jacobian block
     oat:
       - {laser_timing_ps: {abs: -0.3}}
-      - {laser_timing_ps: {abs: -0.2}}
-      - {laser_timing_ps: {abs: 0.2}}
       - {laser_timing_ps: {abs: 0.3}}
       - {"GUNF:rf_field_scale": {rel: -0.005}}
-      - {"GUNF:rf_field_scale": {rel: -0.0025}}
-      - {"GUNF:rf_field_scale": {rel: 0.0025}}
       - {"GUNF:rf_field_scale": {rel: 0.005}}
       - {"GUNF:theta0_deg": {abs: -0.5}}
-      - {"GUNF:theta0_deg": {abs: -0.25}}
-      - {"GUNF:theta0_deg": {abs: 0.25}}
       - {"GUNF:theta0_deg": {abs: 0.5}}
       - {"distgen:t_dist:dists:d2:avg_t:value": {abs: -0.3}}
-      - {"distgen:t_dist:dists:d2:avg_t:value": {abs: -0.2}}
-      - {"distgen:t_dist:dists:d2:avg_t:value": {abs: 0.2}}
       - {"distgen:t_dist:dists:d2:avg_t:value": {abs: 0.3}}
-      - {drive_fraction: {abs: -0.09}}     # 0.66 (box edge; measured run means 0.69-0.73)
+      - {drive_fraction: {abs: -0.09}}     # 0.66 (box edge)
       - {drive_fraction: {abs: -0.05}}     # 0.70 (measured operating point)
-      - {drive_fraction: {abs: -0.03}}
-      - {drive_fraction: {abs: -0.02}}
-      - {drive_fraction: {abs: 0.02}}
-      - {drive_fraction: {abs: 0.03}}
+      - {drive_fraction: {abs: 0.05}}      # 0.80 (box edge)
       - {"distgen:total_charge:value": {rel: -0.009}}
-      - {"distgen:total_charge:value": {rel: -0.006}}
-      - {"distgen:total_charge:value": {rel: 0.006}}
       - {"distgen:total_charge:value": {rel: 0.009}}
-    lhs: 0
+    lhs: 1
   linac:
-    shared: {baseline: true, lhs: 5}
+    # baseline + 6 full-box + 11 controller-region shared linac points (every injector point at each)
+    shared: {baseline: true, lhs: 6, controller: 11}
     per_injector_lhs: 0
+    controller_box: {L1PhaseSet: [-26.5, -18.5], L2PhaseSet: [-41.0, -33.0]}
+    controller_l1_energy: {k_max: 0.9, dphi_max_deg: 2.5, gain_eV: 210.0e6}
   pair_golden_frac: 0.0
   bridge: true
+  # L1/L2 Jacobian vs Bmad (BPTT uses these gradients): 12 controller-region points x {golden, lhs0}
+  # x {centre, L1 +-0.25/+-0.5 deg, L2 +-0.25 deg}; common Tao seed per point
+  jacobian:
+    n_points: 12
+    injector_points: [golden, lhs0]
+    deltas: {L1PhaseSet: [-0.5, -0.25, 0.25, 0.5], L2PhaseSet: [-0.25, 0.25]}
 
 # = configs/datagen/xtcav23_full.yaml physics
 csrTF: true
 transverseWakes: true
 baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
-treaty_points: [BL11356, BL14888, BEGBC20, MFFF, XTCAVF, PENT]   # BL11356/BL14888 = BC11/BC14 BLEN monitors (sigma_z only)
-save_beams_at: [XTCAVF]
+treaty_points: [ENDDL10, BL11356, BL14888, BEGBC20, IM2452, BL20_4, MFFF, XTCAVF, PENT]
+save_beams_at: [BL11356, BL14888, BL20_4, XTCAVF]
 fixed_overrides:
   Q19851kG: -63.76368742523523
   Q19871kG: 42.49972197426665

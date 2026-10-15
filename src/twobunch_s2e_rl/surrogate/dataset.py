@@ -67,10 +67,14 @@ class TwoBunchFlowDataset(Dataset):
             norm = {**norm, **{k: [float(v) for v in scaler[k]] for k in SCALER_KEYS},
                     "scaler_source": "checkpoint"}
         self.norm = norm
-        groups = None
+        groups, holdout = None, None
         with h5py.File(processed_h5, "r") as h:
             if "group" in h:
                 groups = np.asarray(h["group"][...])
+            if "holdout" in h:
+                holdout = np.asarray(h["holdout"][...]).astype(bool)
+        # pre-registered TEST rows: never in train or val (evaluate them explicitly, once)
+        self.holdout = holdout if holdout is not None else np.zeros(len(knobs), bool)
         # split groups: rows that must stay on the same side of train/val (preprocess `group`);
         # default = every row its own group (plain random split, as before)
         self.has_groups = groups is not None
@@ -122,6 +126,8 @@ class TwoBunchFlowDataModule(L.LightningDataModule):
         if self.full is None:
             self.full = TwoBunchFlowDataset(self.hparams.processed_h5, self.hparams.norm_json,
                                             scaler=self.hparams.scaler)
+        if self.full.holdout.any() and self.hparams.split != "group":
+            raise ValueError("table has pre-registered holdout rows: use split='group' (excludes them)")
         if self.hparams.split == "random":
             n_val = int(round(len(self.full) * self.hparams.val_fraction))
             n_train = len(self.full) - n_val
@@ -131,8 +137,10 @@ class TwoBunchFlowDataModule(L.LightningDataModule):
         elif self.hparams.split == "group":
             if not self.full.has_groups:
                 raise ValueError(f"{self.hparams.processed_h5} has no 'group' column (re-run preprocess)")
-            tr, va = group_split(self.full.groups, self.hparams.val_fraction, self.hparams.split_seed)
-            self.train, self.val = Subset(self.full, tr), Subset(self.full, va)
+            keep = np.flatnonzero(~self.full.holdout)
+            tr, va = group_split(self.full.groups[keep], self.hparams.val_fraction, self.hparams.split_seed)
+            self.train, self.val = Subset(self.full, keep[tr].tolist()), Subset(self.full, keep[va].tolist())
+            self.test = Subset(self.full, np.flatnonzero(self.full.holdout).tolist())
         else:
             raise ValueError(f"split must be 'random' or 'group', got {self.hparams.split!r}")
 

@@ -273,3 +273,28 @@ def test_resume_guard_lock_retry_and_pair_seeds(tmp_path):
         assert ic.bmad_seed(cfg, p) == ic.bmad_seed(cfg, nested)          # pair shares radiation draws
         assert p["linac_region"] == nested["linac_region"]
     assert all("linac_region" in r for r in rows)
+
+
+def test_test_points_pairing_jacobian_and_correlated_l1_energy(tmp_path):
+    box = {"L1PhaseSet": [-26.5, -18.5], "L2PhaseSet": [-41.0, -33.0]}
+    cfg = _cfg(tmp_path, injector={"golden": True, "lhs": 20, "test_points": 5},
+               linac={"shared": {"baseline": True, "lhs": 1, "controller": 2}, "per_injector_lhs": 10,
+                      "controller_frac": 0.4, "controller_box": box,
+                      "controller_l1_energy": {"k_max": 0.9, "dphi_max_deg": 2.5, "gain_eV": 210e6}},
+               pair_golden_frac=0.1, pair_golden_frac_test=0.2,
+               jacobian={"n_points": 2, "injector_points": ["golden", "lhs0"],
+                         "deltas": {"L1PhaseSet": [-0.5, 0.5], "L2PhaseSet": [0.25]}})
+    cfg["linac_sweep_set"], cfg["sweep_set"] = "xtcav23e", "xtcav23e"
+    rows = ic.make_rows(cfg)
+    test = {r["injector_point"] for r in rows if r["holdout"] and r["block"] == "nested"}
+    assert len(test) == 5
+    pairs = [r for r in rows if r["block"] == "paired_golden"]
+    assert all(r["holdout"] == (r["pair_of"] in test) for r in pairs)
+    assert sum(r["holdout"] for r in pairs) == 10                       # 0.2 x 5 points x 10
+    ctl = [r["knobs"] for r in rows if r["linac_region"] == "controller" and r["block"] == "nested"]
+    assert min(k["L1PhaseSet"] for k in ctl) >= -26.5 and max(k["L2PhaseSet"] for k in ctl) <= -33.0
+    assert np.std([k["L1EnergyOffset"] for k in ctl]) > 3 * 0.21e6      # correlated band >> readback jitter
+    jac = [r for r in rows if r["block"] == "jacobian"]
+    assert len(jac) == 2 * 2 * 4 and len({ic.bmad_seed(cfg, r) for r in jac}) == 2
+    keys, lo, hi, _ = ic.resolve_sweep_set("xtcav23e")
+    assert all(lo[keys.index("L1PhaseSet")] <= r["knobs"]["L1PhaseSet"] <= hi[keys.index("L1PhaseSet")] for r in jac)

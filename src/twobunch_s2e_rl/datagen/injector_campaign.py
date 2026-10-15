@@ -123,9 +123,14 @@ def build_manifest(cfg) -> list[dict]:
     return rows
 
 
-def _controller_draws(n, keys, low, high, base, box, seed):
+def _controller_draws(n, keys, low, high, base, box, seed, l1_energy=None):
     """(n, len(keys)) linac draws in the controller region: `box` keys by LHS in their sub-box,
-    the rest ~ N(golden, readback_sigma) clipped to [low, high]."""
+    the rest ~ N(golden, readback_sigma) clipped to [low, high].
+
+    l1_energy {k_max, dphi_max_deg, gain_eV}: L1EnergyOffset additionally carries the energy change
+    of an UNcompensated L1 phase excursion, dE = -k V sin(phi) dphi (dphi ~ U(+-dphi_max) from the
+    point where the energy was last set, k ~ U(0, k_max); k = 0 = ideal energy feedback): the
+    machine's correlated (phase, energy) states, which ideal-feedback sampling never contains."""
     bad = [k for k, (lo, hi) in box.items()
            if not low[keys.index(k)] <= lo < hi <= high[keys.index(k)]]
     if bad:
@@ -138,6 +143,12 @@ def _controller_draws(n, keys, low, high, base, box, seed):
             out[:, j] = u[:, list(box).index(k)]
         else:
             out[:, j] = np.clip(base[k] + rng.normal(0.0, readback_sigma(k, base[k]), n), low[j], high[j])
+    if l1_energy:
+        jp, je = keys.index("L1PhaseSet"), keys.index("L1EnergyOffset")
+        kk = rng.uniform(0.0, float(l1_energy.get("k_max", 0.9)), n)
+        dphi = np.deg2rad(rng.uniform(-1, 1, n) * float(l1_energy.get("dphi_max_deg", 2.5)))
+        de = -kk * float(l1_energy.get("gain_eV", 210e6)) * np.sin(np.deg2rad(out[:, jp])) * dphi
+        out[:, je] = np.clip(out[:, je] + de, low[je], high[je])
     return out
 
 
@@ -166,6 +177,12 @@ def make_rows(cfg) -> list[dict]:
         shared.append(dict(lbase))
     for r in _lhs(int(sh.get("lhs", 0)), llo, lhi, seed + 1):
         shared.append(dict(zip(lkeys, map(float, r))))
+    n_shared_full = len(shared)
+    if int(sh.get("controller", 0)):
+        for r in _controller_draws(int(sh["controller"]), lkeys, llo, lhi, lbase,
+                                   des["linac"]["controller_box"], seed + 6,
+                                   des["linac"].get("controller_l1_energy")):
+            shared.append(dict(zip(lkeys, map(float, r))))
 
     rows, lid = [], 0
 
@@ -178,7 +195,7 @@ def make_rows(cfg) -> list[dict]:
     for s_i, knobs in enumerate(shared):
         for tag, inj in inj_pts:
             add("crossed", "impact", inj, knobs, s_i, tag)
-            rows[-1]["linac_region"] = "shared"
+            rows[-1]["linac_region"] = "shared" if s_i < n_shared_full else "shared_controller"
     lid = len(shared)
     # nested: k independent linac draws per LHS injector point
     k = int(des["linac"].get("per_injector_lhs", 0))
@@ -189,7 +206,8 @@ def make_rows(cfg) -> list[dict]:
     full = _lhs(len(lhs_pts) * (k - k_ctrl), llo, lhi, seed + 2)
     full = full[np.random.default_rng(seed + 3).permutation(len(full))]
     ctrl = (_controller_draws(len(lhs_pts) * k_ctrl, lkeys, llo, lhi, lbase,
-                              des["linac"]["controller_box"], seed + 5) if k_ctrl else full[:0])
+                              des["linac"]["controller_box"], seed + 5,
+                              des["linac"].get("controller_l1_energy")) if k_ctrl else full[:0])
     draws, region = [], []
     for j in range(len(lhs_pts)):
         draws += list(ctrl[j * k_ctrl:(j + 1) * k_ctrl]) + list(full[j * (k - k_ctrl):(j + 1) * (k - k_ctrl)])
@@ -202,19 +220,59 @@ def make_rows(cfg) -> list[dict]:
             rows[-1]["linac_region"] = region[j * k + m]
             nested.append(rows[-1])
             lid += 1
-    # paired: a fraction of nested rows re-run at injector = golden (same linac knobs)
+    # pre-registered TEST injector points (never trained / selected on): every row of them
+    n_test = int(des["injector"].get("test_points", 0))
+    test_tags = set()
+    if n_test:
+        tags = [t for t, _ in lhs_pts]
+        test_tags = set(np.random.default_rng(seed + 7).choice(tags, n_test, replace=False).tolist())
+    # paired: a fraction of nested rows re-run at injector = golden (same linac knobs); test points
+    # may get a higher fraction (more exact held-out injector-effect pairs)
     f = float(des.get("pair_golden_frac", 0.0))
-    if f > 0 and nested:
-        pick = np.random.default_rng(seed + 4).choice(len(nested), round(f * len(nested)), replace=False)
+    f_test = float(des.get("pair_golden_frac_test", f))
+    if (f > 0 or f_test > 0) and nested:
+        rng4 = np.random.default_rng(seed + 4)
+        pick = []
+        for pool_tags, frac in ((test_tags, f_test), (None, f)):
+            idx = [j for j, r in enumerate(nested)
+                   if (r["injector_point"] in test_tags) == (pool_tags is not None)]
+            if frac > 0 and idx:
+                pick += rng4.choice(idx, round(frac * len(idx)), replace=False).tolist()
         for j in sorted(pick):
             r = nested[j]
             add("paired_golden", "impact", golden, r["knobs"], r["linac_id"], "golden")
             rows[-1]["linac_region"] = r["linac_region"]
+            rows[-1]["pair_of"] = r["injector_point"]
     # bridge: the golden h5 beam at the shared linac points
     if des.get("bridge", False):
         for s_i, knobs in enumerate(shared):
             add("bridge", "golden_h5", golden, knobs, s_i, "golden_h5")
-            rows[-1]["linac_region"] = "shared"
+            rows[-1]["linac_region"] = "shared" if s_i < n_shared_full else "shared_controller"
+    # jacobian: finite-difference blocks around controller-region points, for named injector points;
+    # all rows of one base point share linac_id -> the same Tao seed (common random numbers)
+    jac = des.get("jacobian")
+    if jac:
+        box = {kk: list(v) for kk, v in des["linac"]["controller_box"].items()}
+        for kk, ds in jac["deltas"].items():          # keep every +-delta row inside the box
+            m = max(abs(float(d)) for d in ds)
+            j = lkeys.index(kk)
+            box[kk] = [max(box[kk][0], llo[j] + m), min(box[kk][1], lhi[j] - m)]
+        bases = _controller_draws(int(jac["n_points"]), lkeys, llo, lhi, lbase, box, seed + 8,
+                                  des["linac"].get("controller_l1_energy"))
+        inj_by_tag = dict(inj_pts)
+        deltas = [({}, "centre")] + [({kk: float(d)}, f"{kk}{d:+g}")
+                                      for kk, ds in jac["deltas"].items() for d in ds]
+        for b_i, b in enumerate(bases):
+            base_knobs = dict(zip(lkeys, map(float, b)))
+            jid = 1_000_000 + b_i
+            for tag in jac["injector_points"]:
+                for dk, dname in deltas:
+                    knobs = {kk: v + dk.get(kk, 0.0) for kk, v in base_knobs.items()}
+                    add("jacobian", "impact", inj_by_tag[tag], knobs, jid, tag)
+                    rows[-1]["linac_region"] = "controller"
+                    rows[-1]["jacobian_delta"] = dname
+    for r in rows:
+        r["holdout"] = r["injector_point"] in test_tags or r.get("pair_of") in test_tags
     return rows
 
 
@@ -430,7 +488,8 @@ def bmad_task(args):
     jpath = row_json_path(out_dir, row)
     result = {"idx": row["idx"], "block": row["block"], "beam": row["beam"],
               "injector_point": row["injector_point"], "linac_id": row["linac_id"],
-              "linac_region": row.get("linac_region", "full"),
+              "linac_region": row.get("linac_region", "full"), "holdout": bool(row.get("holdout", False)),
+              **({"jacobian_delta": row["jacobian_delta"]} if "jacobian_delta" in row else {}),
               "knobs": {**row["knobs"], **row["injector"]},
               "linac_knobs": row["knobs"], "injector_settings": row["injector"],
               "fixed_overrides": _CFG.get("fixed_overrides", {}),

@@ -330,10 +330,15 @@ L0B_PARAMS = {
 
 # Kept OUT of SWEEP_SETS (whose membership is pinned by tests and by every existing artifact):
 # injector-only sets, and concatenated linac + injector sets (keys = linac keys then injector keys).
-INJECTOR_SWEEP_SETS = {"inj12": INJECTOR_PARAMS, "l0b2": L0B_PARAMS}
+# xtcav23 with L1EnergyOffset widened to +-3.5 MeV (round-2 physics review M2: the machine's
+# correlated L1 (phase, energy) states; old xtcav23 data (+-2.1 MeV) embed inside it)
+XTCAV23E_PARAMS = {**XTCAV23_PARAMS, "L1EnergyOffset": (-3.5e6, 3.5e6, 0.0)}
+INJECTOR_SWEEP_SETS = {"inj12": INJECTOR_PARAMS, "l0b2": L0B_PARAMS, "xtcav23e": XTCAV23E_PARAMS}
 CONCAT_SWEEP_SETS = {"xtcav23_inj12": ("xtcav23", "inj12"),
                      "xtcav23_l0b2": ("xtcav23", "l0b2"),                       # campaign linac knobs
-                     "xtcav23_l0b2_inj12": ("xtcav23", "l0b2", "inj12")}        # campaign frame
+                     "xtcav23_l0b2_inj12": ("xtcav23", "l0b2", "inj12"),
+                     "xtcav23e_l0b2": ("xtcav23e", "l0b2"),                     # campaign linac knobs
+                     "xtcav23e_l0b2_inj12": ("xtcav23e", "l0b2", "inj12")}      # campaign frame
 
 
 # Readback-error-scale 1-sigma per knob (physical units): the hidden per-episode context jitter of

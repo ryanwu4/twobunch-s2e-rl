@@ -12,8 +12,8 @@
 # Resumable: rerun the same command (finished rows / cached beams are skipped).
 name: injector_full
 output_dir: data/injector_full
-sweep_set: xtcav23_l0b2_inj12
-linac_sweep_set: xtcav23_l0b2
+sweep_set: xtcav23e_l0b2_inj12
+linac_sweep_set: xtcav23e_l0b2
 injector_sweep_set: inj12
 n_workers: 64
 
@@ -29,22 +29,30 @@ design:
     golden: true
     lhs: 250
     box_scale: 1.0
+    test_points: 25          # pre-registered held-out injector points (all their rows: holdout=true)
   linac:
     shared: {baseline: true, lhs: 0}
     per_injector_lhs: 10
     # 40% of the nested draws in the delta controller's operating region (start box of
     # configs/rl/delta_xtcav23_*.yaml; other knobs at golden +- readback sigma), 60% full box
     controller_frac: 0.4
-    controller_box: {L1PhaseSet: [-22.5, -18.95], L2PhaseSet: [-38.0447801603, -33.0447801603]}
+    # covers the real operating points (04-15 L1 -26.0 / -23.8; L2_ref fits -37.9 / -38.4 / -40.4)
+    controller_box: {L1PhaseSet: [-26.5, -18.5], L2PhaseSet: [-41.0, -33.0]}
+    # machine-like correlated L1 (phase, energy) states: dE = -k V sin(phi) dphi, k ~ U(0, 0.9),
+    # dphi ~ U(+-2.5 deg) (k = 0 = ideal BC11 energy feedback, as in the old campaigns)
+    controller_l1_energy: {k_max: 0.9, dphi_max_deg: 2.5, gain_eV: 210.0e6}
   pair_golden_frac: 0.1
+  pair_golden_frac_test: 0.2
   bridge: true
 
 # = configs/datagen/xtcav23_full.yaml physics
 csrTF: true
 transverseWakes: true
 baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
-treaty_points: [BL11356, BL14888, BEGBC20, MFFF, XTCAVF, PENT]   # BL11356/BL14888 = BC11/BC14 BLEN monitors (sigma_z only)
-save_beams_at: [XTCAVF]
+# ENDDL10 = DL10 energy; BL11356 / BL14888 / BL20_4 = BC11 / BC14 / BC20 BLEN monitors (DAQ PVs
+# BLEN_LI11_359, BLEN_LI14_888, BLEN_LI20_3014); IM2452 = LI20 toroid (T_tot observable)
+treaty_points: [ENDDL10, BL11356, BL14888, BEGBC20, IM2452, BL20_4, MFFF, XTCAVF, PENT]
+save_beams_at: [BL11356, BL14888, BL20_4, XTCAVF]   # BLEN signal ~ coherent form factors -> full beams
 fixed_overrides:
   Q19851kG: -63.76368742523523
   Q19871kG: 42.49972197426665
