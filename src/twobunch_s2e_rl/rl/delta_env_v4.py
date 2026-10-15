@@ -23,7 +23,8 @@ Measurement (`measurement` block, on top of shot_noise / M and the streak scale 
   outlier_prob, outlier_scale         a step's features get an extra N(0, (scale*floor)^2)
 Reward: reward_on = "true" scores the goal terms on the privileged true feature (cloud twin) against
 the true goal value (no reward-on-noise, no invalid-reading fallback); action_cost * sum(a^2).
-Goals: offcontext_goal_frac of episodes take their goal from a different hidden context (the
+Goals: goal_valid_retries > 0 redraws goal points whose noise-free screen reading is deployed-invalid
+(screen mode). offcontext_goal_frac of episodes take their goal from a different hidden context (the
 deployment case of a goal recorded under another machine state; may be unreachable).
 Obs: v3 obs (cumulative delta column = what the operator side can see: readback dL1 for blen_dlog,
 commanded delta otherwise) + adapter gain estimate (log ratio to prior) + `history` k-1 previous
@@ -43,6 +44,7 @@ class DeltaControlEnvV4(DeltaControlEnv):
                  step_noise_floor: dict | None = None, outlier_prob: float = 0.0,
                  outlier_scale: float = 5.0, reward_on: str = "true", action_cost: float = 0.0,
                  offcontext_goal_frac: float = 0.0, history: int = 1, goal_radius: dict | None = None,
+                 goal_valid_retries: int = 0,
                  **kw):
         if reward_on not in ("true", "measured"):
             raise ValueError(f"reward_on must be 'true' or 'measured', got {reward_on!r}")
@@ -79,6 +81,7 @@ class DeltaControlEnvV4(DeltaControlEnv):
         # the start box (v1-v3 behaviour).
         self._goal_radius = (torch.tensor([float(goal_radius[c]) for c in controls], **f)
                              if goal_radius else None)
+        self._goal_retries = int(goal_valid_retries)
         self._k = max(int(history), 1)
         super().__init__(num_envs, **kw)
 
@@ -180,10 +183,20 @@ class DeltaControlEnvV4(DeltaControlEnv):
         """Redraw the reset envs' goal control points within goal_radius of the start, then the goals
         (noise-free measured value + the true value there, as the base reset does)."""
         B, n = self.num_envs, len(self.controls)
-        u = 2 * self._rand(B, n) - 1
-        gc = torch.minimum(torch.maximum(self._start + u * self._goal_radius, self._start_lo), self._start_hi)
-        self._goal_ctrl = torch.where(m.unsqueeze(-1), gc, self._goal_ctrl)
+        draw = lambda: torch.minimum(torch.maximum(self._start + (2 * self._rand(B, n) - 1) * self._goal_radius,
+                                                   self._start_lo), self._start_hi)
+        self._goal_ctrl = torch.where(m.unsqueeze(-1), draw(), self._goal_ctrl)
         g_obs = self._plant(self._goal_ctrl, noise=False)
+        # goals the deployed screen analysis can read (an operator picks a measurable goal): redraw the
+        # reset envs whose noise-free goal reading is deployed-invalid, up to goal_valid_retries times
+        for _ in range(self._goal_retries):
+            if "screen_valid_deployed" not in g_obs:
+                break
+            bad = m & (g_obs["screen_valid_deployed"] < 0.5)
+            if not bad.any():
+                break
+            self._goal_ctrl = torch.where(bad.unsqueeze(-1), draw(), self._goal_ctrl)
+            g_obs = self._plant(self._goal_ctrl, noise=False)
         g_view = DeltaControlEnv._reward_view(self, g_obs)
         for key, g, _ in self._goal_terms:
             self._goals[g] = torch.where(m, g_view[key], self._goals[g])

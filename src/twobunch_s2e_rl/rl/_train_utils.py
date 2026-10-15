@@ -260,7 +260,9 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
                 tdc_voltage_range=sc.get("tdc_voltage_range"), roi=sc.get("roi"),
                 arrival_jitter_s=float(sc.get("arrival_jitter_s", 0.0)),
                 orientation=sc.get("orientation", "truth"),
-                deployed_floor_m=float(sc.get("deployed_floor_m", 60e-6)), seed=seed)
+                deployed_floor_m=float(sc.get("deployed_floor_m", 60e-6)), seed=seed,
+                edge_frac_max=(float(sc["edge_frac_max"]) if sc.get("edge_frac_max") is not None else None),
+                edge_band_m=float(sc.get("edge_band_m", 0.3e-3)))
         v4 = de.get("v4")
         cls = DeltaControlEnv
         extra = {}
@@ -273,7 +275,8 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
                          outlier_scale=float(ms.get("outlier_scale", 5.0)),
                          reward_on=v4.get("reward_on", "true"), action_cost=float(v4.get("action_cost", 0.0)),
                          offcontext_goal_frac=float(v4.get("offcontext_goal_frac", 0.0)),
-                         history=int(v4.get("history", 1)), goal_radius=v4.get("goal_radius"))
+                         history=int(v4.get("history", 1)), goal_radius=v4.get("goal_radius"),
+                         goal_valid_retries=int(v4.get("goal_valid_retries", 0)))
         return cls(
             num_envs, **extra, device=device, seed=seed, episode_length=episode_length, no_grad=no_grad,
             observe_fn=observe_fn, fallback_keys=tuple(ms.get("fallback_keys", ())),

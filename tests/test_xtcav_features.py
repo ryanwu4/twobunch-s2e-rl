@@ -113,3 +113,16 @@ def test_v2_features_differentiable():
     (f["bunch_spacing"] + f["drive_sigma_z"] + f["drive_charge_fraction"]).sum().backward()
     assert all(torch.isfinite(b[k].grad).all() and b[k].grad.abs().sum() > 0
                for k in ("xp_d", "xm_d", "xp_w", "xm_w", "y_d", "y_w"))
+
+
+def test_roi_edge_check_flags_clipped_witness():
+    b = _bunches()                                   # witness ~1.46 mm from the charge centroid on screen
+    kw = dict(threshold="valley", orientation="charge", edge_frac_max=0.01)
+    wide = _feat(b, roi={"x": 5e-3, "y": 5e-3}, **kw)
+    assert float(wide["screen_valid_deployed"]) == 1.0 and float(wide["screen_valid"]) == 1.0
+    assert float(wide["screen_clipped"]) < 1e-3 and float(wide["screen_edge_frac"]) < 0.01
+    tight = _feat(b, roi={"x": 1.3e-3, "y": 5e-3}, **kw)        # window edge cuts through the witness
+    assert float(tight["screen_edge_frac"]) > 0.01 and float(tight["screen_clipped"]) > 0.1
+    assert float(tight["screen_valid_deployed"]) == 0.0 and float(tight["screen_valid"]) == 0.0
+    off = _feat(b, roi={"x": 1.5e-3, "y": 5e-3}, threshold="valley", orientation="charge")   # default: off
+    assert float(off["screen_valid_deployed"]) == 1.0

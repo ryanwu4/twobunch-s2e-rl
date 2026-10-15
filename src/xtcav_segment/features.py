@@ -106,7 +106,8 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
                     ref_energy_eV: float, resolution_m: float = 0.0,
                     split: str = "energy", threshold: str = "midpoint",
                     row_correct: bool = False, orientation: str = "truth", roi=None,
-                    deployed_floor_m: float = 60e-6) -> dict[str, torch.Tensor]:
+                    deployed_floor_m: float = 60e-6, edge_band_m: float = 0.3e-3,
+                    edge_frac_max: float | None = None) -> dict[str, torch.Tensor]:
     """Two-image (+V / -V) XTCAV measurement, as done on the machine.
 
     xp_*, xm_*: (B, N) DTOTR streak-axis positions with the TCAV at +V and -V; y_*: (B, N) energy
@@ -123,6 +124,10 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
                   (detached, as the auto-crop): particles outside carry no charge in that image.
       screen_valid_deployed: what the online analysis can check -- two peaks found and the measured
                   |spacing| above `deployed_floor_m` (round 2: real invalid region ~50-80 um).
+      edge_frac_max (with roi; None = off): the crop-edge check -- also deployed-invalid when more than
+                  this fraction of an image's in-window charge lies within `edge_band_m` of the window's
+                  x edge (a band cut by the auto-crop). With roi, the TRUTH validity also requires the
+                  charge clipped out of either image to stay below MISASSIGN_MAX.
     Returns (B,) features + screen_valid / screen_valid_deployed / screen_misassign."""
     xp = torch.cat([xp_d, xp_w], -1)
     xm = torch.cat([xm_d, xm_w], -1)
@@ -137,6 +142,10 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
             cy = _wmean(y, q).unsqueeze(-1)
             inside = lambda x: ((x - _wmean(x, q).unsqueeze(-1)).abs() < hx) & ((y - cy).abs() < hy)
             mp, mm = inside(xp).to(q.dtype), inside(xm).to(q.dtype)
+            edge = lambda x, msk: (q * msk * ((x - _wmean(x, q).unsqueeze(-1)).abs() > hx - edge_band_m)).sum(-1) \
+                / (q * msk).sum(-1).clamp_min(1e-30)
+            edge_frac = torch.maximum(edge(xp, mp), edge(xm, mm))
+            clipped = 1 - torch.minimum((q * mp).sum(-1), (q * mm).sum(-1)) / q.sum(-1).clamp_min(1e-30)
         qp, qm = q * mp, q * mm
     if orientation not in ("truth", "charge"):
         raise ValueError(f"orientation must be 'truth' or 'charge', got {orientation!r}")
@@ -184,11 +193,17 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
 
     with torch.no_grad():
         misassign = 0.5 * ((q * (wp - truth_w).abs()).sum(-1) + (q * (wm - truth_w).abs()).sum(-1)) / q.sum(-1)
-        valid = ((spacing.abs() > SEPARATION_FLOOR_M) & (misassign < MISASSIGN_MAX) & peaks_ok).float()
-        valid_dep = ((spacing.abs() > deployed_floor_m) & peaks_ok).float()
-    return {"bunch_spacing": spacing, "drive_sigma_z": sig_z, "energy_difference": de,
-            "drive_energy_spread": espread, "drive_charge_fraction": frac_d,
-            "screen_valid": valid, "screen_valid_deployed": valid_dep, "screen_misassign": misassign}
+        valid = (spacing.abs() > SEPARATION_FLOOR_M) & (misassign < MISASSIGN_MAX) & peaks_ok
+        valid_dep = (spacing.abs() > deployed_floor_m) & peaks_ok
+        if roi is not None and edge_frac_max is not None:
+            valid &= clipped < MISASSIGN_MAX
+            valid_dep &= edge_frac < edge_frac_max
+    out = {"bunch_spacing": spacing, "drive_sigma_z": sig_z, "energy_difference": de,
+           "drive_energy_spread": espread, "drive_charge_fraction": frac_d,
+           "screen_valid": valid.float(), "screen_valid_deployed": valid_dep.float(), "screen_misassign": misassign}
+    if roi is not None:
+        out["screen_edge_frac"], out["screen_clipped"] = edge_frac, clipped
+    return out
 
 
 def cloud_features(obs: dict[str, torch.Tensor], q_d, q_w) -> dict[str, torch.Tensor]:
