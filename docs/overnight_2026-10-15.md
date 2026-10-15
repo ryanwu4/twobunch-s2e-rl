@@ -9,7 +9,7 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 
 | Item | State |
 |---|---|
-| Injector campaign `injector_full` (3027 rows, 5e4 / grid 64, commit d20918d, worktree `.worktrees/injector_full_d20918df54`) | launched 18:50 |
+| Injector campaign `injector_full` (3027 rows, 5e4 / grid 64, commit d20918d, worktree `.worktrees/injector_full_d20918df54`) | **done 07:54: 3027 ok, 0 failed, 13.05 h** |
 | env v4 (`rl/delta_env_v4.py`) + S1 cloud trainings (blen_dlog vs adapter, seed 0, GPUs 0/1) | started ~19:28 |
 | Screen v4 (optics/voltage randomization, ROI, arrival jitter, charge orientation, deployed validity) + S2 config | built, smoke-tested |
 | Post-campaign chain (`scripts/after_injector_campaign.py`): evalset launch, preprocess, widen, 3 fine-tunes + scratch | waiting on the campaign |
@@ -51,6 +51,14 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
    per physics round 2 M3). Action cost 0.02·a², 20% off-context goals, 8-step history, reward on truth.
 
 ## Problems encountered
+
+8. **Post-campaign chain stopped at preprocess** (07:57): the merge guard refused `injector_full` (Bmad
+   num_macro_particles 5e4) vs the old xtcav23 campaigns (1e5). The 5e4 choice came from the convergence pass
+   rules, which measured the 5e4-vs-1e5 difference at ≤ 0.11 µm spacing / 0.06% drive σz, so merging was the plan.
+   Added an explicit opt-in `--allow-fixed-mismatch num_macro_particles` to preprocess (recorded in the table attrs
+   as `allowed_fixed_mismatch`; default unchanged) and resumed the chain at 08:00 (log `logs/injector_full/
+   after_resume.log`; the original `after.log` is kept as is). The evalset campaign had already launched at 07:57
+   (456 rows, ETA ~10:15).
 
 7. **S2 screen readings at large spacing are clipped by the auto-crop and still called valid** (23:00). With
    corrected eval, S2 v4r reaches 11.6 µm true median spacing error (p90 54 µm). Even noise-free, the measured
