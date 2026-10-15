@@ -164,3 +164,9 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
   (`results/online_replay_v4_2026-10-15/REPORT.md`): it flags only E300_15673 steps 1–6 (277–304 µm; the real
   images touch the auto-crop edge there too) and nothing else. The sim's and the real data's large-spacing
   clipping agree.
+- 23:40 S1 robustness with the corrected eval (`results/rl_robustness_2026-10-15/`; final policies, seed 0, incl. 20%
+  off-context goals). True median spacing error / within 10 µm: nominal blen 5.0 µm / 80%, adapter 5.0 / 80%;
+  noise ×2 6.5 / 70%; drift ×2 6.0 / 72%; gains widened (L1 1–5, L2 0.25–1.4) 5.4 / 78% (adapter 4.9 / 79%);
+  scale error ±30% 5.1 / 80%; 64-step episodes 5.1 / 80%. The 8192-particle CRN check agrees with the per-step
+  truth. blen_dlog ≈ adapter everywhere. Ablations (120 iters, corrected eval): measurement off 4.4 µm,
+  drift/measurement/action cost all off 3.7 µm; v3 was 2.6 µm with an easier task (no caps, narrower gains).
