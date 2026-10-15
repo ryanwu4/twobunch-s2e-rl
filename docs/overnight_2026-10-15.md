@@ -43,6 +43,16 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 
 ## Problems encountered
 
+5. **env v4 policies are far worse than v3** (21:00). With reachable goals the v4 controllers stall at 18–22 µm
+   true spacing error (31–37% within 10 µm; ×2 episode length does not help), against 2.6 µm / 97% for the v3 cloud
+   controller (`delta_xtcav23_cloud_s0`). blen_dlog and adapter fail alike, so it is not L1 gain identification.
+   The S2 screen v4r is similar: 13 µm true median, p90 ~100 µm. Diagnosis: the policies are bang-bang (50% of
+   actions saturated, mean |a| 1.04) and leave ~0.3° median / 1.3° p90 per-control residuals, about the
+   scale of the L2 hidden drift (0.05·√32 ≈ 0.28°). The learning curve plateaus by ~50k steps. Ablation
+   trainings (120 iters each, `configs/rl/ablation_2026-10-15/`, logs `logs/2026-10-15/ablation/`): base,
+   nodrift, nonoise (measurement model off), noactcost, all3off. More seeds and S2 variants are held until
+   this is understood.
+
 4. **First S1 runs: goals mostly unreachable** (my env-design error). v4 added actuator caps (L1 |dln| ≤ 0.75,
    L2 ≤ 3.5°) and low L2 gains (≥ 0.35) but kept goals anywhere in a 7°-wide start box: only 37–43% were reachable.
    Final TRUE spacing error 25 µm median / 26% within 10 µm overall, but on reachable goals 7.4 µm (blen_dlog) /
