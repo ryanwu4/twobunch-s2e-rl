@@ -13,6 +13,9 @@ S2E analog of `photoinjector-rl-clean` (which targets the PR10241 photoinjector)
 | `analysis` — consolidation + summary plots | **working** |
 | `surrogate` — conditional NF | **working** — RealNVP + per-bunch whitening + feasibility heads; viability AUC 0.999, inter-bunch R²>0.97 (witness emittance R²~0.5–0.7 is the v2 target) |
 | `rl` — SHAC/BPTT on the surrogate | **working** — `TwoBunchFlowEnv` + composite reward (200 µm spacing target, floor-clamped emittance, >90% survival hinge); vendored diffrl SHAC/BPTT; DR hooks (random starts + off-by-default RF drift); particle-count study sets n=2048 |
+| `rl` delta controller (XTCAV endpoint) | **working** — `DeltaControlEnv` (v1–v3) and `DeltaControlEnvV4` (`diff_env.v4`: machine actuators — L1 via BC11 BLEN setpoint `blen_dlog` or the structured `adapter`, L2 via relative MKB — gain/readback/drift models, measurement noise, reachable goals). Cloud (S1, ground truth): ~5 µm median spacing error, ~80% within 10 µm (4 seeds). Screen (S2 v5: ±V DTOTR emulation, valley energy gate, crop-edge check): ~8–9 µm / ~55%, limited by energy-gate misassignment. See `docs/overnight_2026-10-15.md` |
+| `online` — DTOTR2 image features | **working** — `online/features.py` (per-step shared +V cut, median ±V offsets, crop-edge check); replayed on real E300 DAQ data (`scripts/xtcav_online_replay.py`) |
+| `datagen` injector campaign | **running** (2026-10-15) — `injector_full`, 3027 rows at 5e4 particles / grid 64; chain `scripts/after_injector_campaign.py` → injector-aware flow |
 
 ## Two environments
 
