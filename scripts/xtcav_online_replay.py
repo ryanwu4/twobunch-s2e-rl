@@ -69,7 +69,7 @@ def main():
                 n_fail += 1
                 continue
             st["plus" if i in plus else "minus"].append(b)
-            if qa is not None and img.data.shape == (qa["plus"] + qa["minus"] or [img.data])[0].shape:
+            if qa is not None and img.data.shape == ([q[0] for q in qa["plus"] + qa["minus"]] or [img.data])[0].shape:
                 qa["plus" if i in plus else "minus"].append((img.data.copy(), b["cut_row"]))
         if not st["plus"] or not st["minus"]:
             continue
