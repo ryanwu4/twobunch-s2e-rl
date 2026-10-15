@@ -84,7 +84,10 @@ B5D36 field convention, readback-offset semantics, v1 checkpoint, xtcav-gpsr-tun
     variances keeps the TCAV-off spot as resolution (≈ 30 µm z-equivalent at 22 MV — "blur
     included" per your answer; I removed my extra 17 µm term to avoid double counting). A single
     +V image gave spacing with the wrong sign (transverse offsets read as time).
-12. **Bunch split = z-lobe, not energy gate, for screen training.** In sim the bunches overlap in
+12. **[SUPERSEDED 2026-10-14: decision D2 = valley energy gate; the ~13% "misassignment everywhere" came from the
+    centroid-midpoint threshold. With the valley rule the energy gate beats z-lobe over the start box (53% vs 31% of
+    cells < 10% misassigned; `results/s2_screen_diag_2026-10-15/REPORT.md`).]**
+    **Bunch split = z-lobe, not energy gate, for screen training.** In sim the bunches overlap in
     energy at DTOTR: the energy gate misassigns ~13 % of charge everywhere in the start box (0 %
     valid). The z-lobe split (gate on each image's streak axis) gives 67 % valid over the start box,
     spacing error 1.0 % (median, valid), charge fraction 4 %, drive σ_z +12 % (resolution).
