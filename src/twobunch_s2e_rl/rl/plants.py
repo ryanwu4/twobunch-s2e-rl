@@ -24,6 +24,29 @@ from ..surrogate.properties import inter_bunch, per_bunch
 NC_TO_C = 1e-9
 
 
+def injected_charges_nC(norm: dict, knob_keys, knob_low, knob_high):
+    """knobs_norm (B, n) -> (q_drive, q_witness) injected charges [nC], (B,) each.
+
+    Tables preprocessed with transmission='per_sample' label T = charge / that row's injected
+    charge, which varies with the injector knobs: there q_in = Q f 1.001 (drive), Q (1 - f) 0.999
+    (witness) -- the generation-time weight convention of sim/injector.py, exact to ~1e-4 against
+    the recorded injected charges. Flows without injector knobs (or 'max' tables): the constant
+    full charges of the norm."""
+    keys = list(knob_keys)
+    if norm.get("transmission") == "per_sample" and {"drive_fraction", "distgen:total_charge:value"} <= set(keys):
+        jf, jq = keys.index("drive_fraction"), keys.index("distgen:total_charge:value")
+        lo, hi = torch.as_tensor(knob_low), torch.as_tensor(knob_high)
+
+        def q(knobs_norm):
+            phys = lambda j: lo[j].to(knobs_norm) + knobs_norm[:, j] * (hi[j] - lo[j]).to(knobs_norm)
+            Q, f = phys(jq) / 1000.0, phys(jf)
+            return Q * f * 1.001, Q * (1 - f) * 0.999
+        return q
+    qd, qw = float(norm["drive_full_charge_nC"]), float(norm["witness_full_charge_nC"])
+    return lambda knobs_norm: (torch.full(knobs_norm.shape[:1], qd, device=knobs_norm.device),
+                               torch.full(knobs_norm.shape[:1], qw, device=knobs_norm.device))
+
+
 def _flow_observables(flow, knobs_norm, n):
     """TwoBunchFlow.observables, but also returning the sampled clouds."""
     drive = flow.sample_bunch(knobs_norm, 0, n)
@@ -64,7 +87,7 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
     quads = {name: element_by_name(segment, name) for name in (quad_jitter or {})}
     k1_golden = {name: q.k1.detach().clone() for name, q in quads.items()}
     norm = json.loads(open(norm_json).read())
-    q_full_d, q_full_w = norm["drive_full_charge_nC"], norm["witness_full_charge_nC"]
+    q_inj = injected_charges_nC(norm, flow.hparams.knob_keys or [], flow.knob_low.cpu(), flow.knob_high.cpu())
 
     def track(cloud, charge_per_particle):
         """(+V streak x, -V streak x, energy-axis y) at DTOTR, each (B, N). cloud (B, N, 6)."""
@@ -82,7 +105,8 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
 
     def observe(knobs_norm):
         obs, drive, witness = _flow_observables(flow, knobs_norm, n_particles)
-        q_d, q_w = obs["T_drive"] * q_full_d, obs["T_witness"] * q_full_w
+        q_in_d, q_in_w = q_inj(knobs_norm)
+        q_d, q_w = obs["T_drive"] * q_in_d, obs["T_witness"] * q_in_w
         nd, nw = drive.shape[-2], witness.shape[-2]
         qpp = torch.cat([(q_d * NC_TO_C / nd).unsqueeze(-1).expand(-1, nd),
                          (q_w * NC_TO_C / nw).unsqueeze(-1).expand(-1, nw)], -1)

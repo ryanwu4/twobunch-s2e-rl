@@ -225,3 +225,15 @@ def test_context_dist_uniform_and_injector_keys_required():
                         action_step={"L1PhaseSet": 0.3, "L2PhaseSet": 0.3},
                         start_box={"L1PhaseSet": (BASE["L1PhaseSet"] - 2, BASE["L1PhaseSet"] + 2),
                                    "L2PhaseSet": (-37.5, -34.5)})
+
+
+def test_injected_charges_follow_drive_fraction_under_per_sample():
+    from twobunch_s2e_rl.rl.plants import injected_charges_nC
+    keys = ["L1PhaseSet", "drive_fraction", "distgen:total_charge:value"]
+    lo, hi = torch.tensor([-27.5, 0.66, 1585.6]), torch.tensor([-18.5, 0.80, 1614.4])
+    q = injected_charges_nC({"transmission": "per_sample"}, keys, lo, hi)
+    qd, qw = q(torch.tensor([[0.5, 0.0, 0.5], [0.5, 1.0, 0.5]]))
+    torch.testing.assert_close(qd, torch.tensor([1.6 * 0.66 * 1.001, 1.6 * 0.80 * 1.001]), rtol=1e-5, atol=0)
+    torch.testing.assert_close(qw, torch.tensor([1.6 * 0.34 * 0.999, 1.6 * 0.20 * 0.999]), rtol=1e-5, atol=0)
+    const = injected_charges_nC({"drive_full_charge_nC": 1.2, "witness_full_charge_nC": 0.4}, keys[:1], lo[:1], hi[:1])
+    torch.testing.assert_close(const(torch.zeros(3, 1))[0], torch.full((3,), 1.2))
