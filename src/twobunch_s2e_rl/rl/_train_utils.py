@@ -257,8 +257,21 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
                 resolution_m=float(sc.get("extra_resolution_m", 0.0)),
                 threshold=sc.get("threshold", "midpoint"), row_correct=bool(sc.get("row_correct", False)),
                 quad_jitter=sc.get("quad_jitter"))
-        return DeltaControlEnv(
-            num_envs, device=device, seed=seed, episode_length=episode_length, no_grad=no_grad,
+        v4 = de.get("v4")
+        cls = DeltaControlEnv
+        extra = {}
+        if v4:
+            from .delta_env_v4 import DeltaControlEnvV4
+            cls = DeltaControlEnvV4
+            extra = dict(actuators=v4.get("actuators", {}), drift_per_step=v4.get("drift_per_step"),
+                         step_noise_floor=ms.get("step_noise_floor"),
+                         outlier_prob=float(ms.get("outlier_prob", 0.0)),
+                         outlier_scale=float(ms.get("outlier_scale", 5.0)),
+                         reward_on=v4.get("reward_on", "true"), action_cost=float(v4.get("action_cost", 0.0)),
+                         offcontext_goal_frac=float(v4.get("offcontext_goal_frac", 0.0)),
+                         history=int(v4.get("history", 1)))
+        return cls(
+            num_envs, **extra, device=device, seed=seed, episode_length=episode_length, no_grad=no_grad,
             observe_fn=observe_fn, fallback_keys=tuple(ms.get("fallback_keys", ())),
             feature_offset_sigma=ms.get("feature_offset_sigma"),
             knob_space=frame, baseline=baseline, controls=de["controls"], reward_spec=spec,
