@@ -191,3 +191,5 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 - 02:45 S2 v5 adapter s0: 8.8 µm / 55%, equal to blen_dlog in screen mode too. Launched two S2 ablations: 600 iters
   (GPU0; the 300-iter curve is still drifting down) and spacing-only goal (GPU1; σz goal removed, since the blurred
   screen σz reaches only ~35% within 10%). Both finish well before the post-campaign fine-tunes need the GPUs.
+- 03:40 S2 spacing-only goal: 9.1 µm / 54%, the same as with the σz goal. (The first launch was refused by the norms-cache
+  guard because the objective list changed; it now has its own norms file. The failed logdir is renamed `.failed_norms`.)
