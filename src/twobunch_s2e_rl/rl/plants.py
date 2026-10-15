@@ -74,7 +74,7 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
                        roi: dict | None = None, arrival_jitter_s: float = 0.0,
                        orientation: str = "truth", deployed_floor_m: float = 60e-6, seed: int = 0,
                        edge_frac_max: float | None = None, edge_band_m: float = 0.3e-3,
-                       cut_sens_px: float | None = None):
+                       cut_sens_px: float | None = None, pm_energy_axes: bool = False):
     from xtcav_segment.convert import cloud_to_beam
     from xtcav_segment.features import FEATURE_KEYS, calibrate_streak, cloud_features, screen_features
     from xtcav_segment.segment import (back_drift, build_segment_from_spec, element_by_name,
@@ -103,11 +103,12 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
     q_inj = injected_charges_nC(norm, flow.hparams.knob_keys or [], flow.knob_low.cpu(), flow.knob_high.cpu())
 
     def track(cloud, charge_per_particle):
-        """(+V streak x, -V streak x, energy-axis y) at DTOTR, each (B, N). cloud (B, N, 6)."""
+        """(+V streak x, -V streak x, +V energy axis y, -V energy axis y) at DTOTR, each (B, N). cloud
+        (B, N, 6). The two energy axes differ by the TCAV's Panofsky-Wenzel energy kick."""
         beam = cloud_to_beam(cloud.double(), e_ref, charge_per_particle.double(),
                              device=torch.device(device))
         out = segment.track(back_drift(beam, l_tdc))     # exit-plane V=0 clouds -> TDC entrance
-        return out.x[0].float(), out.x[1].float(), out.y[0].float()
+        return out.x[0].float(), out.x[1].float(), out.y[0].float(), out.y[1].float()
 
     # streak calibration at the box centre (the sim analogue of the phase-scan calibration); one per
     # optics choice at the nominal voltage (the streak scales with V); the machine calibrates the
@@ -119,7 +120,7 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
         for c in choices:
             for name, q in quads.items():
                 q.k1 = k1_golden[name] * float(c.get(name, 1.0))
-            xp, xm, _ = track(d0, torch.full((1, 4096), 1e-13, device=device))
+            xp, xm, _, _ = track(d0, torch.full((1, 4096), 1e-13, device=device))
             streaks.append(calibrate_streak(0.5 * (xp - xm).double(), d0[..., 2].double()))
         for name, q in quads.items():
             q.k1 = k1_golden[name]
@@ -133,7 +134,7 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
         nd, nw = drive.shape[-2], witness.shape[-2]
         qpp = torch.cat([(q_d * NC_TO_C / nd).unsqueeze(-1).expand(-1, nd),
                          (q_w * NC_TO_C / nw).unsqueeze(-1).expand(-1, nw)], -1)
-        xp, xm, y = track(torch.cat([drive, witness], -2), qpp)     # both bunches in one beam
+        xp, xm, y, ym = track(torch.cat([drive, witness], -2), qpp)     # both bunches in one beam
         S = state.get("streak", streak)
         if arrival_jitter_s > 0:          # common-mode TCAV-vs-beam timing: moves the whole streak
             B = xp.shape[0]
@@ -147,7 +148,8 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
                               resolution_m=resolution_m, split=split, threshold=threshold,
                               row_correct=row_correct, orientation=orientation, roi=roi,
                               deployed_floor_m=deployed_floor_m, edge_frac_max=edge_frac_max,
-                              edge_band_m=edge_band_m, cut_sens_px=cut_sens_px)
+                              edge_band_m=edge_band_m, cut_sens_px=cut_sens_px,
+                              **(dict(ym_d=ym[:, :nd], ym_w=ym[:, nd:]) if pm_energy_axes else {}))
         cld = cloud_features(obs, q_d, q_w)
         for k in FEATURE_KEYS:
             obs[f"{k}_cloud"] = cld[k]

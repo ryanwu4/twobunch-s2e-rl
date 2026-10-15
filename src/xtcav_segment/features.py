@@ -108,7 +108,7 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
                     row_correct: bool = False, orientation: str = "truth", roi=None,
                     deployed_floor_m: float = 60e-6, edge_band_m: float = 0.3e-3,
                     edge_frac_max: float | None = None,
-                    cut_sens_px: float | None = None) -> dict[str, torch.Tensor]:
+                    cut_sens_px: float | None = None, ym_d=None, ym_w=None) -> dict[str, torch.Tensor]:
     """Two-image (+V / -V) XTCAV measurement, as done on the machine.
 
     xp_*, xm_*: (B, N) DTOTR streak-axis positions with the TCAV at +V and -V; y_*: (B, N) energy
@@ -131,10 +131,19 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
                   charge clipped out of either image to stay below MISASSIGN_MAX.
       cut_sens_px (energy split + valley; None = off): diagnostic `screen_cut_sens` = half the spacing
                   change when the cut moves by +-cut_sens_px pixels.
+      ym_d, ym_w (None = off): the -V image's own energy axis. The TCAV's Panofsky-Wenzel energy kick
+                  (dE ~ +-eVk x in the cavity) shifts / stretches / warps the energy axis with opposite signs
+                  for +V and -V (results/bunch_split_changes_2026-10-15/pm_asymmetry). With them, the -V image
+                  uses its own y: the energy cut found on the +V image is applied to -V relative to each
+                  image's charge centroid (as the deployed auto-crop aligns the frames), the ROI / row
+                  correction use each image's own rows, and the energy quantities average the two images.
+                  None = v1-v5 behaviour (both images on the +V axis).
     Returns (B,) features + screen_valid / screen_valid_deployed / screen_misassign."""
     xp = torch.cat([xp_d, xp_w], -1)
     xm = torch.cat([xm_d, xm_w], -1)
     y = torch.cat([y_d, y_w], -1)
+    pm_axes = ym_d is not None
+    ym = torch.cat([ym_d, ym_w], -1) if pm_axes else y
     nd, nw = xp_d.shape[-1], xp_w.shape[-1]
     q = torch.cat([(q_d / nd).unsqueeze(-1).expand(-1, nd), (q_w / nw).unsqueeze(-1).expand(-1, nw)], -1)
     truth_w = torch.cat([torch.zeros_like(xp_d), torch.ones_like(xp_w)], -1)
@@ -142,9 +151,9 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
     if roi is not None:
         with torch.no_grad():
             hx, hy = float(roi["x"]), float(roi["y"])
-            cy = _wmean(y, q).unsqueeze(-1)
-            inside = lambda x: ((x - _wmean(x, q).unsqueeze(-1)).abs() < hx) & ((y - cy).abs() < hy)
-            mp, mm = inside(xp).to(q.dtype), inside(xm).to(q.dtype)
+            inside = lambda x, yy: (((x - _wmean(x, q).unsqueeze(-1)).abs() < hx)
+                                    & ((yy - _wmean(yy, q).unsqueeze(-1)).abs() < hy))
+            mp, mm = inside(xp, y).to(q.dtype), inside(xm, ym).to(q.dtype)
             edge = lambda x, msk: (q * msk * ((x - _wmean(x, q).unsqueeze(-1)).abs() > hx - edge_band_m)).sum(-1) \
                 / (q * msk).sum(-1).clamp_min(1e-30)
             edge_frac = torch.maximum(edge(xp, mp), edge(xm, mm))
@@ -153,8 +162,12 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
     if orientation not in ("truth", "charge"):
         raise ValueError(f"orientation must be 'truth' or 'charge', got {orientation!r}")
     if row_correct:
-        r = _row_mean(0.5 * (xp + xm), y, q)
-        xp, xm = xp - r, xm - r
+        if pm_axes:     # each image corrected by the TCAV-off-like x of its own rows
+            x0 = 0.5 * (xp + xm)
+            xp, xm = xp - _row_mean(x0, y, q), xm - _row_mean(x0, ym, q)
+        else:
+            r = _row_mean(0.5 * (xp + xm), y, q)
+            xp, xm = xp - r, xm - r
     if threshold not in ("midpoint", "valley"):
         raise ValueError(f"threshold must be 'midpoint' or 'valley', got {threshold!r}")
 
@@ -182,7 +195,19 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
                     sign = torch.where(above < 0.5 * qv.sum(-1), 1.0, -1.0).to(v.dtype)
             gates.append(torch.sigmoid(sign.unsqueeze(-1) * (v - thr.unsqueeze(-1)) / PIXEL_M))
             last_cut = (v, thr, sign)
-    wp, wm = (gates[0], gates[0]) if split == "energy" else (gates[0], gates[1])
+    if split == "energy" and pm_axes:
+        # the +V cut on the -V image's own axis, at the same offset from each image's charge centroid
+        with torch.no_grad():
+            if threshold == "midpoint":
+                thr_m = None
+            else:
+                shift_m = (_wmean(ym, qm) - _wmean(y, qp)).detach()
+                thr_m = thr + shift_m
+        if thr_m is None:
+            gates.append(_gate(ym, ym[:, :nd], ym[:, nd:], PIXEL_M))
+        else:
+            gates.append(torch.sigmoid(sign.unsqueeze(-1) * (ym - thr_m.unsqueeze(-1)) / PIXEL_M))
+    wp, wm = (gates[0], gates[0]) if split == "energy" and not pm_axes else (gates[0], gates[1])
     wdp, wwp, wdm, wwm = qp * (1 - wp), qp * wp, qm * (1 - wm), qm * wm
     wd, ww = 0.5 * (wdp + wdm), 0.5 * (wwp + wwm)          # for the energy-axis quantities
 
@@ -191,8 +216,12 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
     spacing = zc(wdp, wdm) - zc(wwp, wwm)
     var_d = 0.5 * (_wvar(xp, wdp) + _wvar(xm, wdm)) / streak ** 2
     sig_z = (var_d + resolution_m ** 2).clamp_min(1e-30).sqrt()
-    de = (_wmean(y, wd) - _wmean(y, ww)) / eta_y * ref_energy_eV
-    espread = _wvar(y, wd).clamp_min(1e-30).sqrt() / abs(eta_y) * ref_energy_eV
+    if pm_axes:
+        de = 0.5 * ((_wmean(y, wdp) - _wmean(y, wwp)) + (_wmean(ym, wdm) - _wmean(ym, wwm))) / eta_y * ref_energy_eV
+        espread = (0.5 * (_wvar(y, wdp) + _wvar(ym, wdm))).clamp_min(1e-30).sqrt() / abs(eta_y) * ref_energy_eV
+    else:
+        de = (_wmean(y, wd) - _wmean(y, ww)) / eta_y * ref_energy_eV
+        espread = _wvar(y, wd).clamp_min(1e-30).sqrt() / abs(eta_y) * ref_energy_eV
     frac_d = wd.sum(-1) / (0.5 * (qp + qm)).sum(-1).clamp_min(1e-30)
 
     cut_sens = None
@@ -204,7 +233,9 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
             sp = []
             for d in (cut_sens_px, -cut_sens_px):
                 g = torch.sigmoid(sign.unsqueeze(-1) * (v - (thr + d * PIXEL_M).unsqueeze(-1)) / PIXEL_M)
-                sp.append(zc(qp * (1 - g), qm * (1 - g)) - zc(qp * g, qm * g))
+                gm = g if not pm_axes else torch.sigmoid(
+                    sign.unsqueeze(-1) * (ym - (thr_m + d * PIXEL_M).unsqueeze(-1)) / PIXEL_M)
+                sp.append(zc(qp * (1 - g), qm * (1 - gm)) - zc(qp * g, qm * gm))
             cut_sens = 0.5 * (sp[0] - sp[1]).abs()
     with torch.no_grad():
         misassign = 0.5 * ((q * (wp - truth_w).abs()).sum(-1) + (q * (wm - truth_w).abs()).sum(-1)) / q.sum(-1)

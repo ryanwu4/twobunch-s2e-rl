@@ -135,3 +135,29 @@ def test_cut_sensitivity_flags_overlapping_bands():
     assert float(sep["screen_cut_sens"]) < 0.5e-6
     assert float(ovl["screen_cut_sens"]) > 5e-6 and float(ovl["screen_misassign"]) > 0.1
     assert "screen_cut_sens" not in _feat(_bunches(), threshold="valley")         # default: off
+
+
+@pytest.mark.parametrize("roi", [None, {"x": 5e-3, "y": 5e-3}])
+def test_pm_energy_axes(roi):
+    b = _bunches()
+    kw = dict(threshold="valley", orientation="charge", row_correct=True, roi=roi)
+    off = _feat(b, **kw)
+    same = _feat(b, ym_d=b["y_d"], ym_w=b["y_w"], **kw)            # identical -V axis -> same answer
+    for k in ("bunch_spacing", "drive_sigma_z", "energy_difference", "drive_charge_fraction", "screen_valid"):
+        assert torch.allclose(same[k], off[k], rtol=1e-6, atol=1e-12), k
+    sh = 7 * 30.5e-6                                                 # -V axis shifted by 7 px (PW mean kick)
+    shifted = _feat(b, ym_d=b["y_d"] + sh, ym_w=b["y_w"] + sh, **kw)
+    assert abs(float(shifted["bunch_spacing"] - off["bunch_spacing"])) < 0.2e-6
+    assert abs(float(shifted["energy_difference"] / off["energy_difference"]) - 1) < 1e-3
+    # stretched -V axis (PW kick with dispersion): still a valid, close reading
+    c = float(b["y_d"].mean())
+    st = _feat(b, ym_d=c + 1.05 * (b["y_d"] - c), ym_w=c + 1.05 * (b["y_w"] - c), **kw)
+    assert float(st["screen_valid"]) == 1.0 and abs(float(st["bunch_spacing"] - off["bunch_spacing"])) < 2e-6
+
+
+def test_pm_energy_axes_differentiable():
+    b = _bunches(n=4000)
+    xp = b["xp_d"].clone().requires_grad_(True)
+    f = _feat({**b, "xp_d": xp}, threshold="valley", orientation="charge", ym_d=b["y_d"] + 1e-4, ym_w=b["y_w"] + 1e-4)
+    f["bunch_spacing"].sum().backward()
+    assert xp.grad is not None and torch.isfinite(xp.grad).all() and xp.grad.abs().sum() > 0
