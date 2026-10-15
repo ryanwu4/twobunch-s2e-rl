@@ -10,7 +10,10 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 | Item | State |
 |---|---|
 | Injector campaign `injector_full` (3027 rows, 5e4 / grid 64, commit d20918d, worktree `.worktrees/injector_full_d20918df54`) | launched 18:50 |
-| env v4 (`rl/delta_env_v4.py`) + S1 cloud trainings (blen_dlog vs adapter, seed 0, GPUs 0/1) | started ~19:45 |
+| env v4 (`rl/delta_env_v4.py`) + S1 cloud trainings (blen_dlog vs adapter, seed 0, GPUs 0/1) | started ~19:28 |
+| Screen v4 (optics/voltage randomization, ROI, arrival jitter, charge orientation, deployed validity) + S2 config | built, smoke-tested |
+| Post-campaign chain (`scripts/after_injector_campaign.py`): evalset launch, preprocess, widen, 3 fine-tunes + scratch | waiting on the campaign |
+| Surrogate gates script (`scripts/surrogate_gates.py`) | ready |
 
 ## Decisions taken in Ryan's absence (numbered; each with the reason)
 
@@ -38,6 +41,19 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 
 ## Problems encountered
 
+3. **The controller-region widening to L1 −26.5° (round-2 physics M3, adopted for the campaign) rests on raw
+   machine phase readbacks; the sim2real BC11-servo result maps the real 04-15 L1 −26° to sim ≈ −22.35° at
+   matched compression.** In the sim, L1 below ~−23° is over-compressed: Bmad pilot rows at L1 −26.8 / L2 −32.0
+   have ΔE 0.44% (vs 1.85% at golden) and spacing ~57 µm, and NO bunch split works there (energy gate: best
+   possible single cut still misassigns 11–12%; valley 60%; z-lobe 56–66%). Consequences:
+   - the running campaign is left as configured (Ryan's decision; the data are valid, only less useful):
+     ~5/8 of the 1000 controller-region rows (L1 −23.5…−18.5) are in the relevant band;
+   - RL start boxes use L1 [−23.5, −19] (S2 onward). S1 (cloud, already running) uses [−26, −19]; harmless
+     in cloud mode (ground truth) but its evaluation is split by region.
+   - the deployed validity rule (two peaks + |spacing| > 60 µm) calls ~91% of start-box readings valid while
+     only ~60% are truly < 10% misassigned: the online analysis cannot detect misassignment from the image
+     alone. Worth a real-data check of how often the real energy gate fails near full compression.
+
 2. **Training launch loop typo** (≈19:40): a zsh `for`/`set --` loop did not word-split, so both S1 runs
    failed to start (bad config path). Removed the 4 junk log/pid files it created and relaunched explicitly.
    No other effect.
@@ -61,3 +77,12 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
     GPU): all weights loaded, val_old_spacing_mae 7.4 µm (= the known flow error).
   - screen plant: injected charges follow drive_fraction / total charge under per_sample tables
     (q_in = Q f 1.001, Q (1−f) 0.999; matches the pilot's recorded charges to 1.3e-4) — round-2 ML BLOCKER 1.
+- 19:30 env v4 built (subclass; 5 new tests) + explicit reward tolerances; S1 cloud configs; launched both S1 runs
+  (blen_dlog / adapter, seed 0, 32 actors, 300 iters ≈ 30 min each).
+- 19:35 screen v4 pieces (features: `orientation: charge`, `roi`, `screen_valid_deployed`; plant: `optics_choices`,
+  `tdc_voltage_range` with per-env calibrated streak, `arrival_jitter_s`); S2 config; smoke OK (obs 58, grads flow).
+- 19:40 found the deep-compression box issue (problem 3); S2 start box L1 [−23.5, −19]: truth-valid 60%,
+  deployed-valid 91%.
+- 19:45 post-campaign chain started (waits); surrogate gate script written + smoke-run.
+- Impact-T at 5e4 / grid 64, 64 concurrent: ~2080 s per beam (the grid solve dominates; 1e5 was 2450 s) →
+  ~2.3 h of Impact-T, then the Bmad rows; campaign ETA ~08:00.
