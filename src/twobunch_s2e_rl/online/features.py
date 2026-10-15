@@ -58,6 +58,15 @@ def band_stats(img: np.ndarray, x_m: np.ndarray, cut_row: int | None = None) -> 
             "var_d": float(np.average((x_m - md) ** 2, weights=pd_)), "frac_d": float(qd / (qd + qw))}
 
 
+def step_cut(plus_imgs: list[np.ndarray]) -> tuple[int | None, bool]:
+    """The step's energy cut (decision D2: from the +V images, applied to +V AND -V): the valley rule on
+    the summed y projection of the step's +V images. The -V y projection differs from +V (the TCAV's
+    x-dependent energy kick flips with the sign), so a per-image -V valley can lock onto another dip."""
+    if not plus_imgs:
+        return None, False
+    return valley_threshold(np.sum([np.clip(np.asarray(i, float), 0, None).sum(axis=1) for i in plus_imgs], axis=0))
+
+
 def step_features(plus: list[dict], minus: list[dict], streak: float, floor_m: float = 60e-6,
                   agg=np.median) -> dict:
     """Step-level features from the band stats of the step's +V images and -V images (on the machine

@@ -2,7 +2,8 @@
 E300 DAQ data, per scan step, with the deployed preprocessing chain (xtcav_real_features.py: hand crop,
 hot pixels, noise threshold, median filter, per-step off-shot row correction).
 
-Per step: band_stats on every +V and -V image (valley rule on each image), median aggregation per sign,
+Per step: one energy cut from the step's +V images (decision D2; --cut image = per-image valley),
+band_stats on every +V and -V image with it, median aggregation per sign,
 half-difference spacing with the signed calibration (decision D3). Also the per-image single-sign
 separations, their shot-to-shot scatter (-> the env's per-image shot noise), and a bootstrap of the
 step-level estimate at M images per sign (-> the env's per-step noise).
@@ -22,7 +23,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import xtcav_real_features as rf  # noqa: E402  (deployed chain + calibration)
 
-from twobunch_s2e_rl.online.features import band_stats, step_features  # noqa: E402
+from twobunch_s2e_rl.online.features import band_stats, step_cut, step_features  # noqa: E402
 
 
 def main():
@@ -31,6 +32,8 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--M", type=int, default=15, help="images per sign in the bootstrap step estimate")
     ap.add_argument("--limit-per-step", type=int, default=None)
+    ap.add_argument("--cut", default="step", choices=["step", "image"],
+                    help="step: one cut per step from the +V images (D2); image: per-image valley")
     ap.add_argument("--qa-steps", default="", help="comma list of steps: save median +V/-V images + cuts")
     a_ = ap.parse_args()
     exp, num = a_.dataset.rsplit("_", 1)
@@ -57,20 +60,29 @@ def main():
         ix = []
         for grp in (cls["ix_plus"], cls["ix_neg"]):           # cap per sign, not overall
             ix += [int(i) for i in grp if steps[int(i)] == step][:a_.limit_per_step]
-        n_fail = 0
+        n_fail, loaded = 0, []
         for i in ix:
             try:
                 ref = rf.xtcav.select_reference_for_shot(refs, i, steps)
                 _, img, _ = rf.corrected_shot(a, i, ref)
-                b = band_stats(img.data, 1e-3 * np.asarray(img.x, float))
+                loaded.append(("plus" if i in plus else "minus", img.data.copy(), 1e-3 * np.asarray(img.x, float)))
             except Exception:
-                b = None
+                n_fail += 1
+        cut = None
+        if a_.cut == "step" and loaded:
+            shp = loaded[0][1].shape
+            cut, ok = step_cut([d for sg, d, _ in loaded if sg == "plus" and d.shape == shp])
+            if not ok:
+                n_fail += len(loaded)
+                loaded = []
+        for sg, d, x in loaded:
+            b = band_stats(d, x, cut_row=cut if (cut is not None and d.shape == loaded[0][1].shape) else None)
             if b is None:
                 n_fail += 1
                 continue
-            st["plus" if i in plus else "minus"].append(b)
-            if qa is not None and img.data.shape == ([q[0] for q in qa["plus"] + qa["minus"]] or [img.data])[0].shape:
-                qa["plus" if i in plus else "minus"].append((img.data.copy(), b["cut_row"]))
+            st[sg].append(b)
+            if qa is not None and d.shape == loaded[0][1].shape:
+                qa[sg].append((d, b["cut_row"]))
         if not st["plus"] or not st["minus"]:
             continue
         # x in mm-on-screen -> z via S; +V streak +S, -V streak -S (signed, D3)

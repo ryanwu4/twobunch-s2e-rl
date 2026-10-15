@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 torch = pytest.importorskip("torch")
-from twobunch_s2e_rl.online.features import PIXEL_M, band_stats, image_features, render, step_features  # noqa: E402
+from twobunch_s2e_rl.online.features import PIXEL_M, band_stats, image_features, render, step_cut, step_features  # noqa: E402
 from xtcav_segment.features import screen_features  # noqa: E402
 from tests.test_xtcav_features import ETA, E0, S, _bunches  # noqa: E402
 
@@ -46,3 +46,9 @@ def test_step_features_reduce_to_image_features():
     for k in ("bunch_spacing", "drive_sigma_z", "drive_charge_fraction"):
         assert abs(st[k] - g[k]) < 1e-9 * max(1.0, abs(g[k])) + 1e-12
     assert step_features([], [bm], S)["valid"] == 0.0
+
+
+def test_step_cut_from_plus_images():
+    _, g, (ip, im, xc) = _compare(_bunches())
+    k, ok = step_cut([ip, ip])
+    assert ok and k == g["cut_row"]
