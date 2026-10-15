@@ -165,6 +165,10 @@ class DeltaControlEnvV4(DeltaControlEnv):
             old = self._last_achieved.get(k)
             self._last_achieved[k] = v if old is None or old.shape != v.shape else torch.where(
                 m.view(-1, *([1] * (v.dim() - 1))), v, old)
+        # hidden context the goal was drawn under (= the episode's, except off-context goals; eval only)
+        gctx = getattr(self, "_goal_context", None)
+        self._goal_context = self._context.clone() if gctx is None or gctx.shape != self._context.shape \
+            else torch.where(mc[:, :1].expand_as(self._context), self._context, gctx)
         if self._goal_radius is not None:
             self._reachable_goals(m)
         if self._off_goal > 0:
@@ -200,6 +204,7 @@ class DeltaControlEnvV4(DeltaControlEnv):
         unit = self._randn(self.num_envs, self._ks.n)
         other = torch.minimum(torch.maximum(self._base + unit * self._ctx_sigma, self._lo), self._hi)
         saved, self._context = self._context, torch.where(pick.unsqueeze(-1), other, self._context)
+        self._goal_context = torch.where(pick.unsqueeze(-1), other, self._goal_context)
         g_obs = self._plant(self._goal_ctrl, noise=False)
         self._context = saved
         for key, g, _ in self._goal_terms:

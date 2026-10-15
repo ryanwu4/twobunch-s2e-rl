@@ -48,8 +48,41 @@ def _apply_overrides(de: dict, sets) -> dict:
     return de
 
 
+@torch.no_grad()
+def _hifi_true(env, logdir, ctx, goal_ctx, ctrl_final, goal_ctrl, n=8192, device="cuda", seed=0):
+    """Final TRUE goal error with the flow's Monte-Carlo noise removed: the flow at the final true
+    controls (episode context) and at the goal point (goal context), n particles, common random numbers.
+    The env's own truth uses n_particles fresh samples per call (512: ~3 um rms on the spacing), which
+    floors the per-step metric. Cloud mode only (screen features need the screen plant)."""
+    from ..artifacts import resolve_ckpt
+    from ..surrogate.model import TwoBunchFlow
+    flow = TwoBunchFlow.load_from_checkpoint(str(resolve_ckpt(policy_flow_ckpt(logdir))), map_location=device).eval()
+    g = torch.Generator().manual_seed(seed)
+    zd = torch.randn(n, flow.latent_dim, generator=g).to(device)
+    zw = torch.randn(n, flow.latent_dim, generator=g).to(device)
+    ci = env._ci
+
+    def obs_at(c, u):
+        knobs = env._ks.normalize(c.index_copy(1, ci, u.to(c.dtype)))
+        out = {}
+        for b in range(0, knobs.shape[0], 64):
+            o = flow.observables(knobs[b:b + 64].to(device), n=n, z_drive=zd, z_witness=zw)
+            for key, _, _ in env._goal_terms:
+                out.setdefault(key, []).append(o[key].double().cpu())
+        return {k: torch.cat(v).numpy() for k, v in out.items()}
+
+    fin, gl = obs_at(ctx, ctrl_final), obs_at(goal_ctx, goal_ctrl)
+    res = {"n_particles": n}
+    for key, _, _ in env._goal_terms:
+        e = _err(fin[key], gl[key], key)
+        tol = TOL.get(key, ("rel", 0.1))[1]
+        res[key] = {"err_median": float(np.median(e)), "err_p90": float(np.percentile(e, 90)),
+                    "frac_within_tol": float((e <= tol).mean())}
+    return res
+
+
 def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, out=None,
-             sets=(), tag=""):
+             sets=(), tag="", hifi_n=8192):
     device = device if torch.cuda.is_available() else "cpu"
     logdir = Path(logdir)
     cfg = yaml.safe_load((logdir / "cfg.yaml").read_text())
@@ -62,6 +95,9 @@ def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, o
     # auto-resets on the last step and afterwards holds the NEXT episode's draws
     gain = getattr(env, "_g", env._gain).detach().cpu().numpy()      # (B, n_ctrl); v4: actuator gain
     scale = env._scale.detach().cpu().numpy()
+    ctx0 = env._context.detach().clone()
+    goal_ctx0 = getattr(env, "_goal_context", env._context).detach().clone()
+    goal_ctrl0 = env._goal_ctrl.detach().clone()
     traj = rollout(env, actor, obs_rms)
     npy = {k: v.cpu().numpy() for k, v in traj.items()}
     report = {"logdir": str(logdir), "policy": policy, "n_episodes": n_episodes, "seed": seed,
@@ -95,6 +131,9 @@ def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, o
             "steps_to_settle_median": (float(np.median(settled[settled >= 0]))
                                        if (settled >= 0).any() else None),
         }
+    if hifi_n and not any(f"{k}_cloud" in npy for k, _, _ in env._goal_terms):
+        report["hifi_true"] = _hifi_true(env, logdir, ctx0, goal_ctx0, traj["true_controls"][-1], goal_ctrl0,
+                                         n=hifi_n, device=device)
     report["survival"] = {k: float(np.median(npy[k][-1])) for k in ("T_drive", "T_witness") if k in npy}
     if "screen_valid" in npy:
         report["screen_valid_frac"] = {"start": float(npy["screen_valid"][0].mean()),
@@ -144,9 +183,11 @@ def main():
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                     help="override a diff_env setting for this eval (dotted keys), repeatable")
     ap.add_argument("--tag", default="", help="output subdir suffix: delta_eval_<tag>")
+    ap.add_argument("--hifi-n", type=int, default=8192,
+                    help="particles for the CRN final-error check (cloud mode; 0 = off)")
     args = ap.parse_args()
     rep = evaluate(args.logdir, args.policy, args.n_episodes, args.device, args.seed, args.out,
-                   sets=args.set, tag=args.tag)
+                   sets=args.set, tag=args.tag, hifi_n=args.hifi_n)
     print(json.dumps(rep, indent=2))
 
 
