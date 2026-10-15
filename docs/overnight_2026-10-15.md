@@ -188,3 +188,6 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
   replay: it does NOT catch the TEST_15668 valley jumps (2.8 / 2.8 / 1.4 µm vs clean 0.1–2.2) and would flag most of
   E300_15673's large-spacing steps → not adopted (`results/online_replay_v5_2026-10-15/REPORT.md`).
 - 02:30 S2 v5 seeds (blen_dlog): s0 8.7 / s1 9.2 / s2 8.3 µm true median spacing error, 57 / 53 / 59% within 10 µm.
+- 02:45 S2 v5 adapter s0: 8.8 µm / 55%, equal to blen_dlog in screen mode too. Launched two S2 ablations: 600 iters
+  (GPU0; the 300-iter curve is still drifting down) and spacing-only goal (GPU1; σz goal removed, since the blurred
+  screen σz reaches only ~35% within 10%). Both finish well before the post-campaign fine-tunes need the GPUs.
