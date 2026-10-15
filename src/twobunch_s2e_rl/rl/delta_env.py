@@ -204,6 +204,7 @@ class DeltaControlEnv:
         obs.update(self._goals)
         reward, achieved = self._spec(self._reward_view(obs))
         achieved.update({k: v.detach() for k, v in obs.items() if k.endswith("_cloud")})
+        achieved.update({f"{key}_meas": obs[key].detach() for key, _, _ in self._goal_terms})
         if "screen_valid" in obs:
             achieved["screen_valid"] = obs["screen_valid"].detach()
         achieved.update({k: v.detach() for k, v in obs.items() if k.endswith("_true")})

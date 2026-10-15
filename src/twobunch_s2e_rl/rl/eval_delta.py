@@ -58,20 +58,24 @@ def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, o
         num_envs=n_episodes, device=device, seed=seed,
         episode_length=int(de["episode_length"]), no_grad=True)
     actor, obs_rms = load_policy(str(logdir / f"{policy}_policy.pt"), device)
+    # hidden per-episode draws, read BEFORE the rollout: it runs the full episode_length, so the env
+    # auto-resets on the last step and afterwards holds the NEXT episode's draws
+    gain = getattr(env, "_g", env._gain).detach().cpu().numpy()      # (B, n_ctrl); v4: actuator gain
+    scale = env._scale.detach().cpu().numpy()
     traj = rollout(env, actor, obs_rms)
     npy = {k: v.cpu().numpy() for k, v in traj.items()}
-
-    gain = env._gain.cpu().numpy()                       # (B, n_ctrl) hidden, this episode
-    scale = env._scale.cpu().numpy()
     report = {"logdir": str(logdir), "policy": policy, "n_episodes": n_episodes, "seed": seed,
               "overrides": list(sets), "controls": env.controls, "targets": {}}
     for key, gkey, _ in env._goal_terms:
-        meas, goal = npy[key], npy[gkey]                                  # (T, B)
+        # measured feature (what the policy sees; the reward view may hold the truth instead, e.g. v4
+        # reward_on: true) vs the measured goal
+        meas, goal = npy.get(f"{key}_meas", npy[key]), npy[gkey]          # (T, B)
         if f"{key}_cloud" in npy:                     # screen mode: true beam vs true goal point
             true, goal_true = npy[f"{key}_cloud"], npy[f"{gkey}_cloud"]
         else:
             true = npy[f"{key}_true"]
-            goal_true = goal / scale if key in env._scale_keys else goal
+            goal_true = npy[f"{gkey}_cloud"] if f"{gkey}_cloud" in npy else (
+                goal / scale if key in env._scale_keys else goal)
         e_meas = _err(meas, goal, key)
         e_true = _err(true, goal_true, key)
         tol = TOL.get(key, ("rel", 0.1))[1]
