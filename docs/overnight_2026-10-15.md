@@ -9,11 +9,13 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 
 | Item | State |
 |---|---|
-| Injector campaign `injector_full` (3027 rows, 5e4 / grid 64, commit d20918d, worktree `.worktrees/injector_full_d20918df54`) | **done 07:54: 3027 ok, 0 failed, 13.05 h** |
-| env v4 (`rl/delta_env_v4.py`) + S1 cloud trainings (blen_dlog vs adapter, seed 0, GPUs 0/1) | started ~19:28 |
-| Screen v4 (optics/voltage randomization, ROI, arrival jitter, charge orientation, deployed validity) + S2 config | built, smoke-tested |
-| Post-campaign chain (`scripts/after_injector_campaign.py`): evalset launch, preprocess, widen, 3 fine-tunes + scratch | waiting on the campaign |
-| Surrogate gates script (`scripts/surrogate_gates.py`) | ready |
+| Injector campaign `injector_full` (3027 rows, 5e4 / grid 64, commit d20918d) | **done 07:54: 3027 ok, 0 failed, 13.05 h** |
+| Eval-set campaign `injector_evalset` (456 rows) | running since 07:57, ETA ~10:15 |
+| Post-campaign chain | preprocess done (`processed/xtcav23e_inj_2026-10-15.h5`: 8554 rows, 37 knobs, 325 holdout, 2775 paired), widen done; fine-tunes ft_s0/ft_s1 running since 08:05, then ft_s2 + scratch_s0 |
+| S1 cloud (env v4) | blen_dlog 4 seeds 4.6–5.0 µm true median / 80–83% within 10 µm; adapter 2 seeds same; robust to noise ×2 (6.5 µm), drift ×2, gain/scale misspec |
+| S2 screen v5 (crop-edge check + readable goals) | 600 iters, 3 seeds: 7.2–7.6 µm / 61–63%; measurement-limited (energy-gate misassignment), see `results/s2_screen_diag_2026-10-15/REPORT.md` |
+| `eval_delta` bug (problem 5) | fixed; all v4 evals redone |
+| Online features vs real DAQ | per-step shared +V cut (fix), crop-edge check; `results/online_replay_v{3,4,5}_2026-10-15/` |
 
 ## Decisions taken in Ryan's absence (numbered; each with the reason)
 
