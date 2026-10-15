@@ -52,3 +52,13 @@ def test_step_cut_from_plus_images():
     _, g, (ip, im, xc) = _compare(_bunches())
     k, ok = step_cut([ip, ip])
     assert ok and k == g["cut_row"]
+
+
+def test_step_edge_check():
+    _, g, (ip, im, xc) = _compare(_bunches())
+    bp = band_stats(ip, xc)
+    assert bp["edge_frac"] < 1e-3                     # rendered with a 5-px margin: nothing at the edges
+    a = int(0.4 * ip.shape[1])                        # crop whose left edge cuts through the image
+    bc = band_stats(ip[:, a:], xc[a:], cut_row=bp["cut_row"])
+    assert bc["edge_frac"] > 0.01
+    assert step_features([bc], [band_stats(im, xc, cut_row=bp["cut_row"])], S, edge_frac_max=0.01)["valid"] == 0.0

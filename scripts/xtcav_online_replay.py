@@ -86,7 +86,7 @@ def main():
         if not st["plus"] or not st["minus"]:
             continue
         # x in mm-on-screen -> z via S; +V streak +S, -V streak -S (signed, D3)
-        f = step_features(st["plus"], st["minus"], streak=S, floor_m=60e-6)
+        f = step_features(st["plus"], st["minus"], streak=S, floor_m=60e-6, edge_frac_max=0.01)
         sep = {k: np.array([(d["x_d"] - d["x_w"]) / S for d in v]) * (1 if k == "plus" else -1)
                for k, v in st.items()}                  # single-image spacing estimates [m], signed
         boot = []
@@ -99,7 +99,7 @@ def main():
             "scan_val": float(scan_vals[step - 1]) if 1 <= step <= len(scan_vals) else None,
             "n_plus": len(st["plus"]), "n_minus": len(st["minus"]), "n_gate_fail": n_fail,
             "spacing_um": 1e6 * f["bunch_spacing"], "drive_sigma_z_um": 1e6 * f["drive_sigma_z"],
-            "drive_charge_fraction": f["drive_charge_fraction"], "valid": f["valid"],
+            "drive_charge_fraction": f["drive_charge_fraction"], "valid": f["valid"], "edge_frac": f["edge_frac"],
             "single_plus_median_um": 1e6 * float(np.median(sep["plus"])),
             "single_minus_median_um": 1e6 * float(np.median(sep["minus"])),
             "single_image_robust_sigma_um": 1e6 * 0.5 * (iqr(sep["plus"]) + iqr(sep["minus"])),

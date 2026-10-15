@@ -11,7 +11,8 @@ Same rules as training (decision D2, 2026-10-14):
     of z; decision D3: signed, golden calibration, fixed per shift)
   - drive sigma_z = sqrt(mean(var x+_d, var x-_d)) / |S| (instrument blur included, as deployed)
   - drive charge fraction = drive-band intensity / total, averaged over the two images
-  - valid = two peaks found and |spacing| > floor (the deployed rule; 60 um default)
+  - valid = two peaks found and |spacing| > floor (the deployed rule; 60 um default) and, with
+    edge_frac_max, less than that fraction of intensity within 0.3 mm of the crop's x edges
 """
 from __future__ import annotations
 
@@ -39,9 +40,11 @@ def valley_threshold(proj: np.ndarray, smooth_px: float = 2.0, min_rel_prominenc
     return lo + int(np.argmin(p[lo:hi + 1])), True
 
 
-def band_stats(img: np.ndarray, x_m: np.ndarray, cut_row: int | None = None) -> dict | None:
+def band_stats(img: np.ndarray, x_m: np.ndarray, cut_row: int | None = None,
+               edge_band_m: float = 0.3e-3) -> dict | None:
     """Per-image band statistics: the energy cut (valley rule, or a given cut_row), witness = the
-    lower-charge band; drive / witness x centroid, drive x variance, drive charge fraction."""
+    lower-charge band; drive / witness x centroid, drive x variance, drive charge fraction, and the
+    fraction of intensity within edge_band_m of the image's x edges (the sim's crop-edge check)."""
     im = np.clip(np.asarray(img, float), 0, None)
     if cut_row is None:
         cut_row, ok = valley_threshold(im.sum(axis=1))
@@ -54,8 +57,12 @@ def band_stats(img: np.ndarray, x_m: np.ndarray, cut_row: int | None = None) -> 
     if qd <= 0 or qw <= 0:
         return None
     md = np.average(x_m, weights=pd_)
+    xproj = pd_ + pw                                # crop-edge check: intensity within edge_band_m of the
+    k = max(1, int(round(edge_band_m / abs(float(x_m[1] - x_m[0])))))      # image's x edges (a band cut
+    edge = (xproj[:k].sum() + xproj[-k:].sum()) / max(xproj.sum(), 1e-30)   # by the crop)
     return {"cut_row": int(cut_row), "x_d": float(md), "x_w": float(np.average(x_m, weights=pw)),
-            "var_d": float(np.average((x_m - md) ** 2, weights=pd_)), "frac_d": float(qd / (qd + qw))}
+            "var_d": float(np.average((x_m - md) ** 2, weights=pd_)), "frac_d": float(qd / (qd + qw)),
+            "edge_frac": float(edge)}
 
 
 def step_cut(plus_imgs: list[np.ndarray]) -> tuple[int | None, bool]:
@@ -68,7 +75,7 @@ def step_cut(plus_imgs: list[np.ndarray]) -> tuple[int | None, bool]:
 
 
 def step_features(plus: list[dict], minus: list[dict], streak: float, floor_m: float = 60e-6,
-                  agg=np.median) -> dict:
+                  agg=np.median, edge_frac_max: float | None = None) -> dict:
     """Step-level features from the band stats of the step's +V images and -V images (on the machine
     they are ~11 s apart, not the same beam): robust (median) aggregation per sign, then the
     half-difference of the per-image band offsets. Valid if both signs have images and |spacing| > floor."""
@@ -82,8 +89,10 @@ def step_features(plus: list[dict], minus: list[dict], streak: float, floor_m: f
     spacing = (off(plus) - off(minus)) / (2 * streak)
     sig_z = np.sqrt(0.5 * (a(plus, "var_d") + a(minus, "var_d"))) / abs(streak)
     frac = 0.5 * (a(plus, "frac_d") + a(minus, "frac_d"))
+    edge = max(a(plus, "edge_frac"), a(minus, "edge_frac")) if "edge_frac" in plus[0] else 0.0
+    valid = abs(spacing) > floor_m and (edge_frac_max is None or edge < edge_frac_max)
     return {"bunch_spacing": spacing, "drive_sigma_z": float(sig_z), "drive_charge_fraction": frac,
-            "valid": float(abs(spacing) > floor_m), "n_plus": len(plus), "n_minus": len(minus)}
+            "edge_frac": edge, "valid": float(valid), "n_plus": len(plus), "n_minus": len(minus)}
 
 
 def image_features(img_plus: np.ndarray, img_minus: np.ndarray, x_m: np.ndarray, y_m: np.ndarray,
