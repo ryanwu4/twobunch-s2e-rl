@@ -59,6 +59,17 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
    this is understood.
    **Result (on-context eval):** base 21.7 µm / 29% within 10 µm; **nonoise 4.5 µm / 82%**; all3off 4.0 µm / 86%.
    The measurement model is the cause; sub-ablations noise_only / scale_only are running.
+   **RETRACTED (22:30): the regression was an EVAL BUG, not the policies.** scale_only trained 20 µm, but the
+   same policy evaluated at scale error 0 got 4.8 µm, and an all3off policy evaluated WITH the scale error got
+   21 µm. A direct trajectory check showed ~5 µm true error in every scale bin. Cause: `eval_delta` read
+   `env._scale` / `env._gain` after the rollout. The rollout runs the full episode, so the env auto-resets on the
+   last step and those values belong to the next episode, which broke `goal_true = goal / scale`. Also, with v4
+   `reward_on: true`, the "measured" column compared the true feature against the measured goal. Both read
+   ≈ (1 − s) × 180 µm ≈ 20 µm for any policy under the ±20% streak-scale error. Fixed (`<key>_meas` in
+   achieved, true goal from the goal cloud, hidden draws read before the rollout); all v4 runs re-evaluated
+   (`fx_*` tags). The earlier v4 numbers in this log (problem 4, the 20:00 S1 entry, the v4r S1/S2 numbers)
+   used the buggy eval. The v3 numbers are unaffected (no scale error in cloud runs; screen runs use the
+   cloud branch).
 
 4. **First S1 runs: goals mostly unreachable** (my env-design error). v4 added actuator caps (L1 |dln| ≤ 0.75,
    L2 ≤ 3.5°) and low L2 gains (≥ 0.35) but kept goals anywhere in a 7°-wide start box: only 37–43% were reachable.
