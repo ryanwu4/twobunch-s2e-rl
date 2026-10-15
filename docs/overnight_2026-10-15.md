@@ -180,3 +180,6 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
   actuators are equal. GPU1: informational S2 v5 variant with the L1 box restricted to [−22, −19.5]
   (`configs/rl/ablation_2026-10-15/screen_v5_box22.yaml`), as data for Ryan's box decision.
   Campaign 1027/3027 Bmad rows at 00:46, ~5 rows/min → ETA ~07:30.
+- 01:45 S2 v5 s1 9.2 µm / 53%. The restricted-box variant (L1 [−22, −19.5]) is 8.6 µm / 55%, no better: under context
+  variation, misassignment is spread through the box. Recorded in the S2 diag report. GPU1: S2 v5 adapter (screen-mode
+  actuator comparison).
