@@ -1,0 +1,121 @@
+# ABLATION of delta_xtcav23_cloud_v4_blen.yaml (120 iters, seed 0): drift, measurement, action cost all off
+params:
+  diff_env:
+    name: DeltaControlEnv
+    plant: flow
+    flow_ckpt: trained/xtcav23/checkpoints/best-epoch=498-val_loss=0.1747.ckpt
+    baseline_set: xtcav23
+    episode_length: 32
+    stochastic_env: true
+    n_particles: 512
+    controls:
+    - L1PhaseSet
+    - L2PhaseSet
+    action_step:
+      L1PhaseSet: 0.3
+      L2PhaseSet: 0.3
+    start_box:
+      L1PhaseSet:
+      - -23.5
+      - -19.0
+      L2PhaseSet:
+      - -40.5
+      - -33.5
+    gain_halfwidth: 0.2
+    measurement: {}
+    campaign_h5: processed/xtcav23_combined.h5
+    reward_norms_json: results/rl/_shared/norms/metric_norms_delta_xtcav23_v4.json
+    surv_T_min: 0.9
+    surv_margin: 0.05
+    observe: []
+    objectives:
+    - key: bunch_spacing
+      kind: target
+      weight: 1.0
+      goal:
+      - 5.0e-05
+      - 0.0004
+      scale: 1.0e-05
+    - key: drive_sigma_z
+      kind: target
+      weight: 1.0
+      goal:
+      - 5.0e-06
+      - 0.0002
+      scale: 0.0414
+    - key: T_drive
+      kind: hinge
+      weight: 1.0
+      hinge_at: 0.95
+      scale: 0.01
+      observe: false
+    - key: T_witness
+      kind: hinge
+      weight: 1.0
+      hinge_at: 0.95
+      scale: 0.01
+      observe: false
+    - key: knobs
+      kind: boundary
+      weight: 0.5
+      margin: 0.05
+    v4:
+      reward_on: 'true'
+      action_cost: 0.0
+      offcontext_goal_frac: 0.2
+      history: 8
+      drift_per_step:
+        L1PhaseSet: 0.0
+        L2PhaseSet: 0.0
+      actuators:
+        L1PhaseSet:
+          type: blen_dlog
+          step: 0.1
+          gain_range:
+          - 1.5
+          - 4.0
+          readback_noise: 0.02
+          readback_drift: 0.04
+          cum_limit: 0.75
+        L2PhaseSet:
+          type: direct
+          step: 0.3
+          gain_range:
+          - 0.35
+          - 1.1
+          cum_limit: 3.5
+      goal_radius:
+        L1PhaseSet: 2.0
+        L2PhaseSet: 2.5
+  general:
+    seed: 0
+    device: cuda:0
+    render: false
+    train: true
+    logdir: logs/2026-10-15/delta_xtcav23_cloud_v4r_blen
+  config:
+    name: DeltaBPTT
+    num_actors: 32
+    steps_num: 32
+    max_epochs: 120
+    actor_learning_rate: 5e-4
+    lr_schedule: linear
+    gamma: 0.99
+    obs_rms: true
+    truncate_grads: true
+    grad_norm: 1.0
+    rew_scale: 1.0
+    save_interval: 50
+    betas:
+    - 0.7
+    - 0.95
+    player:
+      games_num: 64
+      deterministic: true
+  network:
+    actor_mlp:
+      units:
+      - 128
+      - 128
+      activation: elu
+    actor_logstd_init: -1.0
