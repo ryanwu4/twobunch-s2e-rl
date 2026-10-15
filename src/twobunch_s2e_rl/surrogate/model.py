@@ -169,6 +169,11 @@ class TwoBunchFlow(L.LightningModule):
         coupling="affine", n_bins=16, tail_bound=8.0,
         lr=1e-4, weight_decay=1e-5, lr_schedule="plateau", t_max=300,
         w_cls=1.0, w_tr=1.0, w_emit=0.25, w_emit_z=0.0, w_emit_4d=0.0, w_emit_6d=0.0, w_cov=0.5, nll_dim_norm=6.0,
+        # centroid matching (0 = off, as all checkpoints before 2026-10-15): w_mean = per-bunch sample-mean
+        # error of all 6 coordinates in the standardized frame (the moment losses above are centred, and the
+        # NLL barely feels a centroid error of ~0.1 sigma); w_spacing = Huber on the physical bunch spacing
+        # (difference of the z centroids) in units of spacing_scale_m
+        w_mean=0.0, w_spacing=0.0, spacing_scale_m=1e-5,
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
 
@@ -372,13 +377,22 @@ class TwoBunchFlow(L.LightningModule):
         # 2D emittances (incl. z_delta = sqrt det cov_zpz, the LPS thinness lever), 4D/6D dets,
         # and the relative 6x6 covariance -- the NLL alone tolerates a too-round Sigma_k.
         any_emit = hp.w_emit > 0 or hp.w_emit_z > 0 or hp.w_emit_4d > 0 or hp.w_emit_6d > 0
-        if any_emit or hp.w_cov > 0:
+        w_mean, w_sp = float(hp.get("w_mean", 0.0)), float(hp.get("w_spacing", 0.0))
+        zc = {}                                    # k -> (mask, predicted z centroid, true z centroid) [m]
+        if any_emit or hp.w_cov > 0 or w_mean > 0 or w_sp > 0:
             eps = 1e-9
             for k, mask, key in ((0, dd, "drive"), (1, wd, "witness")):
                 if k not in tb or not mask.any():
                     continue
                 true = batch[key][mask]
                 pred = self.sample_bunch(knobs[mask], k, true.shape[1], physical=False)
+                if w_mean > 0:
+                    dmu = pred.mean(1) - true.mean(1)                     # (M, 6) standardized
+                    add(F.smooth_l1_loss(dmu, torch.zeros_like(dmu), beta=0.05), w_mean, f"mean_{key}")
+                if w_sp > 0:
+                    mean_k, std_k = self._scaler(k)
+                    zc[k] = (mask, pred[..., 2].mean(1) * std_k[2] + mean_k[2],
+                             true[..., 2].mean(1) * std_k[2] + mean_k[2])
                 if any_emit:
                     ep, et = compute_emittance_torch(pred), compute_emittance_torch(true)
                     ldiff = lambda q: torch.abs(torch.log10(ep[q] + eps) - torch.log10(et[q] + eps)).mean()
@@ -394,6 +408,17 @@ class TwoBunchFlow(L.LightningModule):
                     cp, ct = self._cov(pred), self._cov(true)
                     lc = (2 * torch.abs(cp - ct) / (torch.abs(cp) + torch.abs(ct) + 1e-6)).mean()
                     add(lc, hp.w_cov, f"cov_{key}")
+
+        if w_sp > 0 and 0 in zc and 1 in zc:
+            both = dd & wd
+            if both.any():
+                full = lambda m, v: torch.zeros(knobs.shape[0], device=v.device, dtype=v.dtype).masked_scatter(m, v)
+                (md, pd_, td), (mw, pw, tw) = zc[0], zc[1]
+                sp_p = (full(md, pd_) - full(mw, pw))[both]
+                sp_t = (full(md, td) - full(mw, tw))[both]
+                scale = float(hp.get("spacing_scale_m", 1e-5))
+                add(F.smooth_l1_loss(sp_p / scale, sp_t / scale, beta=0.5), w_sp, "spacing")
+                logs[f"{prefix}_spacing_mae_um"] = (sp_p - sp_t).abs().mean().detach() * 1e6
 
         logs[f"{prefix}_loss"] = loss
         if n_skip:

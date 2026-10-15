@@ -56,7 +56,8 @@ def build_model(norm: dict, **overrides) -> TwoBunchFlow:
     print(f"[build_model] scaler={norm.get('scaler', 'pooled(v1)')}, coupling={kw.get('coupling','affine')}, "
           f"n_bins={kw.get('n_bins')}, tail_bound={kw.get('tail_bound')}, "
           f"w_emit={kw.get('w_emit')}, w_emit_z={kw.get('w_emit_z')}, w_emit_4d={kw.get('w_emit_4d')}, "
-          f"w_emit_6d={kw.get('w_emit_6d')}, w_cov={kw.get('w_cov')}")
+          f"w_emit_6d={kw.get('w_emit_6d')}, w_cov={kw.get('w_cov')}, w_mean={kw.get('w_mean')}, "
+          f"w_spacing={kw.get('w_spacing')}")
     return TwoBunchFlow(**kw)
 
 
@@ -78,6 +79,11 @@ def main():
     ap.add_argument("--w-emit-4d", type=float, default=0.125)    # transverse 4D
     ap.add_argument("--w-emit-6d", type=float, default=0.025)    # full 6D
     ap.add_argument("--w-cov", type=float, default=0.5)
+    ap.add_argument("--w-mean", type=float, default=0.0,
+                    help="per-bunch centroid (sample-mean) matching, standardized frame (0 = off)")
+    ap.add_argument("--w-spacing", type=float, default=0.0,
+                    help="Huber loss on the physical bunch spacing in units of --spacing-scale-m (0 = off)")
+    ap.add_argument("--spacing-scale-m", type=float, default=1e-5)
     ap.add_argument("--bunches", choices=["both", "drive", "witness"], default="both",
                     help="which bunch density paths to train (witness = witness-only ablation)")
     ap.add_argument("--patience", type=int, default=25,
@@ -138,6 +144,7 @@ def main():
                         n_bins=args.n_bins, tail_bound=args.tail_bound,
                         w_emit=args.w_emit, w_emit_z=args.w_emit_z, w_emit_4d=args.w_emit_4d,
                         w_emit_6d=args.w_emit_6d, w_cov=args.w_cov, bunches=bunches,
+                        w_mean=args.w_mean, w_spacing=args.w_spacing, spacing_scale_m=args.spacing_scale_m,
                         lr_schedule=args.lr_schedule, t_max=args.epochs)
     if init_state is not None:
         # warm-start weights only (new hparams + fresh optimizer/LR schedule); not a full resume
@@ -164,7 +171,11 @@ def main():
         callbacks=callbacks,
         log_every_n_steps=10)
     trainer.fit(model, datamodule=dm)
-    print(f"Best checkpoint: {ckpt.best_model_path} (val_loss={ckpt.best_model_score})")
+    # the end-of-training weights, always (save_last=True kept last.ckpt at the best epoch in the
+    # 2026-10-15 fine-tunes, so the final weights were lost)
+    trainer.save_checkpoint(f"{args.out}/checkpoints/final.ckpt")
+    print(f"Best checkpoint: {ckpt.best_model_path} ({metric}={ckpt.best_model_score}); "
+          f"final weights: {args.out}/checkpoints/final.ckpt")
 
 
 if __name__ == "__main__":

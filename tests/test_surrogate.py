@@ -284,6 +284,37 @@ def test_step_cov_term_and_rqs():
     assert torch.isfinite(loss) and loss.requires_grad
 
 
+def test_step_centroid_and_spacing_terms():
+    """w_mean / w_spacing: logged, finite, gradients reach the whitening (centroid) head; off by default."""
+    logs = {}
+    m = TwoBunchFlow(condition_dim=8, n_layers=4, hidden_dim=32, n_aux_particles=128,
+                     drive_std=[1.0, 1.0, 50e-6, 1.0, 1.0, 1.0], witness_std=[1.0, 1.0, 50e-6, 1.0, 1.0, 1.0],
+                     w_mean=1.0, w_spacing=1.0)
+    m.log_dict = lambda d, **k: logs.update(d)
+    b = _batch()
+    b["witness"][..., 2] += 3.0                       # true witness centroid offset -> a spacing to match
+    loss = m._step(b, "train")
+    assert torch.isfinite(loss) and loss.requires_grad
+    assert {"train_mean_drive", "train_mean_witness", "train_spacing", "train_spacing_mae_um"} <= set(logs)
+    m.zero_grad()
+    loss.backward()
+    g = sum(p.grad.abs().sum() for p in m.whiten_heads.parameters() if p.grad is not None)
+    assert torch.isfinite(g) and g > 0
+    # default model: no centroid terms, and the loss is the old one (same seeds)
+    logs.clear()
+    torch.manual_seed(1)
+    d0 = TwoBunchFlow(condition_dim=8, n_layers=4, hidden_dim=32, n_aux_particles=128)
+    d0.log_dict = lambda d, **k: logs.update(d)
+    torch.manual_seed(2)
+    l0 = d0._step(b, "train")
+    assert not any(k.startswith("train_mean_") or k.startswith("train_spacing") for k in logs)
+    torch.manual_seed(1)
+    d1 = TwoBunchFlow(condition_dim=8, n_layers=4, hidden_dim=32, n_aux_particles=128, w_mean=0.0, w_spacing=0.0)
+    d1.log_dict = lambda d, **k: None
+    torch.manual_seed(2)
+    assert torch.equal(l0, d1._step(b, "train"))
+
+
 # ---------------------------------------------------------------------------
 # CRN sampling (Stage-C, plan C0): generator/z kwargs on sample_bunch/observables
 # ---------------------------------------------------------------------------
