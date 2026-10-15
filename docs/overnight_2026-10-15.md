@@ -214,3 +214,19 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
   old-val spacing MAE 9.1 µm (CRN 2048 particles; the 7.4 µm smoke value used another metric), σz rel 10.7%;
   test pairs n=48, R² −0.03 (signal 15.7 µm) → paired-Δ gate FAIL, T-calibration 0.021 → FAIL (by 0.001). As
   expected, the old flow has no injector dependence.
+- 10:00 evalset campaign done (456 ok, 0 failed, 2.0 h; `data/injector_evalset`). Fine-tunes at epoch 67/150:
+  val_paired_delta_rms 7.8 µm (signal 14.3 µm; base 13.8), old-val spacing MAE 8.6 µm (base 9.1). ETA ~12:30, then
+  ft_s2 + scratch_s0 start automatically.
+
+## Next steps (for Ryan)
+
+1. When ft_s0/ft_s1 finish: `scripts/surrogate_gates.py` per checkpoint (base = widened). If the gates pass, retrain
+   S1/S2 on the injector flow (T hinge back to ~0.98 with per-sample labels) and evaluate on `data/injector_evalset`.
+2. Decisions waiting for Ryan:
+   (a) the S2 measurement limit: energy-gate misassignment over ~half the box. A box restriction does not help, z-lobe
+   is worse, and cut sensitivity works in the sim but does not transfer to real data. Accept, or look for a better
+   split near full compression?
+   (b) S2 training length 600 iters (recommended);
+   (c) blen_dlog vs adapter: equal in S1 and S2, keep blen_dlog (Ryan's choice)?
+   (d) the screen σz goal (blurred; ~38% within 10%) is cheap to keep (spacing-only is no better).
+3. The scratch_s0 control (500 epochs) takes ~15 h after the fine-tunes; stop it if the GPUs are needed.
