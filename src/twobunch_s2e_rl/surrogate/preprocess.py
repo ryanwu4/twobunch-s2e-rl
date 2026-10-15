@@ -216,9 +216,11 @@ _INJ_MERGE_KEYS = ("n_particles", "grid", "code_version", "arrival", "hammersley
                    "l0af_reference")
 
 
-def check_mergeable(camps: list[dict], treaty_point: str) -> None:
+def check_mergeable(camps: list[dict], treaty_point: str, allow_mismatch=()) -> None:
     """Campaigns merged into one table must share every fixed setting that affects the beam at the
-    treaty point (fixed_overrides other than downstream-only settings, plus _MERGE_KEYS)."""
+    treaty point (fixed_overrides other than downstream-only settings, plus _MERGE_KEYS).
+    allow_mismatch: _MERGE_KEYS explicitly allowed to differ (opt-in, recorded in the table attrs;
+    e.g. num_macro_particles after a convergence study showed the difference is negligible)."""
     from ..datagen.sweep_params import DOWNSTREAM_OF, DOWNSTREAM_SETTINGS
     skip = set(DOWNSTREAM_SETTINGS) | set(DOWNSTREAM_OF.get(treaty_point, []))
     ref = camps[0]
@@ -233,7 +235,7 @@ def check_mergeable(camps: list[dict], treaty_point: str) -> None:
             raise ValueError(f"cannot merge {ref['name']!r} and {c['name']!r}: fixed input beam "
                              "(input_beam_sha256 / injector golden equivalent) differs")
         for k in _MERGE_KEYS:
-            if k == "input_beam_sha256":
+            if k == "input_beam_sha256" or k in allow_mismatch:
                 continue
             if c["fixed"].get(k) != ref["fixed"].get(k):
                 raise ValueError(f"cannot merge {ref['name']!r} and {c['name']!r}: fixed {k} differs")
@@ -277,7 +279,7 @@ def split_groups(records) -> np.ndarray:
 def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
                scaler="intrabunch", sweep_set="original8", treaty_point=PENT,
                verbose=True, data_root=None, campaign_jsons=None, allow_drop=(),
-               transmission="max", transmission_ref="BEGBC20"):
+               transmission="max", transmission_ref="BEGBC20", allow_fixed_mismatch=()):
     # transmission: "max" (v1-v3 tables): T = charge / max charge over records -- carries the
     #   +-0.9% downsampling noise of the golden-beam campaigns, so T ~0.986 with no loss.
     #   "per_sample": T = charge / that row's injected charge (recorded by injector campaigns; else
@@ -309,7 +311,7 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
             camps.append(camp)
             fills[ci] = campaign_fill(camp, keys, knob_low, knob_high, treaty_point, allow_drop)
     if len(camps) > 1:
-        check_mergeable(camps, treaty_point)
+        check_mergeable(camps, treaty_point, allow_mismatch=tuple(allow_fixed_mismatch))
     rng = np.random.default_rng(seed)
     if verbose:
         print(f"Parsing {len(files)} samples from {subdirs} (P={p}, sweep_set={sweep_set}, "
@@ -398,6 +400,8 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
         # source campaign of every row (idx collides across merged campaigns)
         h.create_dataset("campaign", data=np.array([r["campaign"] for r in records], np.int16))
         h.attrs["campaigns"] = ",".join(subdirs)
+        if allow_fixed_mismatch:
+            h.attrs["allowed_fixed_mismatch"] = ",".join(allow_fixed_mismatch)
         h.attrs["P"] = p
         h.attrs["coord_order"] = ",".join(COORD_KEYS)
 
@@ -454,13 +458,17 @@ def main():
     ap.add_argument("--allow-drop", default="",
                     help="comma-separated swept knobs to marginalize over (opt-in exception to the "
                          "knob-drop rule)")
+    ap.add_argument("--allow-fixed-mismatch", default="",
+                    help="comma-separated fixed campaign keys allowed to differ between merged "
+                         "campaigns (opt-in; recorded in the table attrs), e.g. num_macro_particles")
     args = ap.parse_args()
     cjs = dict(s.split("=", 1) for s in args.campaign_json)
     preprocess(subdir=args.subdir, p=args.P, max_samples=args.max_samples,
                seed=args.seed, out=args.out, scaler=args.scaler, sweep_set=args.sweep_set,
                treaty_point=args.treaty_point, campaign_jsons=cjs,
                allow_drop=[k for k in args.allow_drop.split(",") if k],
-               transmission=args.transmission, transmission_ref=args.transmission_ref)
+               transmission=args.transmission, transmission_ref=args.transmission_ref,
+               allow_fixed_mismatch=[k for k in args.allow_fixed_mismatch.split(",") if k])
 
 
 if __name__ == "__main__":
