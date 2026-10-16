@@ -1,0 +1,23 @@
+# diff_env fragment: hidden injector context for RL on the injector-aware flows (37-knob frame), overnight
+# 2026-10-16, Ryan's choice "DAQ-derived shift-to-shift". Per-episode draws around golden (clipped to the box):
+#   gun amplitude / phase: normal sigma 0.25% / 0.25 deg (DAQ KLYS 10-8 run-to-run 0.06-0.47% / 0.18-0.56 deg)
+#   laser timing, d2 delay (PSDL): normal sigma 0.1 ps (hidden; arrival-jitter scale)
+#   drive fraction: uniform 0.69-0.80 (0.75 +- 0.06, clipped at the box edge 0.80); OBSERVED via the measured
+#     drive charge fraction (screen shot noise / floor) in the new configs
+#   total charge: normal sigma 0.3% (box +-0.9%)
+#   passive knobs at readback scale: L0AF 0.1 deg; solenoid, sigma_xy, truncation radius, sigma_t 0.5%; MTE 10 meV
+# L0B knobs use the default readback-sigma rule.
+baseline_set: xtcav23e_l0b2_inj12
+context_dist:
+  GUNF:rf_field_scale: {dist: normal, width: 121485.6}     # 0.25% of golden 4.8594e7
+  GUNF:theta0_deg: {dist: normal, width: 0.25}
+  laser_timing_ps: {dist: normal, width: 0.1}
+  distgen:t_dist:dists:d2:avg_t:value: {dist: normal, width: 0.1}
+  drive_fraction: {dist: uniform, width: 0.06}
+  distgen:total_charge:value: {dist: normal, width: 4.8}
+  L0AF_phase_offset_deg: {dist: normal, width: 0.1}
+  SOL10111:solenoid_field_scale: {dist: normal, width: 0.00121875}   # 0.5% of |golden| 0.24375
+  distgen:r_dist:sigma_xy:value: {dist: normal, width: 0.00745}
+  distgen:r_dist:truncation_radius:value: {dist: normal, width: 0.0126}
+  distgen:start:MTE:value: {dist: normal, width: 10.0}
+  sigma_t_ps: {dist: normal, width: 0.00585}

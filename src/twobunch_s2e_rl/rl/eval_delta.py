@@ -49,14 +49,15 @@ def _apply_overrides(de: dict, sets) -> dict:
 
 
 @torch.no_grad()
-def _hifi_true(env, logdir, ctx, goal_ctx, ctrl_final, goal_ctrl, n=8192, device="cuda", seed=0):
+def _hifi_true(env, logdir, ctx, goal_ctx, ctrl_final, goal_ctrl, n=8192, device="cuda", seed=0, flow_ckpt=None):
     """Final TRUE goal error with the flow's Monte-Carlo noise removed: the flow at the final true
     controls (episode context) and at the goal point (goal context), n particles, common random numbers.
     The env's own truth uses n_particles fresh samples per call (512: ~3 um rms on the spacing), which
     floors the per-step metric. Cloud mode only (screen features need the screen plant)."""
     from ..artifacts import resolve_ckpt
     from ..surrogate.model import TwoBunchFlow
-    flow = TwoBunchFlow.load_from_checkpoint(str(resolve_ckpt(policy_flow_ckpt(logdir))), map_location=device).eval()
+    flow = TwoBunchFlow.load_from_checkpoint(str(resolve_ckpt(flow_ckpt or policy_flow_ckpt(logdir))),
+                                             map_location=device).eval()
     g = torch.Generator().manual_seed(seed)
     zd = torch.randn(n, flow.latent_dim, generator=g).to(device)
     zw = torch.randn(n, flow.latent_dim, generator=g).to(device)
@@ -81,13 +82,25 @@ def _hifi_true(env, logdir, ctx, goal_ctx, ctrl_final, goal_ctrl, n=8192, device
     return res
 
 
+def _deep_merge(a: dict, b: dict) -> dict:
+    out = dict(a)
+    for k, v in b.items():
+        out[k] = _deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
 def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, out=None,
-             sets=(), tag="", hifi_n=8192):
+             sets=(), tag="", hifi_n=8192, flow_ckpt=None, de_yaml=None):
+    """flow_ckpt / de_yaml: evaluate the policy on ANOTHER plant (cross-flow eval): a different flow and a
+    diff_env fragment deep-merged into the policy's own (e.g. baseline_set + injector context_dist)."""
     device = device if torch.cuda.is_available() else "cpu"
     logdir = Path(logdir)
     cfg = yaml.safe_load((logdir / "cfg.yaml").read_text())
+    if de_yaml:
+        cfg["params"]["diff_env"] = _deep_merge(cfg["params"]["diff_env"], yaml.safe_load(Path(de_yaml).read_text()))
     de = _apply_overrides(cfg["params"]["diff_env"], sets)
-    env = build_env_fn(cfg, policy_flow_ckpt(logdir))(
+    eval_flow = flow_ckpt or policy_flow_ckpt(logdir)
+    env = build_env_fn(cfg, eval_flow)(
         num_envs=n_episodes, device=device, seed=seed,
         episode_length=int(de["episode_length"]), no_grad=True)
     actor, obs_rms = load_policy(str(logdir / f"{policy}_policy.pt"), device)
@@ -100,7 +113,7 @@ def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, o
     goal_ctrl0 = env._goal_ctrl.detach().clone()
     traj = rollout(env, actor, obs_rms)
     npy = {k: v.cpu().numpy() for k, v in traj.items()}
-    report = {"logdir": str(logdir), "policy": policy, "n_episodes": n_episodes, "seed": seed,
+    report = {"logdir": str(logdir), "policy": policy, "n_episodes": n_episodes, "seed": seed, "eval_flow": str(eval_flow), "de_yaml": de_yaml,
               "overrides": list(sets), "controls": env.controls, "targets": {}}
     for key, gkey, _ in env._goal_terms:
         # measured feature (what the policy sees; the reward view may hold the truth instead, e.g. v4
@@ -133,7 +146,7 @@ def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, o
         }
     if hifi_n and not any(f"{k}_cloud" in npy for k, _, _ in env._goal_terms):
         report["hifi_true"] = _hifi_true(env, logdir, ctx0, goal_ctx0, traj["true_controls"][-1], goal_ctrl0,
-                                         n=hifi_n, device=device)
+                                         n=hifi_n, device=device, flow_ckpt=eval_flow)
     report["survival"] = {k: float(np.median(npy[k][-1])) for k in ("T_drive", "T_witness") if k in npy}
     if "screen_valid" in npy:
         report["screen_valid_frac"] = {"start": float(npy["screen_valid"][0].mean()),
@@ -144,7 +157,7 @@ def evaluate(logdir, policy="best", n_episodes=512, device="cuda", seed=12345, o
     out = Path(out) if out else repo_root() / "results" / "rl" / logdir.name / name
     write_run_json(out, "delta_eval", {"policy": policy, "n_episodes": n_episodes, "seed": seed,
                                        "overrides": list(sets)},
-                   parents=[str(logdir)], flow_ckpt=policy_flow_ckpt(logdir))
+                   parents=[str(logdir)], flow_ckpt=eval_flow)
     (out / "eval.json").write_text(json.dumps(report, indent=2))
 
     keys = [k for k, _, _ in env._goal_terms]
@@ -183,11 +196,13 @@ def main():
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                     help="override a diff_env setting for this eval (dotted keys), repeatable")
     ap.add_argument("--tag", default="", help="output subdir suffix: delta_eval_<tag>")
+    ap.add_argument("--flow-ckpt", default=None, help="evaluate on this flow instead of the policy's own")
+    ap.add_argument("--de-yaml", default=None, help="diff_env fragment deep-merged into the policy's config")
     ap.add_argument("--hifi-n", type=int, default=8192,
                     help="particles for the CRN final-error check (cloud mode; 0 = off)")
     args = ap.parse_args()
     rep = evaluate(args.logdir, args.policy, args.n_episodes, args.device, args.seed, args.out,
-                   sets=args.set, tag=args.tag, hifi_n=args.hifi_n)
+                   sets=args.set, tag=args.tag, hifi_n=args.hifi_n, flow_ckpt=args.flow_ckpt, de_yaml=args.de_yaml)
     print(json.dumps(rep, indent=2))
 
 

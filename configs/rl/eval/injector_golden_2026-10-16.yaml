@@ -1,0 +1,40 @@
+# diff_env fragment: the 37-knob injector-aware frame with every injector knob AT GOLDEN (widths 0): separates
+# the flow change from the injector variation in the cross-flow eval (overnight 2026-10-16).
+baseline_set: xtcav23e_l0b2_inj12
+context_dist:
+  GUNF:rf_field_scale:
+    dist: normal
+    width: 0.0
+  GUNF:theta0_deg:
+    dist: normal
+    width: 0.0
+  laser_timing_ps:
+    dist: normal
+    width: 0.0
+  distgen:t_dist:dists:d2:avg_t:value:
+    dist: normal
+    width: 0.0
+  drive_fraction:
+    dist: uniform
+    width: 0.0
+  distgen:total_charge:value:
+    dist: normal
+    width: 0.0
+  L0AF_phase_offset_deg:
+    dist: normal
+    width: 0.0
+  SOL10111:solenoid_field_scale:
+    dist: normal
+    width: 0.0
+  distgen:r_dist:sigma_xy:value:
+    dist: normal
+    width: 0.0
+  distgen:r_dist:truncation_radius:value:
+    dist: normal
+    width: 0.0
+  distgen:start:MTE:value:
+    dist: normal
+    width: 0.0
+  sigma_t_ps:
+    dist: normal
+    width: 0.0
