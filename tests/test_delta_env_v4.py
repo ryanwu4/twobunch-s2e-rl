@@ -85,3 +85,16 @@ def test_goal_radius_keeps_goals_near_the_start():
         env.step(torch.zeros(64, 2))
     d = (env._goal_ctrl - env._start).abs()
     assert (d[:, 0] <= 0.5 + 1e-5).all() and (d[:, 1] <= 0.7 + 1e-5).all()
+
+
+def test_direct_rb_actuator_moves_l1_by_g_a_step_and_observes_the_readback():
+    env = _env(actuators={"L1PhaseSet": {"type": "direct_rb", "step": 0.25, "gain_range": [0.7, 1.3],
+                                         "readback_noise": 0.0, "cum_limit": 2.5},
+                          "L2PhaseSet": {"type": "direct", "gain_range": [0.35, 1.1]}})
+    t0 = env.true_controls().clone()
+    env.step(torch.tensor([[1.0, 1.0]] * 16))
+    d = env.true_controls() - t0
+    torch.testing.assert_close(d[:, 0], env._g[:, 0] * 0.25)          # + sign, gain on the command
+    torch.testing.assert_close(env._cum_obs[:, 0], d[:, 0])           # readback = true delta (no noise)
+    torch.testing.assert_close(env._cum_obs[:, 1], torch.full((16,), 0.3))   # direct: the command
+    assert ((env._g[:, 0] >= 0.7) & (env._g[:, 0] <= 1.3)).all()

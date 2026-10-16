@@ -6,6 +6,9 @@ implements (results/plan_review_2026-10-14/, docs/overnight_2026-10-15.md):
 Actuators (`actuators: {control: {...}}`), each with a hidden per-episode gain g:
   direct     true delta = g * a * step                      (L2 via the relative L2_PHASE.MKB; the
              BC14/BC20 loops' SBST trims make g < 1: gain_range ~ [0.35, 1.1])
+  direct_rb  as direct, but the OBSERVED delta is a readback (true delta + readback noise) instead of
+             the command: L1 PDES moved directly (common-mode KLYS_LI11_11/21) with the BC11 BLEN loop
+             off, FAST_PACT observed
   blen_dlog  the action is a change of ln(BC11 BLEN setpoint): dln = a * step (step in ln units);
              true dL1 = -g * dln with g in deg/ln (DAQ: 2.2-3.4 deg/ln, local 1.9-3.7); the BC11
              loop is on, so the OBSERVED dL1 is the FAST_PACT readback = true dL1 + readback noise +
@@ -54,11 +57,11 @@ class DeltaControlEnvV4(DeltaControlEnv):
         f = dict(device=dev, dtype=torch.float32)
         acts = [dict(actuators.get(c, {"type": "direct"})) for c in controls]
         for c, a in zip(controls, acts):
-            if a.get("type", "direct") not in ("direct", "blen_dlog", "adapter"):
-                raise ValueError(f"actuator type for {c} must be direct | blen_dlog | adapter")
+            if a.get("type", "direct") not in ("direct", "direct_rb", "blen_dlog", "adapter"):
+                raise ValueError(f"actuator type for {c} must be direct | direct_rb | blen_dlog | adapter")
             a.setdefault("type", "direct")
             a.setdefault("gain_range", [1.0 - kw.get("gain_halfwidth", 0.2), 1.0 + kw.get("gain_halfwidth", 0.2)]
-                         if a["type"] == "direct" else [1.5, 4.0])
+                         if a["type"] in ("direct", "direct_rb") else [1.5, 4.0])
         self._acts = acts
         self._a_type = [a["type"] for a in acts]
         self._a_step = torch.tensor([float(a.get("step", kw["action_step"][c])) for c, a in zip(controls, acts)], **f)
@@ -246,7 +249,7 @@ class DeltaControlEnvV4(DeltaControlEnv):
         self._true = new_true
         # observed delta: readback dL1 (+ noise + the loop's drift compensation) for BLEN / adapter
         # actuators, the commanded delta for direct ones
-        readback = torch.tensor([t in ("blen_dlog", "adapter") for t in self._a_type], device=self.device)
+        readback = torch.tensor([t in ("blen_dlog", "adapter", "direct_rb") for t in self._a_type], device=self.device)
         rb_step = self._randn(*act.shape) * self._rb_noise + self._randn(*act.shape) * self._rb_drift
         d_obs = torch.where(readback, d_true.detach() + rb_step, act.detach())
         # adapter gain estimate: forgetting least squares of -dL1_obs on dln

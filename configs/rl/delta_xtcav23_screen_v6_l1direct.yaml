@@ -1,0 +1,175 @@
+# Direct-L1 actuator variant (overnight 2026-10-16, Ryan's choice): L1 = relative common-mode L1 phase
+# (KLYS_LI11_11/21 PDES), BC11 BLEN loop OFF, energy feedbacks on, like L2_PHASE.MKB. dL1 = g a step,
+# g ~ U(0.7, 1.3) hidden; observed dL1 = FAST_PACT readback (noise 0.02 deg); |cum| <= 2.5 deg; L1 drift
+# 0.05 deg/step (ASSUMED = L2: no BC11 loop to compensate). Otherwise identical to delta_xtcav23_screen_v6_blen.yaml.
+params:
+  diff_env:
+    name: DeltaControlEnv
+    plant: xtcav_screen
+    flow_ckpt: trained/xtcav23/checkpoints/best-epoch=498-val_loss=0.1747.ckpt
+    baseline_set: xtcav23
+    episode_length: 32
+    stochastic_env: true
+    n_particles: 1024
+    controls:
+    - L1PhaseSet
+    - L2PhaseSet
+    action_step:
+      L1PhaseSet: 0.3
+      L2PhaseSet: 0.3
+    start_box:
+      L1PhaseSet:
+      - -23.5
+      - -19.0
+      L2PhaseSet:
+      - -40.5
+      - -33.5
+    gain_halfwidth: 0.2
+    measurement:
+      shot_noise:
+        bunch_spacing: 1.5e-05
+        drive_sigma_z: 6.0e-06
+        drive_charge_fraction: 0.07
+      shots_per_step: 30
+      step_noise_floor:
+        bunch_spacing: 6.0e-06
+        drive_sigma_z: 2.5e-06
+        drive_charge_fraction: 0.02
+      outlier_prob: 0.01
+      outlier_scale: 5.0
+      scale_error_keys:
+      - bunch_spacing
+      - drive_sigma_z
+      scale_error_halfwidth: 0.2
+    campaign_h5: processed/xtcav23_combined.h5
+    reward_norms_json: results/rl/_shared/norms/metric_norms_delta_xtcav23_screen_v4.json
+    surv_T_min: 0.9
+    surv_margin: 0.05
+    observe:
+    - drive_charge_fraction
+    objectives:
+    - key: bunch_spacing
+      kind: target
+      weight: 1.0
+      goal:
+      - 5.0e-05
+      - 0.0004
+      scale: 1.0e-05
+    - key: drive_sigma_z
+      kind: target
+      weight: 1.0
+      goal:
+      - 5.0e-06
+      - 0.0002
+      scale: 0.0414
+    - key: T_drive
+      kind: hinge
+      weight: 1.0
+      hinge_at: 0.95
+      scale: 0.01
+      observe: false
+    - key: T_witness
+      kind: hinge
+      weight: 1.0
+      hinge_at: 0.95
+      scale: 0.01
+      observe: false
+    - key: knobs
+      kind: boundary
+      weight: 0.5
+      margin: 0.05
+    - key: screen_valid_deployed
+      kind: hinge
+      weight: 1.0
+      hinge_at: 1.0
+    v4:
+      reward_on: 'true'
+      action_cost: 0.02
+      offcontext_goal_frac: 0.2
+      history: 8
+      drift_per_step:
+        L1PhaseSet: 0.05
+        L2PhaseSet: 0.05
+      actuators:
+        L1PhaseSet:
+          type: direct_rb
+          step: 0.25
+          gain_range:
+          - 0.7
+          - 1.3
+          readback_noise: 0.02
+          cum_limit: 2.5
+        L2PhaseSet:
+          type: direct
+          step: 0.3
+          gain_range:
+          - 0.35
+          - 1.1
+          cum_limit: 3.5
+      goal_radius:
+        L1PhaseSet: 2.0
+        L2PhaseSet: 2.5
+      goal_valid_retries: 4
+    screen:
+      spec: configs/segment/segment_baseline.json
+      tdc_voltage_V: 22000000.0
+      tdc_voltage_range:
+      - 22000000.0
+      - 30000000.0
+      optics_choices:
+      - {}
+      - Q0D: 1.0559
+        Q2D: 1.0559
+        Q1D: 0.9991
+        Q2FF: 0.9971
+        Q1FF: 0.997
+        Q0FF: 0.9971
+      quad_jitter:
+        Q2FF: 0.01
+        Q1FF: 0.01
+        Q0FF: 0.01
+      roi:
+        x: 0.0046
+        y: 0.00244
+      arrival_jitter_s: 8.5e-14
+      split: energy
+      threshold: valley
+      row_correct: true
+      extra_resolution_m: 1.5e-05
+      orientation: charge
+      deployed_floor_m: 6.0e-05
+      edge_frac_max: 0.01
+      edge_band_m: 0.0003
+      pm_energy_axes: true
+  general:
+    seed: 0
+    device: cuda:0
+    render: false
+    train: true
+    logdir: logs/2026-10-15/delta_xtcav23_screen_v4r_blen
+  config:
+    name: DeltaBPTT
+    num_actors: 12
+    steps_num: 32
+    max_epochs: 600
+    actor_learning_rate: 5e-4
+    lr_schedule: linear
+    gamma: 0.99
+    obs_rms: true
+    truncate_grads: true
+    grad_norm: 1.0
+    rew_scale: 1.0
+    save_interval: 50
+    betas:
+    - 0.7
+    - 0.95
+    player:
+      games_num: 64
+      deterministic: true
+  network:
+    actor_mlp:
+      units:
+      - 128
+      - 128
+      activation: elu
+    actor_logstd_init: -1.0
