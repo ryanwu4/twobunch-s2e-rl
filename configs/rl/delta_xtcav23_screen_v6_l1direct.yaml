@@ -1,3 +1,4 @@
+# SUPERSEDED (2026-10-16 22:45): the readback leaks the hidden beam-side gain; use *_l1direct_v2.yaml
 # Direct-L1 actuator variant (overnight 2026-10-16, Ryan's choice): L1 = relative common-mode L1 phase
 # (KLYS_LI11_11/21 PDES), BC11 BLEN loop OFF, energy feedbacks on, like L2_PHASE.MKB. dL1 = g a step,
 # g ~ U(0.7, 1.3) hidden; observed dL1 = FAST_PACT readback (noise 0.02 deg); |cum| <= 2.5 deg; L1 drift

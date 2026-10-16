@@ -98,3 +98,22 @@ def test_direct_rb_actuator_moves_l1_by_g_a_step_and_observes_the_readback():
     torch.testing.assert_close(env._cum_obs[:, 0], d[:, 0])           # readback = true delta (no noise)
     torch.testing.assert_close(env._cum_obs[:, 1], torch.full((16,), 0.3))   # direct: the command
     assert ((env._g[:, 0] >= 0.7) & (env._g[:, 0] <= 1.3)).all()
+
+
+def test_direct_rb_klystron_readback_hides_beam_gain_and_ramp_drifts():
+    acts = {"L1PhaseSet": {"type": "direct_rb", "step": 0.25, "gain_range": [0.7, 1.3], "readback_noise": 0.0,
+                           "cum_limit": 2.5, "readback_gain_range": [0.95, 1.05]},
+            "L2PhaseSet": {"type": "direct", "gain_range": [0.35, 1.1]}}
+    env = _env(actuators=acts)
+    t0 = env.true_controls().clone()
+    env.step(torch.tensor([[1.0, 0.0]] * 16))
+    torch.testing.assert_close(env.true_controls()[:, 0] - t0[:, 0], env._g[:, 0] * 0.25)   # beam: hidden g
+    torch.testing.assert_close(env._cum_obs[:, 0], env._g_rf[:, 0] * 0.25)                 # readback: g_rf
+    assert ((env._g_rf[:, 0] >= 0.95) & (env._g_rf[:, 0] <= 1.05)).all()
+    assert not torch.allclose(env._cum_obs[:, 0], env.true_controls()[:, 0] - t0[:, 0])
+    env2 = _env(actuators=acts, drift_ramp={"L1PhaseSet": 0.05})
+    r = env2._ramp[:, 0].clone()
+    assert (r.abs() <= 0.05).all() and r.abs().max() > 0
+    t0 = env2.true_controls().clone()
+    env2.step(torch.zeros(16, 2))
+    torch.testing.assert_close(env2.true_controls()[:, 0] - t0[:, 0], r)                    # no action: ramp only

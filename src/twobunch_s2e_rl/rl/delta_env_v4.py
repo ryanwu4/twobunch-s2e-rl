@@ -6,9 +6,11 @@ implements (results/plan_review_2026-10-14/, docs/overnight_2026-10-15.md):
 Actuators (`actuators: {control: {...}}`), each with a hidden per-episode gain g:
   direct     true delta = g * a * step                      (L2 via the relative L2_PHASE.MKB; the
              BC14/BC20 loops' SBST trims make g < 1: gain_range ~ [0.35, 1.1])
-  direct_rb  as direct, but the OBSERVED delta is a readback (true delta + readback noise) instead of
-             the command: L1 PDES moved directly (common-mode KLYS_LI11_11/21) with the BC11 BLEN loop
-             off, FAST_PACT observed
+  direct_rb  as direct, but the OBSERVED delta is a readback instead of the command: L1 PDES moved
+             directly (common-mode KLYS_LI11_11/21) with the BC11 BLEN loop off, FAST_PACT observed.
+             readback_gain_range [lo, hi] (recommended [0.95, 1.05]): FAST_PACT measures the klystron
+             phase, so obs = a * step * g_rf + noise with its own hidden g_rf (the beam-side gain g stays
+             hidden); unset = obs = true delta + noise (v1, which reveals g)
   blen_dlog  the action is a change of ln(BC11 BLEN setpoint): dln = a * step (step in ln units);
              true dL1 = -g * dln with g in deg/ln (DAQ: 2.2-3.4 deg/ln, local 1.9-3.7); the BC11
              loop is on, so the OBSERVED dL1 is the FAST_PACT readback = true dL1 + readback noise +
@@ -20,7 +22,9 @@ Actuators (`actuators: {control: {...}}`), each with a hidden per-episode gain g
              round-2 ML review's "structured action" alternative to blen_dlog.
   Gains are drawn uniform (or log-uniform) in gain_range; cum_limit caps |cumulative action| (in the
   action's own units: deg, or ln for blen_dlog).
-Drift (`drift_per_step: {control: sigma}`): hidden random walk on the beam-effective control.
+Drift (`drift_per_step: {control: sigma}`): hidden random walk on the beam-effective control;
+`drift_ramp: {control: h}`: plus a hidden per-episode ramp rate ~ U(-h, h) per step (loop-off L1 drift
+is directional: the BC11 loop was cancelling ramps of this size, results/l1_direct_review_2026-10-16).
 Measurement (`measurement` block, on top of shot_noise / M and the streak scale error):
   step_noise_floor {feature: sigma}   per-step noise NOT reduced by M (the +/-V images are ~11 s apart)
   outlier_prob, outlier_scale         a step's features get an extra N(0, (scale*floor)^2)
@@ -47,7 +51,7 @@ class DeltaControlEnvV4(DeltaControlEnv):
                  step_noise_floor: dict | None = None, outlier_prob: float = 0.0,
                  outlier_scale: float = 5.0, reward_on: str = "true", action_cost: float = 0.0,
                  offcontext_goal_frac: float = 0.0, history: int = 1, goal_radius: dict | None = None,
-                 goal_valid_retries: int = 0,
+                 goal_valid_retries: int = 0, drift_ramp: dict | None = None,
                  **kw):
         if reward_on not in ("true", "measured"):
             raise ValueError(f"reward_on must be 'true' or 'measured', got {reward_on!r}")
@@ -75,6 +79,11 @@ class DeltaControlEnvV4(DeltaControlEnv):
         self._cum_limit = torch.tensor([float(a.get("cum_limit", math.inf)) for a in acts], **f)
         self._forget = float(next((a.get("forgetting", 0.8) for a in acts if a["type"] == "adapter"), 0.8))
         self._drift = torch.tensor([float((drift_per_step or {}).get(c, 0.0)) for c in controls], **f)
+        self._ramp_hw = torch.tensor([float((drift_ramp or {}).get(c, 0.0)) for c in controls], **f)
+        rgr = [a.get("readback_gain_range") for a in acts]
+        self._rbg_on = torch.tensor([r is not None for r in rgr], device=dev)
+        self._rbg_lo = torch.tensor([float(r[0]) if r else 1.0 for r in rgr], **f)
+        self._rbg_hi = torch.tensor([float(r[1]) if r else 1.0 for r in rgr], **f)
         self._floor = dict(step_noise_floor or {})
         self._p_out, self._out_scale = float(outlier_prob), float(outlier_scale)
         self._reward_on, self._a_cost = reward_on, float(action_cost)
@@ -97,6 +106,8 @@ class DeltaControlEnvV4(DeltaControlEnv):
         self._true = z(B, n)                                  # beam-effective controls (grad)
         self._cum_act, self._cum_obs = z(B, n), z(B, n)
         self._g = torch.ones(B, n, device=self.device)
+        self._g_rf = torch.ones(B, n, device=self.device)
+        self._ramp = torch.zeros(B, n, device=self.device)
         self._g_hat = self._g_prior.expand(B, -1).clone()
         self._ls_xx, self._ls_xy = z(B, n), z(B, n)
         self._last_dobs = z(B, n)
@@ -153,6 +164,11 @@ class DeltaControlEnvV4(DeltaControlEnv):
         g_lin = self._g_lo + u * (self._g_hi - self._g_lo)
         g_log = (self._g_lo.log() + u * (self._g_hi.log() - self._g_lo.log())).exp()
         self._g = torch.where(mc, torch.where(self._g_log, g_log, g_lin), self._g)
+        if bool(self._rbg_on.any()) or bool((self._ramp_hw > 0).any()):     # extra draws only then (RNG stream)
+            u2 = self._rand(B, n)
+            self._g_rf = torch.where(mc, self._rbg_lo + u2 * (self._rbg_hi - self._rbg_lo), self._g_rf)
+            u3 = self._rand(B, n)
+            self._ramp = torch.where(mc, (2 * u3 - 1) * self._ramp_hw, self._ramp)
         z = torch.zeros(B, n, device=self.device)
         for name in ("_cum_act", "_ls_xx", "_ls_xy", "_last_dobs"):
             setattr(self, name, torch.where(mc, z, getattr(self, name)))
@@ -244,14 +260,15 @@ class DeltaControlEnvV4(DeltaControlEnv):
         adapter = torch.tensor([t == "adapter" for t in self._a_type], device=self.device)
         ratio = torch.where(adapter, self._g / self._g_hat.detach(), self._g)
         d_true = torch.where(adapter, act * ratio, self._sign * self._g * act)
-        drift_step = self._randn(*act.shape) * self._drift            # hidden random walk
+        drift_step = self._randn(*act.shape) * self._drift + self._ramp   # hidden random walk + ramp
         new_true = self._true + d_true + drift_step
         self._true = new_true
         # observed delta: readback dL1 (+ noise + the loop's drift compensation) for BLEN / adapter
         # actuators, the commanded delta for direct ones
         readback = torch.tensor([t in ("blen_dlog", "adapter", "direct_rb") for t in self._a_type], device=self.device)
         rb_step = self._randn(*act.shape) * self._rb_noise + self._randn(*act.shape) * self._rb_drift
-        d_obs = torch.where(readback, d_true.detach() + rb_step, act.detach())
+        rb_val = torch.where(self._rbg_on, act * self._g_rf, d_true).detach()   # klystron-side readback if set
+        d_obs = torch.where(readback, rb_val + rb_step, act.detach())
         # adapter gain estimate: forgetting least squares of -dL1_obs on dln
         with torch.no_grad():
             dln = torch.where(adapter, -act / self._g_hat, torch.zeros_like(act))
