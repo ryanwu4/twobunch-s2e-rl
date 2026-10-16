@@ -298,3 +298,34 @@ def test_test_points_pairing_jacobian_and_correlated_l1_energy(tmp_path):
     assert len(jac) == 2 * 2 * 4 and len({ic.bmad_seed(cfg, r) for r in jac}) == 2
     keys, lo, hi, _ = ic.resolve_sweep_set("xtcav23e")
     assert all(lo[keys.index("L1PhaseSet")] <= r["knobs"]["L1PhaseSet"] <= hi[keys.index("L1PhaseSet")] for r in jac)
+
+
+def test_local_injector_stratum(tmp_path):
+    dist = {"GUNF:theta0_deg": {"dist": "normal", "width": 0.25},
+            "drive_fraction": {"dist": "uniform", "width": 0.06},
+            "distgen:start:MTE:value": {"dist": "normal", "width": 10.0}}
+    cfg = _cfg(tmp_path, injector={"golden": True, "lhs": 20, "local": {"n": 40, "dist": dist},
+                                   "test_points": 6})
+    rows = ic.make_rows(cfg)
+    keys, lo, hi, _ = resolve_sweep_set("inj12")
+    g = injector_golden(keys)
+    loc = {r["injector_point"]: r["injector"] for r in rows if r["injector_point"].startswith("lhsloc")}
+    assert len(loc) == 40
+    nested = [r for r in rows if r["block"] == "nested"]
+    assert {r["injector_point"] for r in nested} >= set(loc)          # local points are nested too
+    ph = np.array([p["GUNF:theta0_deg"] for p in loc.values()]) - g["GUNF:theta0_deg"]
+    assert 0.15 < ph.std() < 0.35 and np.abs(ph).max() <= 0.5 + 1e-9   # N(0, 0.25) clipped to the box
+    df = np.array([p["drive_fraction"] for p in loc.values()])
+    assert df.min() >= 0.69 - 1e-9 and df.max() <= 0.80 + 1e-9
+    for p in loc.values():                                              # undistributed knobs: golden
+        assert p["laser_timing_ps"] == g["laser_timing_ps"]
+    reg = {r["injector_point"]: r["injector_region"] for r in rows if r["block"] != "paired_golden"}
+    assert all(v == "local" for t, v in reg.items() if t.startswith("lhsloc"))
+    assert all(v == "full" for t, v in reg.items() if t.startswith("lhs") and not t.startswith("lhsloc"))
+    for r in rows:
+        if r["block"] == "paired_golden":
+            assert r["injector_region"] == ("local" if r["pair_of"].startswith("lhsloc") else "full")
+    with pytest.raises(KeyError):
+        ic.make_rows(_cfg(tmp_path, injector={"lhs": 2, "local": {"n": 2, "dist": {"nope": {"width": 1}}}}))
+    old = ic.make_rows(_cfg(tmp_path))                                  # no local block: no new field
+    assert all("injector_region" not in r for r in old)

@@ -102,7 +102,10 @@ def build_manifest(cfg) -> list[dict]:
 
     design:
       seed: int
-      injector: {golden: bool, oat: [{key: {abs|rel}}...], lhs: n, box_scale: 1.0}
+      injector: {golden: bool, oat: [{key: {abs|rel}}...], lhs: n, box_scale: 1.0,
+                 local: {n: m, dist: {key: {dist: normal|uniform, width: w}}}}   # m more points
+                 # from the RL injector-context distribution (tags lhsloc*, nested like lhs*;
+                 # rows then carry injector_region = full / local / golden)
       linac:    {shared: {baseline: bool, lhs: n}, per_injector_lhs: k,
                  controller_frac: f (of the k per point), controller_box: {L1PhaseSet: [lo, hi], ...}}
       pair_golden_frac: f     # fraction of per-injector rows re-run at injector = golden
@@ -152,6 +155,34 @@ def _controller_draws(n, keys, low, high, base, box, seed, l1_energy=None):
     return out
 
 
+def _local_injector_draws(n, dist, keys, low, high, golden, seed) -> list[dict]:
+    """n injector points from a per-knob distribution around golden (the RL injector-context
+    format: {key: {dist: normal|uniform, width: w}}; normal = N(golden, w), uniform = golden +- w),
+    stratified by LHS + inverse CDF, clipped to the injector box. Knobs not in `dist` stay golden."""
+    from scipy.stats import norm
+    bad = [k for k in dist if k not in keys]
+    if bad:
+        raise KeyError(f"local injector dist: unknown knobs {bad}")
+    dkeys = list(dist)
+    u = _lhs(n, [0.0] * len(dkeys), [1.0] * len(dkeys), seed)
+    u = np.clip(u, 1e-6, 1 - 1e-6)
+    out = []
+    for row in u:
+        p = dict(golden)
+        for k, x in zip(dkeys, row):
+            w, kind = float(dist[k]["width"]), dist[k].get("dist", "normal")
+            if kind == "normal":
+                v = golden[k] + w * norm.ppf(x)
+            elif kind == "uniform":
+                v = golden[k] + w * (2 * x - 1)
+            else:
+                raise ValueError(f"local injector dist {kind!r} for {k}")
+            j = keys.index(k)
+            p[k] = float(np.clip(v, low[j], high[j]))
+        out.append(p)
+    return out
+
+
 def make_rows(cfg) -> list[dict]:
     des = cfg["design"]
     seed = int(des["seed"])
@@ -170,6 +201,11 @@ def make_rows(cfg) -> list[dict]:
     n_lhs = int(des["injector"].get("lhs", 0))
     for j, r in enumerate(_lhs(n_lhs, ilo_s, ihi_s, seed)):
         inj_pts.append((f"lhs{j}", dict(zip(ikeys, map(float, r)))))
+    loc = des["injector"].get("local")
+    if loc:
+        for j, p in enumerate(_local_injector_draws(int(loc["n"]), loc["dist"], ikeys, ilo, ihi,
+                                                    golden, seed + 9)):
+            inj_pts.append((f"lhsloc{j}", p))
 
     shared = []
     sh = des["linac"].get("shared", {}) or {}
@@ -273,6 +309,10 @@ def make_rows(cfg) -> list[dict]:
                     rows[-1]["jacobian_delta"] = dname
     for r in rows:
         r["holdout"] = r["injector_point"] in test_tags or r.get("pair_of") in test_tags
+        if loc:
+            t = r.get("pair_of") or r["injector_point"]
+            r["injector_region"] = ("local" if t.startswith("lhsloc") else
+                                    "full" if t.startswith("lhs") else "golden")
     return rows
 
 

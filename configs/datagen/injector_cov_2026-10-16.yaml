@@ -1,0 +1,65 @@
+# Injector COVERAGE campaign (2026-10-16, Ryan: option (c) = half full box, half DAQ shift-to-shift).
+# Motivation: the flow's held-out pair gap (C2 train 0.94 / 0.92 vs held-out 0.89 / 0.85) and only
+# ~200 train injector points in injector_full; the 10-16 top-up added pairs but no new injector points.
+# New injector points (one Impact-T each), nested linac draws, and exact golden pairs:
+#   125 LHS points over the full inj12 box + 125 points from the RL injector-context distribution
+#   (configs/rl/eval/injector_ctx_2026-10-16.yaml, LHS + inverse CDF, clipped to the box; centre-weighted)
+#   x 8 nested linac draws (50% controller region) + 25% of nested rows re-run at injector = golden.
+#   rows: 251 crossed + 2000 nested + 500 paired_golden = 2751 Bmad; 251 Impact-T (~12 h at 64 workers).
+# Fidelity = injector_full_launch.yaml (5e4 / grid 64, convergence pass rules). New seed -> new points.
+# Run from a pinned worktree: scripts/launch_injector_cov_2026-10-16.sh
+name: injector_cov_2026-10-16
+output_dir: data/injector_cov_2026-10-16
+sweep_set: xtcav23e_l0b2_inj12
+linac_sweep_set: xtcav23e_l0b2
+injector_sweep_set: inj12
+n_workers: 64
+
+injector:
+  n_particles: 50000
+  grid: 64
+  arrival: absolute
+  hammersley_burnin: -1
+
+design:
+  seed: 20261016
+  injector:
+    golden: true
+    lhs: 125
+    box_scale: 1.0
+    local:
+      n: 125
+      dist:   # = configs/rl/eval/injector_ctx_2026-10-16.yaml context_dist
+        GUNF:rf_field_scale: {dist: normal, width: 121485.6}
+        GUNF:theta0_deg: {dist: normal, width: 0.25}
+        laser_timing_ps: {dist: normal, width: 0.1}
+        distgen:t_dist:dists:d2:avg_t:value: {dist: normal, width: 0.1}
+        drive_fraction: {dist: uniform, width: 0.06}
+        distgen:total_charge:value: {dist: normal, width: 4.8}
+        L0AF_phase_offset_deg: {dist: normal, width: 0.1}
+        SOL10111:solenoid_field_scale: {dist: normal, width: 0.00121875}
+        distgen:r_dist:sigma_xy:value: {dist: normal, width: 0.00745}
+        distgen:r_dist:truncation_radius:value: {dist: normal, width: 0.0126}
+        distgen:start:MTE:value: {dist: normal, width: 10.0}
+        sigma_t_ps: {dist: normal, width: 0.00585}
+    test_points: 25          # pre-registered held-out injector points (from both strata)
+  linac:
+    shared: {baseline: true, lhs: 0}
+    per_injector_lhs: 8
+    controller_frac: 0.5
+    controller_box: {L1PhaseSet: [-26.5, -18.5], L2PhaseSet: [-41.0, -33.0]}
+    controller_l1_energy: {k_max: 0.9, dphi_max_deg: 2.5, gain_eV: 210.0e6}
+  pair_golden_frac: 0.25
+  pair_golden_frac_test: 0.25
+  bridge: false
+
+# = injector_full physics
+csrTF: true
+transverseWakes: true
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+treaty_points: [ENDDL10, BL11356, BL14888, BEGBC20, IM2452, BL20_4, MFFF, XTCAVF, PENT]
+save_beams_at: [BL11356, BL14888, BL20_4, XTCAVF]
+fixed_overrides:
+  Q19851kG: -63.76368742523523
+  Q19871kG: 42.49972197426665
+  trackEnd: PENT
