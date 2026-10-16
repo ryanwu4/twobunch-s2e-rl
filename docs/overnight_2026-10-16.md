@@ -2,6 +2,17 @@
 
 Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outputs only; FACET2-S2E untouched.
 
+## Status at a glance (morning, 2026-10-16)
+| item | result |
+|---|---|
+| Top-up campaign | 1000 Bmad rows, 0 failed (3.7 h); determinism probe bit-exact; merged table with correct cross-campaign links |
+| Surrogate | pair loss + two-part T + top-up: val pair R² 0.68 → 0.87, slope 0.61 → 0.83, p90 10.2 → 7.7 µm; T calibration 0.022 → 0.003 ✓. Best balanced: **B2** (all gates but pair slope / p90); best injector effect: **C2** (fails slope by 0.02, σz gate) |
+| Golden-injector Bmad check | S1 7.2–7.8 µm, S2 7.1–7.9 µm from the goal in Bmad; surrogate vs Bmad ~2% |
+| Cross-eval on flow A | S1 robust to injector variation (≤ +0.5 µm); S2 −1–2 µm; direct-L1 S2 −3 µm |
+| RL on flow A (exploratory) | S1 4.7–5.2 µm, S2 8.1–8.5 µm (2 seeds): no gain over the old-flow policies yet |
+| Direct-L1 | v1 leaked the hidden gain (fixed); v2 S1 ≈ blen_dlog −1 µm; S2 clearly worse (needs the BC11 BLEN obs) |
+| Analyses | L1 direct-control review; BLEN model v1 (BC11 = witness-length monitor; gain consistent with the DAQ) |
+
 ## Plan (agreed with Ryan, 21:45)
 - Surrogate: paired-Δ loss + two-part T head; fine-tune from ftc_s0; gate (pairs R² ≥ 0.8, slope 0.85–1.15, p90 ≤ 8 µm; old-val no regression; T calibration ≤ 0.02).
 - Data: ~1000 Bmad-only top-up rows (≈ 500 pairs on existing nested rows + 250 new nested draws each with a golden pair), cached injector beams, then preprocess + second fine-tune.
@@ -97,3 +108,10 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
   B2: old-val spacing 4.33 µm ✓, σz 0.109 ≤ 0.112 ✓, T calibration 0.0035 ✓, other observables unchanged. Both the top-up data (A → B) and the pair weight (B → B2) help.
 - 06:35 decision 5: time-boxed pair-weight push from B2 (C = w_pair 6, C2 = w_pair 10; 25 epochs; GPU0; ETA ~09:45) to try the slope gate. B2 is the current best flow regardless.
 - 07:10 direct-L1 v2 on flow A + injector context (seed 0): S1 5.4 µm / 78% (blen_dlog 4.7–5.2); **S2 v6 12.8 / 43%** (blen_dlog 8.1–8.5). Training completed (600 it); the loss was ~5% above blen_dlog's. In screen mode the direct-L1 variant has no beam-side L1 signal (the beam gain is hidden from FAST_PACT and the drift ramp is invisible), and injector variation adds L1-like shifts; the BC11 BLEN observation is the missing piece.
+- 08:45 **C / C2 (pair weight 6 / 10, from B2)** (`results/surrogate_scorecard_2026-10-16/C/scorecard.md`):
+  - val pairs: C 0.85 / 0.82 / 8.2 µm; C2 0.87 [0.80, 0.91] / 0.83 / 7.7 µm (R² / slope / p90);
+  - test: C 0.90 / 0.85 / 7.7; C2 0.90 / 0.85 / 7.6;
+  - train pairs: C2 0.94 / 0.92.
+
+  But old-val σz rel rises to 0.115 / 0.119 (gate ≤ 0.112) and the spacing MAE to 4.7 / 4.9 µm. **No flow passes every gate:** B2 passes all but pair slope / p90; C2 passes pair R² and p90, misses slope by 0.02 and fails σz. Choice for Ryan (decision 6, not taken).
+- 08:50 notebook figures `lab-notebook/images/2026-10-16_{surrogate_progression,cross_eval}.png`.
