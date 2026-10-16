@@ -77,3 +77,8 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
   | S2 v5 600-it s0 | 7.9 µm | 14% | 2.4% |
 
   All 24/24 tracked. Consistent with the v3 Bmad result (6–7 µm): the v4/v5 policies transfer to Bmad at the golden injector.
+- 04:05 **exploratory RL on flow A** (injector context, drive charge fraction observed, T hinge 0.98; seed 0; true median / within 10 µm):
+  - S1 blen_dlog: 5.2 µm / 80% (injector at golden 5.3);
+  - S2 v6 blen_dlog: 8.1 / 57% (golden 8.1).
+
+  No gain over the old-flow policies evaluated on flow A (S1 4.9–5.9). Note: flow A's two-part T head predicts T ≈ 1.000 across the controller box, so the T hinge is effectively inactive there (it no longer reports the small mean losses the MSE head did). Seed 1 of both is running on GPU1.
