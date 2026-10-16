@@ -38,3 +38,10 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
 - 22:45 L1 review (agent; `results/l1_direct_review_2026-10-16/REPORT.md`): no L1 multiknob in any DAQ run (all scan L2_PHASE.MKB); the BC11 energy loop appears to act on KLYS_LI11_21 amplitude; FAST_PACT is the klystron phase, so it must not reveal the beam-side gain; loop-off drift is a ramp invisible to PACT; recommends a BC11 BLEN observation. The v1 `direct_rb` leaked the hidden gain: S2 v6 l1direct v1 stopped (ABORTED); the S1 v1 run is kept for reference only. v2 actuator (klystron-side readback gain U(0.95, 1.05), RW 0.025 + ramp U(±0.05)°/step) queued on GPU1 after S2 v6 blen_dlog.
 - Cross-flow eval tooling (`eval_delta --flow-ckpt --de-yaml`); injector context fragment `configs/rl/eval/injector_ctx_2026-10-16.yaml` (decision 2). Smoke: the S1 blen_dlog s0 old-flow policy on ftc_s0 + injector context gets 5.6 µm (own env 5.0).
 - Scorecard made campaign-aware, with bootstrap CIs; ftc_s0 test-pair R² 0.76, CI [0.57, 0.86] (n = 48).
+- 23:00 BLEN model v1 (agent; `results/blen_model_2026-10-16/REPORT.md`):
+  - The BC11 BLEN is a **witness-length** monitor above ~0.3 THz.
+  - DAQ-consistent detector band ≲ 1 THz; there g ≈ 3.7–4.6 deg/ln at the operating point and 2.8–3.7 at −22 to −24° (upper end of the env's U(1.5, 4), state-dependent ~1.7×).
+  - Drive fraction ±0.07 → ∓1° L1 through a closed BC11 loop.
+  - BC14 log-ratio worth having as a realised-L2 readback (with a hidden L2 gain: spacing R² 0.69 → 0.89).
+  - Env integration (solved BC11 loop, BC14 obs) left for Ryan's review (not tonight).
+- 23:00 golden-injector Bmad check: settings exported for S1 blen_dlog s0, S1 adapter s0, S2 v5 blen s0, S2 v5 600-it s0 (24 each; `results/rl/<run>/bmad_check_2026-10-16/`); tracking starts after the top-up frees the CPUs.
