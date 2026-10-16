@@ -321,6 +321,12 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
         print(f"Parsing {len(files)} samples from {subdirs} (P={p}, sweep_set={sweep_set}, "
               f"{len(keys)} knobs, treaty_point={treaty_point})")
 
+    manifests = {}
+    for ci, sd in enumerate(subdirs):
+        mp = data_root / sd / "manifest.json"
+        if mp.exists():
+            manifests[ci] = {int(r["idx"]): r for r in json.loads(mp.read_text())
+                             if any(r.get(f) for f in ("pair_campaign", "point_campaign"))}
     records = []
     for i, (fp, ci) in enumerate(zip(files, file_campaign)):
         rec = parse_one(fp, p, rng, keys, treaty_point=treaty_point, fill=fills.get(ci),
@@ -328,6 +334,13 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
         if rec is not None:
             rec["campaign"] = ci
             rec["campaign_name"] = subdirs[ci]
+            # the campaign driver writes a fixed field set per row; link fields of top-up campaigns live
+            # only in the campaign's manifest.json (read-only supplement)
+            m = manifests[ci].get(int(rec["idx"])) if manifests.get(ci) else None
+            if m:
+                for f in ("pair_campaign", "point_campaign", "pair_of"):
+                    if rec.get(f) is None and m.get(f) is not None:
+                        rec[f] = m[f]
             records.append(rec)
         if verbose and (i + 1) % 500 == 0:
             nd = sum(r["drive_density"] for r in records)

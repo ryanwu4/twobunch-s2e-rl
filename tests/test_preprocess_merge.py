@@ -142,3 +142,25 @@ def test_topup_campaign_links_pairs_and_groups_across_campaigns(tmp_path):
     assert key[4] == key[5] and g[5] == g[4]                     # new draw + its golden pair
     assert key[6] != key[1] and g[6] != g[1]                     # same raw linac_id, different campaign
     assert list(blk) == [2, 2, 1, 3, 2, 3, 3] and lid[2] == 0 and list(ig) == [0, 0, 1, 1, 0, 1, 1]
+
+
+def test_topup_links_from_manifest_when_sample_jsons_lack_them(tmp_path):
+    """The campaign driver drops custom manifest fields from sample jsons: preprocess takes pair_campaign /
+    point_campaign from the campaign's manifest.json."""
+    keys, lo, hi, _ = resolve_sweep_set("tightbox")
+    mk = lambda **kw: {"knobs": {k: (a + b) / 2 for k, a, b in zip(keys, lo, hi)}, "success": True,
+                       "specs": {"PENT": {"PDrive_charge_nC": 1.2, "PWitness_charge_nC": 0.4}}, **kw}
+    (tmp_path / "c").mkdir(); (tmp_path / "t").mkdir()
+    (tmp_path / "c" / "sample_00000.json").write_text(json.dumps(mk(idx=0, injector_point="lhs0", block="nested", linac_id=2)))
+    (tmp_path / "c" / "sample_00001.json").write_text(json.dumps(mk(idx=1, injector_point="lhs1", block="nested", linac_id=3)))
+    (tmp_path / "t" / "sample_00000.json").write_text(json.dumps(mk(idx=0, injector_point="golden", block="paired_golden", linac_id=2)))
+    (tmp_path / "t" / "sample_00001.json").write_text(json.dumps(mk(idx=1, injector_point="lhs1", block="nested", linac_id=3_000_000)))
+    (tmp_path / "t" / "manifest.json").write_text(json.dumps([
+        {"idx": 0, "block": "paired_golden", "linac_id": 2, "pair_campaign": "c"},
+        {"idx": 1, "block": "nested", "linac_id": 3_000_000, "point_campaign": "c"}]))
+    out = tmp_path / "o.h5"
+    preprocess(subdir="c,t", p=16, sweep_set="tightbox", out=str(out), verbose=False, data_root=tmp_path)
+    with h5py.File(out) as h:
+        g, key = h["group"][...], h["pair_key"][...]
+    assert key[0] == key[2] and g[0] == g[2]        # manifest pair_campaign linked the exact pair
+    assert g[3] == g[1]                              # manifest point_campaign joined lhs1's group
