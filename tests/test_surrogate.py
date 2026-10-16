@@ -315,6 +315,32 @@ def test_step_centroid_and_spacing_terms():
     assert torch.equal(l0, d1._step(b, "train"))
 
 
+def test_pair_loss_and_two_part_T_head():
+    logs = {}
+    m = TwoBunchFlow(condition_dim=8, n_layers=4, hidden_dim=32, n_aux_particles=128,
+                     drive_std=[1.0, 1.0, 50e-6, 1.0, 1.0, 1.0], witness_std=[1.0, 1.0, 50e-6, 1.0, 1.0, 1.0],
+                     w_pair=1.0, pair_batch=8, pair_particles=64, t_two_part=True, t_head_lr=1e-3)
+    m.log_dict = lambda d, **k: logs.update(d)
+    calls = []
+    def src(b, device):
+        calls.append(b)
+        return torch.rand(b, 8), torch.rand(b, 8), torch.full((b,), 20e-6)
+    m.pair_source = src
+    b = _batch()
+    b["drive_frac"] = torch.tensor([1.0, 1.0, 0.9, 1.0]); b["witness_frac"] = torch.tensor([1.0, 0.8, 1.0, 1.0])
+    loss = m._step(b, "train")
+    assert calls == [8] and "train_pair" in logs and torch.isfinite(loss)
+    assert {"train_bce_Td_full", "train_bce_Tw_full", "train_mse_Tw_tail", "train_mae_Tw"} <= set(logs)
+    m.zero_grad(); loss.backward()
+    assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in m.t_full_head.parameters())
+    _, td, tw = m.feasibility(torch.rand(5, 8))
+    assert ((td >= 0) & (td <= 1) & (tw >= 0) & (tw <= 1)).all()
+    logs.clear(); m._step(b, "val")
+    assert "val_pair" not in logs                                   # pair loss is train-only
+    opt = m.configure_optimizers()["optimizer"] if isinstance(m.configure_optimizers(), dict) else m.configure_optimizers()
+    assert len(opt.param_groups) == 2 and opt.param_groups[1]["lr"] == 1e-3
+
+
 # ---------------------------------------------------------------------------
 # CRN sampling (Stage-C, plan C0): generator/z kwargs on sample_bunch/observables
 # ---------------------------------------------------------------------------

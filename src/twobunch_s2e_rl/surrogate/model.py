@@ -174,6 +174,15 @@ class TwoBunchFlow(L.LightningModule):
         # NLL barely feels a centroid error of ~0.1 sigma); w_spacing = Huber on the physical bunch spacing
         # (difference of the z centroids) in units of spacing_scale_m
         w_mean=0.0, w_spacing=0.0, spacing_scale_m=1e-5,
+        # paired injector-effect loss (0 = off): each training step draws `pair_batch` (point, reference)
+        # row pairs from self.pair_source (set by train.py; same linac knobs, injector point vs golden) and
+        # Huber-penalizes the error of the predicted spacing DIFFERENCE (common random numbers) in units of
+        # spacing_scale_m; pair_particles per bunch
+        w_pair=0.0, pair_batch=32, pair_particles=512,
+        # two-part transmission head (False = v1-v5 single sigmoid + MSE): a separate head predicts
+        # P(T = 1) (BCE), the existing T logits are fitted on lossy rows only, and the output is
+        # T = T_tail + (1 - T_tail) * sigmoid(t_sharp * full_logit) (median-like for t_sharp > 1)
+        t_two_part=False, t_sharp=4.0, t_head_lr=None,
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
 
@@ -214,6 +223,11 @@ class TwoBunchFlow(L.LightningModule):
         self.feas_head = nn.Sequential(
             nn.Linear(condition_dim, hidden_dim), nn.ReLU(),
             nn.Linear(hidden_dim, 3))
+        if t_two_part:   # [logit P(T_drive = 1), logit P(T_witness = 1)]
+            self.t_full_head = nn.Sequential(
+                nn.Linear(condition_dim, hidden_dim), nn.ReLU(),
+                nn.Linear(hidden_dim, 2))
+        self.pair_source = None
 
         tril = torch.tril_indices(latent_dim, latent_dim, offset=-1)
         self.register_buffer("_tril_r", tril[0])
@@ -320,6 +334,11 @@ class TwoBunchFlow(L.LightningModule):
     def feasibility(self, knobs):
         logits = self.feas_head(knobs)
         s = torch.sigmoid(logits)
+        if self.hparams.get("t_two_part", False):
+            full = torch.sigmoid(self.hparams.get("t_sharp", 4.0) * self.t_full_head(knobs))
+            t_d = s[:, 1] + (1 - s[:, 1]) * full[:, 0]
+            t_w = s[:, 2] + (1 - s[:, 2]) * full[:, 1]
+            return s[:, 0], t_d, t_w
         return s[:, 0], s[:, 1], s[:, 2]  # p_surv(witness), T_drive, T_witness
 
     # ---- MBRL-facing observables ------------------------------------------
@@ -368,10 +387,26 @@ class TwoBunchFlow(L.LightningModule):
         feas_logits = self.feas_head(knobs)
         t_d, t_w = torch.sigmoid(feas_logits[:, 1]), torch.sigmoid(feas_logits[:, 2])
         add(F.binary_cross_entropy_with_logits(feas_logits[:, 0], wv.float()), hp.w_cls, "bce_surv")
-        if dv.any():
-            add(F.mse_loss(t_d[dv], batch["drive_frac"][dv]), hp.w_tr, "mse_Td")
-        if wv.any():
-            add(F.mse_loss(t_w[wv], batch["witness_frac"][wv]), hp.w_tr, "mse_Tw")
+        if hp.get("t_two_part", False):
+            full_logits = self.t_full_head(knobs)
+            for j, (mask, key, tt) in enumerate(((dv, "d", t_d), (wv, "w", t_w))):
+                if not mask.any():
+                    continue
+                frac = batch["drive_frac" if j == 0 else "witness_frac"]
+                is_full = frac >= 1.0 - 1e-4
+                add(F.binary_cross_entropy_with_logits(full_logits[mask, j], is_full[mask].float()), hp.w_tr,
+                    f"bce_T{key}_full")
+                tail = mask & ~is_full
+                if tail.any():
+                    add(F.mse_loss(tt[tail], frac[tail]), hp.w_tr, f"mse_T{key}_tail")
+                with torch.no_grad():
+                    _, td_, tw_ = self.feasibility(knobs)
+                    logs[f"{prefix}_mae_T{key}"] = ((td_ if j == 0 else tw_)[mask] - frac[mask]).abs().mean()
+        else:
+            if dv.any():
+                add(F.mse_loss(t_d[dv], batch["drive_frac"][dv]), hp.w_tr, "mse_Td")
+            if wv.any():
+                add(F.mse_loss(t_w[wv], batch["witness_frac"][wv]), hp.w_tr, "mse_Tw")
 
         # per-bunch moment matching on the sampled cloud (standardized frame), one shared draw:
         # 2D emittances (incl. z_delta = sqrt det cov_zpz, the LPS thinness lever), 4D/6D dets,
@@ -409,6 +444,10 @@ class TwoBunchFlow(L.LightningModule):
                     lc = (2 * torch.abs(cp - ct) / (torch.abs(cp) + torch.abs(ct) + 1e-6)).mean()
                     add(lc, hp.w_cov, f"cov_{key}")
 
+        w_pair = float(hp.get("w_pair", 0.0))
+        if w_pair > 0 and prefix == "train" and self.pair_source is not None:
+            add(self._pair_loss(), w_pair, "pair")
+
         if w_sp > 0 and 0 in zc and 1 in zc:
             both = dd & wd
             if both.any():
@@ -427,6 +466,20 @@ class TwoBunchFlow(L.LightningModule):
                       prog_bar=(prefix == "val"), batch_size=knobs.shape[0])
         return loss
 
+    def _pair_loss(self):
+        """Huber on (pred - true) of the spacing difference of a random batch of (point, ref) pairs."""
+        kp, kr, d_true = self.pair_source(int(self.hparams.get("pair_batch", 32)), self.device)
+        n = int(self.hparams.get("pair_particles", 512))
+        zd = torch.randn(n, self.latent_dim, device=self.device)
+        zw = torch.randn(n, self.latent_dim, device=self.device)
+        knobs = torch.cat([kp, kr], 0)
+        d = self.sample_bunch(knobs, 0, n, z=zd)
+        w = self.sample_bunch(knobs, 1, n, z=zw)
+        sp = d[..., 2].mean(1) - w[..., 2].mean(1)                     # physical spacing [m]
+        m = kp.shape[0]
+        scale = float(self.hparams.get("spacing_scale_m", 1e-5))
+        return F.smooth_l1_loss((sp[:m] - sp[m:]) / scale, d_true / scale, beta=0.5)
+
     def training_step(self, batch, _):
         return self._step(batch, "train")
 
@@ -434,8 +487,16 @@ class TwoBunchFlow(L.LightningModule):
         return self._step(batch, "val")
 
     def configure_optimizers(self):
-        opt = torch.optim.Adam(self.parameters(), lr=self.hparams.lr,
-                               weight_decay=self.hparams.weight_decay)
+        t_lr = self.hparams.get("t_head_lr")
+        if self.hparams.get("t_two_part", False) and t_lr:
+            # the fresh two-part T head trains at its own lr (a warm-started fine-tune's lr is tiny)
+            t_ids = {id(p) for p in self.t_full_head.parameters()}
+            groups = [{"params": [p for p in self.parameters() if id(p) not in t_ids]},
+                      {"params": list(self.t_full_head.parameters()), "lr": float(t_lr)}]
+            opt = torch.optim.Adam(groups, lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+        else:
+            opt = torch.optim.Adam(self.parameters(), lr=self.hparams.lr,
+                                   weight_decay=self.hparams.weight_decay)
         if self.hparams.lr_schedule == "cosine":
             # smooth anneal to ~lr/100 over t_max epochs -- for warm-started fine-tuning phases
             sched = torch.optim.lr_scheduler.CosineAnnealingLR(

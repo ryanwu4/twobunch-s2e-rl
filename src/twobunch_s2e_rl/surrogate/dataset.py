@@ -167,7 +167,17 @@ class TwoBunchFlowDataModule(L.LightningDataModule):
             # rows an earlier (warm-start) flow trained / validated on keep that role (no leak into
             # val); the rest: group split stratified by campaign; holdout rows in neither
             orig = self.hparams.orig_split or {}
-            role = np.array([orig.get(k, "") for k in self.full.row_keys])
+            role = np.array([orig.get(k, "") for k in self.full.row_keys], dtype=object)
+            # rows without a role inherit their split group's (a top-up row joins the group of the row it
+            # pairs with); a group must never span train and val
+            grp = self.full.groups
+            for gid in np.unique(grp[role != ""]):
+                members = np.flatnonzero(grp == gid)
+                roles = {r for r in role[members] if r}
+                if len(roles) > 1:
+                    raise ValueError(f"split group {gid} spans roles {roles} (rows {members[:6].tolist()} ...)")
+                role[members[role[members] == ""]] = roles.pop()
+            role = role.astype(str)
             tr_idx = list(np.flatnonzero((role == "train") & ~self.full.holdout))
             va_idx = list(np.flatnonzero((role == "val") & ~self.full.holdout))
             free = (role == "") & ~self.full.holdout

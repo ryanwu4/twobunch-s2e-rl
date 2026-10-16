@@ -99,6 +99,8 @@ def parse_one(json_path: str, p: int, rng: np.random.Generator, keys: list,
         "witness_q_ref": float((d.get("specs", {}).get(transmission_ref, {}).get("PWitness_charge_nC")) or np.nan),
         # split-group fields (injector campaigns)
         "block": d.get("block"), "injector_point": d.get("injector_point"), "linac_id": d.get("linac_id"),
+        # top-up campaigns: the campaign whose rows this row pairs with / whose injector point it shares
+        "pair_campaign": d.get("pair_campaign"), "point_campaign": d.get("point_campaign"),
         "holdout": bool(d.get("holdout", False)),     # pre-registered test rows (injector campaigns)
     }
 
@@ -265,9 +267,11 @@ def split_groups(records) -> np.ndarray:
     by_point, by_linac = {}, {}
     for i, r in enumerate(records):
         if r.get("injector_point") not in (None, "golden", "golden_h5"):
-            by_point.setdefault((r["campaign"], r["injector_point"]), []).append(i)
+            by_point.setdefault((r.get("point_campaign") or r.get("campaign_name", r["campaign"]),
+                                 r["injector_point"]), []).append(i)
         if r.get("block") in ("nested", "paired_golden") and r.get("linac_id") is not None:
-            by_linac.setdefault((r["campaign"], r["linac_id"]), []).append(i)
+            by_linac.setdefault((r.get("pair_campaign") or r.get("campaign_name", r["campaign"]),
+                                 r["linac_id"]), []).append(i)
     for members in list(by_point.values()) + list(by_linac.values()):
         for j in members[1:]:
             union(members[0], j)
@@ -323,6 +327,7 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
                         transmission_ref=transmission_ref)
         if rec is not None:
             rec["campaign"] = ci
+            rec["campaign_name"] = subdirs[ci]
             records.append(rec)
         if verbose and (i + 1) % 500 == 0:
             nd = sum(r["drive_density"] for r in records)
@@ -386,9 +391,20 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
         h.create_dataset("holdout", data=np.array([r["holdout"] for r in records], bool))
         # pairs (injector campaigns): a nested row and its paired_golden row share (campaign,
         # pair_key); pair_ref marks the injector=golden member. -1 = not part of a pair.
+        # globally unique across campaigns: 10^7 * index of the pairing campaign + linac_id (a top-up
+        # row's pair_campaign links it to its partner in another campaign; consumers pair by key alone)
+        cidx = {name: j for j, name in enumerate(subdirs)}
+        pkey = lambda r: 10_000_000 * cidx[r.get("pair_campaign") or r["campaign_name"]] + int(r["linac_id"])
         h.create_dataset("pair_key", data=np.array(
-            [int(r["linac_id"]) if r.get("block") in ("nested", "paired_golden") and r.get("linac_id") is not None
+            [pkey(r) if r.get("block") in ("nested", "paired_golden") and r.get("linac_id") is not None
              else -1 for r in records], np.int64))
+        blocks = ["", "crossed", "nested", "paired_golden", "bridge", "jacobian"]
+        h.create_dataset("block", data=np.array([blocks.index(r.get("block")) if r.get("block") in blocks else 0
+                                                 for r in records], np.int8))
+        h.attrs["block_codes"] = ",".join(blocks)
+        h.create_dataset("linac_id", data=np.array([int(r["linac_id"]) if r.get("linac_id") is not None else -1
+                                                    for r in records], np.int64))
+        h.create_dataset("injector_golden", data=np.array([r.get("injector_point") == "golden" for r in records], bool))
         h.create_dataset("pair_ref", data=np.array([r.get("block") == "paired_golden" for r in records], bool))
         h.create_dataset("n_drive", data=np.array([r["n_drive"] for r in records], np.int32))
         h.create_dataset("n_witness", data=np.array([r["n_witness"] for r in records], np.int32))

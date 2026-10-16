@@ -112,3 +112,33 @@ def test_per_sample_transmission_and_split_groups(tmp_path):
     preprocess(subdir="c", p=16, sweep_set="tightbox", out=str(out), verbose=False, data_root=tmp_path)
     with h5py.File(out) as h:
         assert h["witness_frac"][...].max() == pytest.approx(1.0) and h["witness_frac"][0] < 1.0  # max mode
+
+
+def test_topup_campaign_links_pairs_and_groups_across_campaigns(tmp_path):
+    """A top-up campaign's rows link to their partners in the original campaign: pair_campaign (exact pair of an
+    existing nested row) shares its pair key and split group; point_campaign puts a new nested row in its
+    injector point's group; pair keys are globally unique; block / linac_id / injector_golden are stored."""
+    keys, lo, hi, _ = resolve_sweep_set("tightbox")
+    mk = lambda **kw: {"knobs": {k: (a + b) / 2 for k, a, b in zip(keys, lo, hi)}, "success": True,
+                       "specs": {"PENT": {"PDrive_charge_nC": 1.2, "PWitness_charge_nC": 0.4}}, **kw}
+    camp = {"c": [dict(injector_point="lhs0", block="nested", linac_id=2),
+                  dict(injector_point="lhs1", block="nested", linac_id=3),
+                  dict(injector_point="golden", block="crossed", linac_id=0)],
+            "t": [dict(injector_point="golden", block="paired_golden", linac_id=2, pair_campaign="c"),
+                  dict(injector_point="lhs1", block="nested", linac_id=3_000_000, point_campaign="c"),
+                  dict(injector_point="golden", block="paired_golden", linac_id=3_000_000),
+                  dict(injector_point="golden", block="paired_golden", linac_id=3)]}   # unrelated: t's own lid 3
+    for name, rows in camp.items():
+        (tmp_path / name).mkdir()
+        for i, r in enumerate(rows):
+            (tmp_path / name / f"sample_{i:05d}.json").write_text(json.dumps(mk(idx=i, **r)))
+    out = tmp_path / "o.h5"
+    preprocess(subdir="c,t", p=16, sweep_set="tightbox", out=str(out), verbose=False, data_root=tmp_path)
+    with h5py.File(out) as h:
+        g, key, blk, lid, ig = (h[k][...] for k in ("group", "pair_key", "block", "linac_id", "injector_golden"))
+    # row order: c0 c1 c2 t0 t1 t2 t3
+    assert key[0] == key[3] and g[0] == g[3]                     # cross-campaign exact pair
+    assert g[4] == g[1]                                          # new nested row joins lhs1's group
+    assert key[4] == key[5] and g[5] == g[4]                     # new draw + its golden pair
+    assert key[6] != key[1] and g[6] != g[1]                     # same raw linac_id, different campaign
+    assert list(blk) == [2, 2, 1, 3, 2, 3, 3] and lid[2] == 0 and list(ig) == [0, 0, 1, 1, 0, 1, 1]

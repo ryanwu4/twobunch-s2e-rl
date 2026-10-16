@@ -44,6 +44,71 @@ def check_knob_frame(state: dict, norm: dict, ckpt) -> None:
                          "to this frame first (scripts/widen_flow_ckpt.py --norm <processed>_norm.json)")
 
 
+class PairSource:
+    """Draws (point knobs, reference knobs, true spacing difference [m]) batches from fixed TRAIN pairs,
+    crossed pairs capped at `crossed_frac` of the draws."""
+
+    def __init__(self, kp, kr, dtrue, crossed, crossed_frac):
+        self.kp, self.kr, self.d = kp, kr, dtrue
+        n_c, n_k = int(crossed.sum()), int((~crossed).sum())
+        share = min(crossed_frac, n_c / max(n_c + n_k, 1)) if n_k else 1.0
+        w = np.where(crossed, share / max(n_c, 1), (1 - share) / max(n_k, 1))
+        self.w = torch.tensor(w / w.sum(), dtype=torch.float)
+        self._dev = None
+
+    def __call__(self, b, device):
+        if self._dev != device:
+            self.kp, self.kr, self.d, self._dev = self.kp.to(device), self.kr.to(device), self.d.to(device), device
+        i = torch.multinomial(self.w, b, replacement=True).to(device)
+        return self.kp[i], self.kr[i], self.d[i]
+
+
+def build_pair_source(dm, model, crossed_frac):
+    """TRAIN-only, non-holdout pairs with both rows density-valid: nested / top-up rows vs their golden-injector
+    partner (same pair_key), and crossed rows vs the golden crossed row of the same (campaign, linac_id)."""
+    import h5py
+    from .properties import inter_bunch
+    ds = dm.full
+    tr = set(int(i) for i in dm.train.indices)
+    ok = (ds.drive_density.numpy() & ds.witness_density.numpy() & ~ds.holdout)
+    use = lambda i: i in tr and ok[i]
+    with h5py.File(dm.hparams.processed_h5) as h:
+        key, ref = h["pair_key"][...], h["pair_ref"][...]
+        blk = h["block"][...] if "block" in h else np.zeros(len(key), np.int8)
+        lid = h["linac_id"][...] if "linac_id" in h else np.full(len(key), -1)
+        ig = h["injector_golden"][...] if "injector_golden" in h else np.zeros(len(key), bool)
+    pairs, crossed = [], []
+    by = {}
+    for i in range(len(key)):
+        if key[i] >= 0 and use(i):
+            by.setdefault(int(key[i]), {}).setdefault("ref" if ref[i] else "pt", []).append(i)
+    for d in by.values():
+        for r in d.get("ref", [])[:1]:
+            for p in d.get("pt", []):
+                pairs.append((p, r)); crossed.append(False)
+    cr = {}
+    for i in np.flatnonzero(blk == 1):
+        if use(int(i)):
+            cr.setdefault((int(ds.row_campaign[i]), int(lid[i])), []).append(int(i))
+    for rows in cr.values():
+        g = [i for i in rows if ig[i]]
+        if g:
+            for p in rows:
+                if not ig[p]:
+                    pairs.append((p, g[0])); crossed.append(True)
+    if not pairs:
+        raise SystemExit("--w-pair > 0 but no train pairs in the table")
+    p_i, r_i = [p for p, _ in pairs], [r for _, r in pairs]
+    sc = lambda k: (getattr(model, f"{k}_mean").cpu().double(), getattr(model, f"{k}_std").cpu().double())
+    (dmu, dsd), (wmu, wsd) = sc("drive"), sc("witness")
+    sp = lambda rows: inter_bunch(ds.drive[rows].double() * dsd + dmu, ds.witness[rows].double() * wsd + wmu)["bunch_spacing"]
+    dtrue = (sp(p_i) - sp(r_i)).float()
+    crossed = np.array(crossed)
+    print(f"[pair_source] {len(pairs)} train pairs: {int((~crossed).sum())} nested/top-up, {int(crossed.sum())} crossed "
+          f"(capped at {crossed_frac:.0%} of draws); true delta rms {1e6 * dtrue.std():.1f} um")
+    return PairSource(ds.knobs[p_i], ds.knobs[r_i], dtrue, crossed, crossed_frac)
+
+
 def build_model(norm: dict, **overrides) -> TwoBunchFlow:
     kw = dict(
         condition_dim=len(norm["knob_keys"]),
@@ -84,6 +149,20 @@ def main():
     ap.add_argument("--w-spacing", type=float, default=0.0,
                     help="Huber loss on the physical bunch spacing in units of --spacing-scale-m (0 = off)")
     ap.add_argument("--spacing-scale-m", type=float, default=1e-5)
+    ap.add_argument("--w-pair", type=float, default=0.0,
+                    help="paired injector-effect loss on TRAIN pairs (point vs golden injector at the same linac "
+                         "knobs + crossed rows vs the golden crossed row); 0 = off")
+    ap.add_argument("--pair-batch", type=int, default=32)
+    ap.add_argument("--pair-particles", type=int, default=512)
+    ap.add_argument("--pair-crossed-frac", type=float, default=0.3,
+                    help="max share of crossed (golden-linac) pairs in the pair draws (they all share one linac point)")
+    ap.add_argument("--t-two-part", action="store_true", help="two-part transmission head (P(T=1) + tail)")
+    ap.add_argument("--t-sharp", type=float, default=4.0)
+    ap.add_argument("--t-head-lr", type=float, default=1e-3, help="lr of the fresh two-part T head")
+    ap.add_argument("--role-map", default=None,
+                    help="json {'roles': {'campaign/idx': train|val|test}} from scripts/export_role_map.py: the exact "
+                         "split of an earlier flow; rows not in it inherit their split group's role")
+    ap.add_argument("--save-top-k", type=int, default=1)
     ap.add_argument("--bunches", choices=["both", "drive", "witness"], default="both",
                     help="which bunch density paths to train (witness = witness-only ablation)")
     ap.add_argument("--patience", type=int, default=25,
@@ -126,6 +205,10 @@ def main():
         init_state = torch.load(ck, map_location="cpu", weights_only=False)["state_dict"]
         scaler = {k: init_state[k].tolist() for k in SCALER_KEYS}
     orig = None
+    if args.role_map and args.orig_split:
+        raise SystemExit("--role-map and --orig-split are exclusive")
+    if args.role_map:
+        orig = json.loads(Path(args.role_map).read_text())["roles"]
     if args.orig_split:
         h5, camps = args.orig_split.split("=", 1)
         orig = orig_split_keys(h5, camps.split(","))
@@ -145,13 +228,30 @@ def main():
                         w_emit=args.w_emit, w_emit_z=args.w_emit_z, w_emit_4d=args.w_emit_4d,
                         w_emit_6d=args.w_emit_6d, w_cov=args.w_cov, bunches=bunches,
                         w_mean=args.w_mean, w_spacing=args.w_spacing, spacing_scale_m=args.spacing_scale_m,
+                        w_pair=args.w_pair, pair_batch=args.pair_batch, pair_particles=args.pair_particles,
+                        t_two_part=args.t_two_part, t_sharp=args.t_sharp,
+                        t_head_lr=args.t_head_lr if args.t_two_part else None,
                         lr_schedule=args.lr_schedule, t_max=args.epochs)
     if init_state is not None:
         # warm-start weights only (new hparams + fresh optimizer/LR schedule); not a full resume
         missing, unexpected = model.load_state_dict(init_state, strict=False)
+        new_ok = [k for k in missing if args.t_two_part and k.startswith("t_full_head.")]
+        missing = [k for k in missing if k not in new_ok]
         if missing or unexpected:
             raise SystemExit(f"warm start from {ck} incomplete: missing={missing} unexpected={unexpected}")
-        print(f"warm-started all weights from {ck}")
+        print(f"warm-started all weights from {ck}" + (f" (fresh: {len(new_ok)} t_full_head tensors)" if new_ok else ""))
+    if args.t_two_part:
+        # fresh head starts at the training data's P(T = 1) per bunch
+        tr = np.asarray(dm.train.indices)
+        ds = dm.full
+        with torch.no_grad():
+            for j, (frac, mask) in enumerate(((ds.drive_frac, ds.drive_present), (ds.witness_frac, ds.witness_viable))):
+                m = mask[tr].numpy()
+                p1 = float(np.clip((frac[tr].numpy()[m] >= 1 - 1e-4).mean(), 0.02, 0.98))
+                model.t_full_head[-1].bias[j] = float(np.log(p1 / (1 - p1)))
+                print(f"[t_two_part] bunch {j}: train P(T=1) = {p1:.3f}")
+    if args.w_pair > 0:
+        model.pair_source = build_pair_source(dm, model, args.pair_crossed_frac)
 
     callbacks = []
     if args.split == "group":
@@ -159,7 +259,7 @@ def main():
         callbacks.append(PairedDeltaMetrics(dm))
     metric = args.select_metric
     ckpt = ModelCheckpoint(dirpath=f"{args.out}/checkpoints", monitor=metric,
-                           mode="min", save_top_k=1, save_last=True,
+                           mode="min", save_top_k=args.save_top_k, save_last=True,
                            filename="best-{epoch:03d}-{" + metric + ":.4f}")
     callbacks.append(ckpt)
     if args.patience > 0:

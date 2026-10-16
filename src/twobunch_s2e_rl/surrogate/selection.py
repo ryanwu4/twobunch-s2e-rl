@@ -34,7 +34,7 @@ class PairedDeltaMetrics(L.Callback):
         pairs, by = [], {}
         for i in val:
             if key[i] >= 0 and ok[i]:
-                by.setdefault((camp[i], key[i]), {})["ref" if ref[i] else "pt"] = i
+                by.setdefault(int(key[i]), {})["ref" if ref[i] else "pt"] = i     # keys are globally unique
         for d in by.values():
             if len(d) == 2:
                 pairs.append((d["pt"], d["ref"]))
