@@ -66,3 +66,4 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
   Gates: old-val ✓, T ✓, pairs ✗ (slope < 0.85, p90 > 8 µm). A2 (pair loss only) matches A on everything but T.
 - 01:30 top-up done (1000 ok, 0 failed, 3.7 h). Bmad tracking of the golden-injector check started 01:34.
 - 01:55 B / B2 relaunched on `processed/xtcav23e_inj_topup_v2_2026-10-16.h5`; cross-eval of all policies on flow A started (GPU0).
+- 02:25 direct-L1 v2 (old flow, seed 0, true median / within 10 µm): S1 6.0 µm / 73% (blen_dlog 4.6–5.0 / 80–83%); S2 v6 8.1 µm / 58% (blen_dlog 7.0 / 63%). About 1 µm worse than blen_dlog: the beam-side gain is hidden from the readback and the hidden drift ramps (no BC11 loop). The BC11 BLEN observation the L1 review recommends (now modellable, `results/blen_model_2026-10-16`) is the natural next step for this variant. GPU1 → exploratory injector-flow S1 / S2 on flow A.
