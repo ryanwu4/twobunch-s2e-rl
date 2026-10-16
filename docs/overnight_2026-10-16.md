@@ -48,3 +48,7 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
 - 23:05 **determinism probe passed**: 5 injector_full rows (3 paired_golden, 2 nested) re-run in `data/determinism_probe_2026-10-16` reproduce their seeds, specs and XTCAVF beams bit-for-bit, so the top-up's cross-campaign pairs are exact.
 - 23:05 cloud plant reports the drive charge fraction when observed; injector-flow RL config generator (`scripts/make_injflow_rl_configs.py`; S1 obs 57, S2 obs 58, 37 knobs); cross-eval driver (`scripts/cross_eval_2026-10-16.sh`).
 - 23:55 top-up 514/1000 (ETA ~01:50). Fine-tunes at epoch 16/40 (ETA ~01:40). Val paired-Δ rms: A 7.62 → 7.13, A2 7.52 → 7.02 µm; A's witness T MAE 0.051 → 0.021 (two-part head). `scripts/after_topup_2026-10-16.sh` is waiting: preprocess of the merged table, frozen-split check, then the golden-injector Bmad check (4 policies × 24, 1e5, 24 workers).
+- 00:28 GPU1 (old flow), true median spacing error / within 10 µm, final policies incl. off-context goals:
+  - S2 v6 blen_dlog 600 it s0: 7.0 µm / 63% (v5 600 it: 7.2–7.6 / 61–63%), so the −V energy axis is neutral;
+  - S1 direct-L1 v1 s0: 5.1 µm / 77% (leaky readback, reference only; blen_dlog 4.6–5.0).
+  - Direct-L1 v2 S1 running, then S2 v6 v2.
