@@ -61,8 +61,20 @@ def _flow_observables(flow, knobs_norm, n):
     return out, drive, witness
 
 
-def flow_plant(flow, n_particles: int):
-    return lambda knobs_norm: flow.observables(knobs_norm, n=n_particles)
+def flow_plant(flow, n_particles: int, norm: dict | None = None):
+    """Cloud-mode plant: the flow's observables. With `norm` (the flow's processed norm), also the drive charge
+    fraction q_d / (q_d + q_w) at the plane (injected charges x the T heads), as the screen plant reports it."""
+    if norm is None:
+        return lambda knobs_norm: flow.observables(knobs_norm, n=n_particles)
+    q_inj = injected_charges_nC(norm, flow.hparams.knob_keys or [], flow.knob_low.cpu(), flow.knob_high.cpu())
+
+    def observe(knobs_norm):
+        obs = flow.observables(knobs_norm, n=n_particles)
+        qd, qw = q_inj(knobs_norm)
+        qd, qw = obs["T_drive"] * qd.to(knobs_norm), obs["T_witness"] * qw.to(knobs_norm)
+        obs["drive_charge_fraction"] = qd / (qd + qw).clamp_min(1e-12)
+        return obs
+    return observe
 
 
 def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,

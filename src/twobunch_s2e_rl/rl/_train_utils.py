@@ -243,7 +243,10 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
             p.requires_grad_(False)
         ms = de.get("measurement", {})
         if plant == "flow":
-            observe_fn = flow_plant(flow, n_particles)
+            # the drive charge fraction is only computed when observed (older configs: unchanged plant)
+            want_q = "drive_charge_fraction" in (de.get("observe") or [])
+            observe_fn = flow_plant(flow, n_particles, json.loads(Path(flow_norm_json(ckpt, repo_root() / de["campaign_h5"])).read_text())
+                                    if want_q else None)
         else:
             sc = de.get("screen", {})
             if "split" not in sc or "threshold" not in sc:
