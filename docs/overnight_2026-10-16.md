@@ -96,3 +96,4 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
 
   B2: old-val spacing 4.33 µm ✓, σz 0.109 ≤ 0.112 ✓, T calibration 0.0035 ✓, other observables unchanged. Both the top-up data (A → B) and the pair weight (B → B2) help.
 - 06:35 decision 5: time-boxed pair-weight push from B2 (C = w_pair 6, C2 = w_pair 10; 25 epochs; GPU0; ETA ~09:45) to try the slope gate. B2 is the current best flow regardless.
+- 07:10 direct-L1 v2 on flow A + injector context (seed 0): S1 5.4 µm / 78% (blen_dlog 4.7–5.2); **S2 v6 12.8 / 43%** (blen_dlog 8.1–8.5). Training completed (600 it); the loss was ~5% above blen_dlog's. In screen mode the direct-L1 variant has no beam-side L1 signal (the beam gain is hidden from FAST_PACT and the drift ramp is invisible), and injector variation adds L1-like shifts; the BC11 BLEN observation is the missing piece.
