@@ -23,9 +23,12 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
 ## Decisions taken in Ryan's absence
 1. Direct-L1 actuator `direct_rb`: step 0.25°, gain U(0.7, 1.3), FAST_PACT readback noise 0.02°, |cum| ≤ 2.5°, L1 drift 0.05°/step (ASSUMED = L2; no BC11 loop to compensate). → v2 after the L1 review (see the progress log).
 2. Injector context (Ryan: DAQ-derived shift-to-shift), widths: gun amplitude σ 0.25% / phase σ 0.25° (DAQ run-to-run 0.06–0.47% / 0.18–0.56°); laser timing and d2 delay σ 0.1 ps (hidden); drive fraction uniform 0.75 ± 0.06 clipped to ≤ 0.80 (observed via the measured charge fraction); charge σ 0.3%; passive knobs at readback scale. In `configs/rl/eval/injector_ctx_2026-10-16.yaml`.
+4. **Flow selection (01:40): A best (epoch 34)** = centroid + pair loss + two-part T head. It ties A2 on val pairs (R² 0.73) and wins on T: T calibration 0.022 → 0.0033 (gate passes), witness T MAE 0.048 → 0.029. It is the eval flow for the cross-eval and the warm start for B / B2 (top-up table; w_pair 1 and 3).
 3. Fine-tunes at 40 epochs instead of 80 (time; ftc_s0 peaked by epoch 46).
 
 ## Problems encountered
+2. **Top-up link fields were lost (01:45).** The campaign driver writes a fixed field set per row, so `pair_campaign` / `point_campaign` (manifest-only) never reached the sample jsons. The first merged table had no cross-campaign pairs, and its top-up rows were split by their own random group split: possible val leak via new nested rows of val injector points. The role-map check only verified the old rows, so it passed. B / B2 were stopped after ~10 min (ABORTED marker); the table was renamed `*.BROKEN_no_links.h5`. Fix: preprocess fills the link fields from the campaign's `manifest.json` (test). The v2 table check now also asserts every top-up row shares its group and role with an injector_full row (0 violations). Pairs: train 188 → 794 (+ 203 crossed), val 31 → 94, test 48 → 121.
+3. The warm-start reset the trained T head's bias to the data prior (B/B2 first launch). Fixed: only a fresh head gets the prior bias.
 1. **zsh launch loop again (22:15):** `$COMMON` in a zsh `for` loop is not word-split, so both pair fine-tunes exited on argparse. Logs moved to the scratchpad; relaunched with `scripts/launch_pair_finetunes_2026-10-16.sh` (bash arrays). Rule from now on: multi-argument launches go through a bash script.
 
 ## Progress log
@@ -52,3 +55,14 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
   - S2 v6 blen_dlog 600 it s0: 7.0 µm / 63% (v5 600 it: 7.2–7.6 / 61–63%), so the −V energy axis is neutral;
   - S1 direct-L1 v1 s0: 5.1 µm / 77% (leaky readback, reference only; blen_dlog 4.6–5.0).
   - Direct-L1 v2 S1 running, then S2 v6 v2.
+- 01:40 scorecard (`results/surrogate_scorecard_2026-10-16/A/scorecard.md`, v2 table, frozen split), ftc_s0 → A best:
+  - val pairs (selection, n = 31) R² 0.68 → 0.73, slope 0.61 → 0.64;
+  - test pairs (n = 48, quoted once) R² 0.76 [0.56, 0.87] → 0.84 [0.70, 0.90], slope 0.68 → 0.72, p90 12.7 → 10.3 µm;
+  - train pairs R² 0.74 → 0.85, slope 0.72 → 0.81;
+  - golden-linac effect R² 0.98 → 0.99, slope 1.05 → 1.01;
+  - old-val spacing MAE 4.38 → 4.32 µm;
+  - T calibration 0.022 → 0.0033.
+
+  Gates: old-val ✓, T ✓, pairs ✗ (slope < 0.85, p90 > 8 µm). A2 (pair loss only) matches A on everything but T.
+- 01:30 top-up done (1000 ok, 0 failed, 3.7 h). Bmad tracking of the golden-injector check started 01:34.
+- 01:55 B / B2 relaunched on `processed/xtcav23e_inj_topup_v2_2026-10-16.h5`; cross-eval of all policies on flow A started (GPU0).
