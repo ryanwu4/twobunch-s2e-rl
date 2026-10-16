@@ -67,3 +67,13 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
 - 01:30 top-up done (1000 ok, 0 failed, 3.7 h). Bmad tracking of the golden-injector check started 01:34.
 - 01:55 B / B2 relaunched on `processed/xtcav23e_inj_topup_v2_2026-10-16.h5`; cross-eval of all policies on flow A started (GPU0).
 - 02:25 direct-L1 v2 (old flow, seed 0, true median / within 10 µm): S1 6.0 µm / 73% (blen_dlog 4.6–5.0 / 80–83%); S2 v6 8.1 µm / 58% (blen_dlog 7.0 / 63%). About 1 µm worse than blen_dlog: the beam-side gain is hidden from the readback and the hidden drift ramps (no BC11 loop). The BC11 BLEN observation the L1 review recommends (now modellable, `results/blen_model_2026-10-16`) is the natural next step for this variant. GPU1 → exploratory injector-flow S1 / S2 on flow A.
+- 03:05 **golden-injector Bmad check** (open loop, 24 final settings per policy, 1e5 particles, CPU; `results/rl/<run>/bmad_check_2026-10-16/compare.json`). Bmad |spacing − goal| median / drive σz rel error vs goal; surrogate-vs-Bmad spacing rel error:
+
+  | policy | spacing vs goal | σz vs goal | surrogate vs Bmad |
+  |---|---|---|---|
+  | S1 blen_dlog s0 | 7.8 µm | 4.3% | 2.3% |
+  | S1 adapter s0 | 7.2 µm | 4.0% | 2.1% |
+  | S2 v5 blen s0 | 7.1 µm | 15% | 1.9% |
+  | S2 v5 600-it s0 | 7.9 µm | 14% | 2.4% |
+
+  All 24/24 tracked. Consistent with the v3 Bmad result (6–7 µm): the v4/v5 policies transfer to Bmad at the golden injector.
