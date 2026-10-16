@@ -24,6 +24,11 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
 1. Direct-L1 actuator `direct_rb`: step 0.25°, gain U(0.7, 1.3), FAST_PACT readback noise 0.02°, |cum| ≤ 2.5°, L1 drift 0.05°/step (ASSUMED = L2; no BC11 loop to compensate).
 
 ## Problems encountered
+1. **zsh launch loop again (22:15):** `$COMMON` in a zsh `for` loop is not word-split, so both pair fine-tunes exited on argparse. Logs moved to the scratchpad; relaunched with `scripts/launch_pair_finetunes_2026-10-16.sh` (bash arrays). Rule from now on: multi-argument launches go through a bash script.
 
 ## Progress log
+- 22:00 top-up campaign launched (`data/injector_topup`, 1000 rows, 0 Impact-T; worktree `.worktrees/injector_topup_65346c751f`).
+- 22:10 review agent; revised plan (above).
+- 22:20 role map exported (`processed/role_map_ftc_s0_2026-10-16.json`: 7403 / 826 / 325); preprocess cross-campaign links + block/linac_id datasets; `processed/xtcav23e_inj_v2_2026-10-16.h5` reproduces the old table bit-for-bit and ftc_s0's split exactly; pair source 391 train pairs (188 nested + 203 crossed, crossed ≤ 30% of draws). 290 tests pass.
+- 22:30 fine-tunes A (centroid + pair + two-part T) and A2 (centroid + pair) running on GPU0.
 - 21:47 scratch control stopped; `direct_rb` actuator + test; direct-L1 configs (S1 cloud, S2 v6).
