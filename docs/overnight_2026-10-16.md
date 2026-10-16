@@ -45,3 +45,5 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
   - BC14 log-ratio worth having as a realised-L2 readback (with a hidden L2 gain: spacing R² 0.69 → 0.89).
   - Env integration (solved BC11 loop, BC14 obs) left for Ryan's review (not tonight).
 - 23:00 golden-injector Bmad check: settings exported for S1 blen_dlog s0, S1 adapter s0, S2 v5 blen s0, S2 v5 600-it s0 (24 each; `results/rl/<run>/bmad_check_2026-10-16/`); tracking starts after the top-up frees the CPUs.
+- 23:05 **determinism probe passed**: 5 injector_full rows (3 paired_golden, 2 nested) re-run in `data/determinism_probe_2026-10-16` reproduce their seeds, specs and XTCAVF beams bit-for-bit, so the top-up's cross-campaign pairs are exact.
+- 23:05 cloud plant reports the drive charge fraction when observed; injector-flow RL config generator (`scripts/make_injflow_rl_configs.py`; S1 obs 57, S2 obs 58, 37 knobs); cross-eval driver (`scripts/cross_eval_2026-10-16.sh`).
