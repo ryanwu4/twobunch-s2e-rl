@@ -82,3 +82,4 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
   - S2 v6 blen_dlog: 8.1 / 57% (golden 8.1).
 
   No gain over the old-flow policies evaluated on flow A (S1 4.9–5.9). Note: flow A's two-part T head predicts T ≈ 1.000 across the controller box, so the T hinge is effectively inactive there (it no longer reports the small mean losses the MSE head did). Seed 1 of both is running on GPU1.
+- 04:30 **cross-eval complete** (`results/cross_eval_2026-10-16/flowA/TABLE.md`): S1 policies are robust to DAQ-level injector variation on flow A (≤ +0.5 µm); S2 loses 1–2 µm (600-it 7.2–7.4 → 7.9–9.2 µm; v6 7.3 → 8.7; direct-L1 v2 S2 8.0 → 11.2). The flow-A-trained exploratory S2 (8.1 µm) is in the same range: no gain yet from training on the injector-aware flow (seed 1 running).
