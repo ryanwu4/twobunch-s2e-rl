@@ -115,3 +115,10 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
 
   But old-val σz rel rises to 0.115 / 0.119 (gate ≤ 0.112) and the spacing MAE to 4.7 / 4.9 µm. **No flow passes every gate:** B2 passes all but pair slope / p90; C2 passes pair R² and p90, misses slope by 0.02 and fails σz. Choice for Ryan (decision 6, not taken).
 - 08:50 notebook figures `lab-notebook/images/2026-10-16_{surrogate_progression,cross_eval}.png`.
+
+## Daytime 10-16 addendum
+
+- 12:30 ops notes (Zack, `ryan_yiheng_convo.txt`) checked against the 17 DAQs: L2_PHASE.MKB moves LI12/13/14 SBST_PDES exactly 1:1 (LI15+ untouched; absolute SBST −33 … −64°, not the sim frame); BC11 BLEN held flat (CV ≤ 1.5%) while both L1 PACTs move common-mode 0.5–1.6° per 8–12 min run (11−21 < 0.1°); `KLYS:LI11:{11,21}:PREQ` (ops' manual L1 knob) is not in any DAQ. Consequence: direct L1 (common-mode PREQ, BC11 loop off, BC11 BLEN observed, re-lock at the end) is the beamtime design; blen_dlog stays the fallback.
+- 12:58 **injector coverage campaign launched** (Ryan: option (c)): `configs/datagen/injector_cov_2026-10-16.yaml`, 125 full-box + 125 DAQ-context injector points (new `design.injector.local`: LHS + inverse CDF of `configs/rl/eval/injector_ctx_2026-10-16.yaml`, clipped to the box) × 8 nested (50% controller) + 25% golden pairs; 2751 Bmad / 251 Impact-T, 5e4 / grid 64, 64 workers, ~12 h. Out `data/injector_cov_2026-10-16`, logs `logs/injector_cov_2026-10-16`, worktree `.worktrees/injector_cov_3aa2158238`, launcher `scripts/launch_injector_cov_2026-10-16.sh` (resumable).
+  - Note: the inj12 box already spans ≈ ±2–3σ of the DAQ spread on 7 of 12 knobs, so the local stratum changes the density (centre-weighted), and is tighter only on the passive knobs (σ_xy, truncation, MTE, σ_t).
+  - For training: the new campaign's groups are not in the frozen role map; extend it (pre-registered holdout = test, split the rest by injector point) before preprocessing.
