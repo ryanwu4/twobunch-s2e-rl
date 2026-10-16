@@ -84,3 +84,15 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
   No gain over the old-flow policies evaluated on flow A (S1 4.9–5.9). Note: flow A's two-part T head predicts T ≈ 1.000 across the controller box, so the T hinge is effectively inactive there (it no longer reports the small mean losses the MSE head did). Seed 1 of both is running on GPU1.
 - 04:30 **cross-eval complete** (`results/cross_eval_2026-10-16/flowA/TABLE.md`): S1 policies are robust to DAQ-level injector variation on flow A (≤ +0.5 µm); S2 loses 1–2 µm (600-it 7.2–7.4 → 7.9–9.2 µm; v6 7.3 → 8.7; direct-L1 v2 S2 8.0 → 11.2). The flow-A-trained exploratory S2 (8.1 µm) is in the same range: no gain yet from training on the injector-aware flow (seed 1 running).
 - 05:40 exploratory injflow seed 1: S1 4.7 µm / 81%, S2 v6 8.5 / 57%. Two seeds: S1 4.7–5.2 µm, S2 8.1–8.5 µm, in line with the old-flow policies evaluated on flow A + injector context (S1 4.9–5.9, S2 7.9–9.2). GPU1 idle now; B / B2 on GPU0 until ~07:15.
+- 06:30 **B / B2 scorecard** (`results/surrogate_scorecard_2026-10-16/B/scorecard.md`; top-up v2 table, frozen split; val 93 pairs = selection, test 117, original-48 subset):
+
+  | pairs | ftc_s0 | A | B (w_pair 1) | **B2 (w_pair 3)** | gate |
+  |---|---|---|---|---|---|
+  | val R² [90% CI] | 0.74 | 0.77 | 0.80 | **0.81 [0.73, 0.87]** | ≥ 0.8 ✓ |
+  | val slope | 0.71 | 0.74 | 0.77 | **0.79** | 0.85–1.15 ✗ |
+  | val p90 | 12.3 µm | 11.9 | 11.4 | **8.8** | ≤ 8 ✗ |
+  | test R² / slope / p90 (once) | 0.75 / 0.69 / 12.0 | 0.82 / 0.75 / 9.3 | 0.86 / 0.78 / 9.7 | **0.88 / 0.82 / 8.1** | |
+  | train R² / slope | 0.71 / 0.70 | 0.78 / 0.76 | 0.84 / 0.81 | 0.88 / 0.85 | |
+
+  B2: old-val spacing 4.33 µm ✓, σz 0.109 ≤ 0.112 ✓, T calibration 0.0035 ✓, other observables unchanged. Both the top-up data (A → B) and the pair weight (B → B2) help.
+- 06:35 decision 5: time-boxed pair-weight push from B2 (C = w_pair 6, C2 = w_pair 10; 25 epochs; GPU0; ETA ~09:45) to try the slope gate. B2 is the current best flow regardless.
