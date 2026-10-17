@@ -117,3 +117,43 @@ def test_direct_rb_klystron_readback_hides_beam_gain_and_ramp_drifts():
     t0 = env2.true_controls().clone()
     env2.step(torch.zeros(16, 2))
     torch.testing.assert_close(env2.true_controls()[:, 0] - t0[:, 0], r)                    # no action: ramp only
+
+
+BLEN = {"BLEN_LI11_359": {"centers": {"L1PhaseSet": -20.29},
+                          "poly": {"L1PhaseSet": -0.218, "L1PhaseSet^2": 0.0246, "L1PhaseSet^3": 0.00233},
+                          "slope_scale": [0.8, 1.3], "noise": 0.0},
+        "BLEN_LI14_888": {"centers": {"L1PhaseSet": -22.0, "L2PhaseSet": -37.0},
+                          "poly": {"L2PhaseSet": 0.199, "L1PhaseSet*L2PhaseSet": 0.014},
+                          "slope_scale": [1.0, 1.0], "noise": 0.0}}
+RB = {"L1PhaseSet": {"type": "direct_rb", "step": 0.25, "gain_range": [0.7, 1.3], "readback_noise": 0.0,
+                     "cum_limit": 2.5, "readback_gain_range": [0.95, 1.05]},
+      "L2PhaseSet": {"type": "direct", "gain_range": [0.35, 1.1]}}
+
+
+def test_blen_obs_log_ratio_follows_the_beam_side_controls():
+    base = _env(actuators=RB)
+    env = _env(actuators=RB, blen_obs=BLEN)
+    assert env.num_obs == base.num_obs + 2
+    obs0 = env.reset()
+    torch.testing.assert_close(obs0[:, -2:], torch.zeros(16, 2))         # ratio to the start reading
+    t0 = env.true_controls().clone()
+    obs, *_ = env.step(torch.tensor([[1.0, 1.0]] * 16))
+    t1 = env.true_controls()
+    d1, d0 = t1[:, 0] + 20.29, t0[:, 0] + 20.29
+    p = lambda d: -0.218 * d + 0.0246 * d ** 2 + 0.00233 * d ** 3
+    s = env._blen_s[:, 0]
+    assert ((s >= 0.8) & (s <= 1.3)).all() and s.std() > 0
+    torch.testing.assert_close(obs[:, -2], s * (p(d1) - p(d0)))           # beam-side L1 (hidden gain g)
+    q = lambda c: 0.199 * (c[:, 1] + 37) + 0.014 * (c[:, 0] + 22) * (c[:, 1] + 37)
+    torch.testing.assert_close(obs[:, -1], q(t1) - q(t0), rtol=1e-4, atol=1e-5)   # realised L2 (hidden L2 gain)
+    assert obs.shape == (16, env.num_obs)
+
+
+def test_blen_obs_off_keeps_the_env_identical_and_bc11_refused_with_loop_on():
+    runs = []
+    for kw in ({}, {"blen_obs": None}):                                 # global RNG: build + roll one at a time
+        e = _env(actuators=RB, **kw)
+        runs.append(torch.cat([e.reset(), e.step(torch.ones(16, 2))[0]]))
+    torch.testing.assert_close(runs[0], runs[1])
+    with pytest.raises(ValueError, match="BC11 loop is on"):
+        _env(blen_obs={"BLEN_LI11_359": BLEN["BLEN_LI11_359"]})          # default L1 actuator = blen_dlog

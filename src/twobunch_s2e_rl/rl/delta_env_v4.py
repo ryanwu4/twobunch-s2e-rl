@@ -33,6 +33,13 @@ the true goal value (no reward-on-noise, no invalid-reading fallback); action_co
 Goals: goal_valid_retries > 0 redraws goal points whose noise-free screen reading is deployed-invalid
 (screen mode). offcontext_goal_frac of episodes take their goal from a different hidden context (the
 deployment case of a goal recorded under another machine state; may be unreachable).
+BLEN monitors (`blen_obs: {monitor: {centers: {control: c}, poly: {term: coef}, slope_scale: [lo, hi],
+noise: sigma}}`): each adds one obs column, the log-ratio of the monitor's signal to its episode-start
+reading, s * (P(true now) - P(true start)) + N(0, noise^2), with P a polynomial in the beam-effective
+controls (terms "A", "A^n", "A*B" of (control - center), physical units) and a hidden per-episode slope
+scale s ~ U(slope_scale). Injector / day offsets are constant within an episode and cancel in the ratio.
+BLEN model v1 (results/blen_model_2026-10-16): BC11 = witness-length monitor, a free beam-side L1 signal
+only with the BC11 loop off (refused with a blen_dlog / adapter L1); BC14 = readback of the realised L2.
 Obs: v3 obs (cumulative delta column = what the operator side can see: readback dL1 for blen_dlog,
 commanded delta otherwise) + adapter gain estimate (log ratio to prior) + `history` k-1 previous
 (goal error, action, observed delta) frames.
@@ -52,7 +59,7 @@ class DeltaControlEnvV4(DeltaControlEnv):
                  outlier_scale: float = 5.0, reward_on: str = "true", action_cost: float = 0.0,
                  offcontext_goal_frac: float = 0.0, history: int = 1, goal_radius: dict | None = None,
                  goal_valid_retries: int = 0, drift_ramp: dict | None = None,
-                 **kw):
+                 blen_obs: dict | None = None, **kw):
         if reward_on not in ("true", "measured"):
             raise ValueError(f"reward_on must be 'true' or 'measured', got {reward_on!r}")
         self._v4_ready = False
@@ -95,6 +102,24 @@ class DeltaControlEnvV4(DeltaControlEnv):
                              if goal_radius else None)
         self._goal_retries = int(goal_valid_retries)
         self._k = max(int(history), 1)
+        self._blen = []                                       # (name, [(coef, [(ctrl idx, power)])], centers, lo, hi, noise)
+        for name, b in (blen_obs or {}).items():
+            cen = torch.tensor([float((b.get("centers") or {}).get(c, 0.0)) for c in controls], **f)
+            terms = []
+            for t, coef in b["poly"].items():
+                facs = []
+                for fac in t.split("*"):
+                    c, _, pw = fac.strip().partition("^")
+                    if c not in controls:
+                        raise ValueError(f"blen_obs {name}: term {t!r} uses {c!r}, not a control")
+                    facs.append((controls.index(c), int(pw or 1)))
+                terms.append((float(coef), facs))
+            ss = b.get("slope_scale", [1.0, 1.0])
+            self._blen.append((name, terms, cen, float(ss[0]), float(ss[1]), float(b.get("noise", 0.0))))
+            l1 = next((i for i, (c, _) in enumerate(zip(controls, acts)) if c == "L1PhaseSet"), None)
+            if "LI11" in name and l1 is not None and acts[l1]["type"] in ("blen_dlog", "adapter"):
+                raise ValueError(f"blen_obs {name}: the BC11 loop is on with a {acts[l1]['type']} L1 actuator "
+                                 "(it servoes the BC11 BLEN), so its reading carries no L1 information")
         super().__init__(num_envs, **kw)
 
     # ----- obs layout -------------------------------------------------------------------------
@@ -112,7 +137,11 @@ class DeltaControlEnvV4(DeltaControlEnv):
         self._ls_xx, self._ls_xy = z(B, n), z(B, n)
         self._last_dobs = z(B, n)
         self._hist = z(B, self._k - 1, self._frame_dim) if self._k > 1 else None
-        self.num_obs = (n + self._spec.n_obs_extra + 2 * n_goal + n) + n + (self._k - 1) * self._frame_dim
+        nb = len(self._blen)
+        self._blen_s = torch.ones(B, nb, device=self.device)
+        self._blen_ref = z(B, nb)
+        self._blen_obs = z(B, nb)
+        self.num_obs = (n + self._spec.n_obs_extra + 2 * n_goal + n) + n + (self._k - 1) * self._frame_dim + nb
         self._v4_ready = True
 
     def _compute_obs(self) -> torch.Tensor:
@@ -122,7 +151,29 @@ class DeltaControlEnvV4(DeltaControlEnv):
                  (self._g_hat / self._g_prior).log()]
         if self._hist is not None:
             parts.append(self._hist.flatten(1))
+        if self._blen:
+            parts.append(self._blen_obs)
         return torch.cat(parts, -1)
+
+    def _blen_poly(self, ctrl):
+        """(B, n_monitors) BLEN polynomial P at the (beam-effective, physical) controls."""
+        cols = []
+        for _, terms, cen, *_ in self._blen:
+            d = ctrl - cen
+            v = torch.zeros(ctrl.shape[0], device=ctrl.device, dtype=ctrl.dtype)
+            for coef, facs in terms:
+                t = torch.full_like(v, coef)
+                for i, pw in facs:
+                    t = t * d[:, i] ** pw
+                v = v + t
+            cols.append(v)
+        return torch.stack(cols, -1)
+
+    def _blen_read(self):
+        """Log-ratio readings of the BLEN monitors at the current beam-effective controls."""
+        noise = torch.tensor([b[5] for b in self._blen], device=self.device)
+        return (self._blen_s * (self._blen_poly(self.true_controls()) - self._blen_ref)
+                + self._randn(self.num_envs, len(self._blen)) * noise)
 
     # ----- plant ------------------------------------------------------------------------------
     def true_controls(self, cmd=None) -> torch.Tensor:
@@ -178,6 +229,17 @@ class DeltaControlEnvV4(DeltaControlEnv):
             self._hist = torch.where(m.view(-1, 1, 1), torch.zeros_like(self._hist), self._hist)
         # beam-effective controls start at the true start; re-evaluate the reset envs there
         self._true = torch.where(mc, self._start.detach(), self._true.detach() if m.all() else self._true)
+        if self._blen:                                        # extra draws only then (RNG stream)
+            nb = len(self._blen)
+            lo = torch.tensor([b[3] for b in self._blen], device=self.device)
+            hi = torch.tensor([b[4] for b in self._blen], device=self.device)
+            mb = m.unsqueeze(-1)
+            self._blen_s = torch.where(mb, lo + self._rand(B, nb) * (hi - lo), self._blen_s)
+            with torch.no_grad():
+                ref = self._blen_poly(self.true_controls())
+            self._blen_ref = torch.where(mb, ref, self._blen_ref)
+            rd = self._blen_read()
+            self._blen_obs = torch.where(mb, rd.detach(), self._blen_obs.detach() if m.all() else self._blen_obs)
         with torch.no_grad():
             _, extra, err, achieved = self._evaluate(self._cmd.detach())
         self._last_extra = torch.where(mc, extra, self._last_extra)
@@ -280,6 +342,8 @@ class DeltaControlEnvV4(DeltaControlEnv):
             self._g_hat = torch.where(ok, est.clamp(self._g_lo * 0.5, self._g_hi * 2), self._g_hat)
         self._cum_act = (self._cum_act + act).detach()
         self._cum_obs = self._cum_obs + d_obs
+        if self._blen:
+            self._blen_obs = self._blen_read()
         self._last_dobs = d_obs
         # base step machinery with the v4 controls (cmd is not used by v4's true_controls)
         if self.no_grad:
@@ -310,10 +374,14 @@ class DeltaControlEnvV4(DeltaControlEnv):
 
     def initialize_trajectory(self):
         self._true = self._true.detach()
+        if self._blen:
+            self._blen_obs = self._blen_obs.detach()
         self._cum_obs = self._cum_obs.detach()
         return super().initialize_trajectory()
 
     def clear_grad(self):
         self._true = self._true.detach()
+        if self._blen:
+            self._blen_obs = self._blen_obs.detach()
         self._cum_obs = self._cum_obs.detach()
         super().clear_grad()

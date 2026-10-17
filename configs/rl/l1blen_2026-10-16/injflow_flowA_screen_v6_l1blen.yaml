@@ -1,0 +1,240 @@
+# Direct-L1 + BLEN obs (BC11 + BC14 log-ratios; scripts/make_l1blen_rl_configs.py) on injflow_flowA_screen_v6_l1direct_v2.yaml
+params:
+  diff_env:
+    name: DeltaControlEnv
+    plant: xtcav_screen
+    flow_ckpt: trained/xtcav23e_inj_pairA40_2026-10-16/checkpoints/best-epoch=034-val_paired_delta_rms_um=6.8576.ckpt
+    baseline_set: xtcav23e_l0b2_inj12
+    episode_length: 32
+    stochastic_env: true
+    n_particles: 1024
+    controls:
+    - L1PhaseSet
+    - L2PhaseSet
+    action_step:
+      L1PhaseSet: 0.3
+      L2PhaseSet: 0.3
+    start_box:
+      L1PhaseSet:
+      - -23.5
+      - -19.0
+      L2PhaseSet:
+      - -40.5
+      - -33.5
+    gain_halfwidth: 0.2
+    measurement:
+      shot_noise:
+        bunch_spacing: 1.5e-05
+        drive_sigma_z: 6.0e-06
+        drive_charge_fraction: 0.07
+      shots_per_step: 30
+      step_noise_floor:
+        bunch_spacing: 6.0e-06
+        drive_sigma_z: 2.5e-06
+        drive_charge_fraction: 0.02
+      outlier_prob: 0.01
+      outlier_scale: 5.0
+      scale_error_keys:
+      - bunch_spacing
+      - drive_sigma_z
+      scale_error_halfwidth: 0.2
+    campaign_h5: processed/xtcav23_combined.h5
+    reward_norms_json: results/rl/_shared/norms/metric_norms_injflow_flowA_screen_v6_l1blen.json
+    surv_T_min: 0.9
+    surv_margin: 0.05
+    observe:
+    - drive_charge_fraction
+    objectives:
+    - key: bunch_spacing
+      kind: target
+      weight: 1.0
+      goal:
+      - 5.0e-05
+      - 0.0004
+      scale: 1.0e-05
+    - key: drive_sigma_z
+      kind: target
+      weight: 1.0
+      goal:
+      - 5.0e-06
+      - 0.0002
+      scale: 0.0414
+    - key: T_drive
+      kind: hinge
+      weight: 1.0
+      hinge_at: 0.98
+      scale: 0.01
+      observe: false
+    - key: T_witness
+      kind: hinge
+      weight: 1.0
+      hinge_at: 0.98
+      scale: 0.01
+      observe: false
+    - key: knobs
+      kind: boundary
+      weight: 0.5
+      margin: 0.05
+    - key: screen_valid_deployed
+      kind: hinge
+      weight: 1.0
+      hinge_at: 1.0
+    v4:
+      reward_on: 'true'
+      action_cost: 0.02
+      offcontext_goal_frac: 0.2
+      history: 8
+      drift_per_step:
+        L1PhaseSet: 0.025
+        L2PhaseSet: 0.05
+      actuators:
+        L1PhaseSet:
+          type: direct_rb
+          step: 0.25
+          gain_range:
+          - 0.7
+          - 1.3
+          readback_noise: 0.02
+          cum_limit: 2.5
+          readback_gain_range:
+          - 0.95
+          - 1.05
+        L2PhaseSet:
+          type: direct
+          step: 0.3
+          gain_range:
+          - 0.35
+          - 1.1
+          cum_limit: 3.5
+      goal_radius:
+        L1PhaseSet: 2.0
+        L2PhaseSet: 2.5
+      goal_valid_retries: 4
+      drift_ramp:
+        L1PhaseSet: 0.05
+      blen_obs:
+        BLEN_LI11_359:
+          centers:
+            L1PhaseSet: -20.29
+          poly:
+            L1PhaseSet: -0.218
+            L1PhaseSet^2: 0.0246
+            L1PhaseSet^3: 0.00233
+          slope_scale:
+          - 0.8
+          - 1.3
+          noise: 0.025
+        BLEN_LI14_888:
+          centers:
+            L1PhaseSet: -22.0
+            L2PhaseSet: -37.0
+          poly:
+            L2PhaseSet: 0.199
+            L2PhaseSet^2: 0.005
+            L1PhaseSet: -0.114
+            L1PhaseSet^2: -0.01
+            L1PhaseSet*L2PhaseSet: 0.014
+          slope_scale:
+          - 0.7
+          - 1.5
+          noise: 0.035
+    screen:
+      spec: configs/segment/segment_baseline.json
+      tdc_voltage_V: 22000000.0
+      tdc_voltage_range:
+      - 22000000.0
+      - 30000000.0
+      optics_choices:
+      - {}
+      - Q0D: 1.0559
+        Q2D: 1.0559
+        Q1D: 0.9991
+        Q2FF: 0.9971
+        Q1FF: 0.997
+        Q0FF: 0.9971
+      quad_jitter:
+        Q2FF: 0.01
+        Q1FF: 0.01
+        Q0FF: 0.01
+      roi:
+        x: 0.0046
+        y: 0.00244
+      arrival_jitter_s: 8.5e-14
+      split: energy
+      threshold: valley
+      row_correct: true
+      extra_resolution_m: 1.5e-05
+      orientation: charge
+      deployed_floor_m: 6.0e-05
+      edge_frac_max: 0.01
+      edge_band_m: 0.0003
+      pm_energy_axes: true
+    context_dist:
+      GUNF:rf_field_scale:
+        dist: normal
+        width: 121485.6
+      GUNF:theta0_deg:
+        dist: normal
+        width: 0.25
+      laser_timing_ps:
+        dist: normal
+        width: 0.1
+      distgen:t_dist:dists:d2:avg_t:value:
+        dist: normal
+        width: 0.1
+      drive_fraction:
+        dist: uniform
+        width: 0.06
+      distgen:total_charge:value:
+        dist: normal
+        width: 4.8
+      L0AF_phase_offset_deg:
+        dist: normal
+        width: 0.1
+      SOL10111:solenoid_field_scale:
+        dist: normal
+        width: 0.00121875
+      distgen:r_dist:sigma_xy:value:
+        dist: normal
+        width: 0.00745
+      distgen:r_dist:truncation_radius:value:
+        dist: normal
+        width: 0.0126
+      distgen:start:MTE:value:
+        dist: normal
+        width: 10.0
+      sigma_t_ps:
+        dist: normal
+        width: 0.00585
+  general:
+    seed: 0
+    device: cuda:0
+    render: false
+    train: true
+    logdir: logs/2026-10-15/delta_xtcav23_screen_v4r_blen
+  config:
+    name: DeltaBPTT
+    num_actors: 12
+    steps_num: 32
+    max_epochs: 600
+    actor_learning_rate: 5e-4
+    lr_schedule: linear
+    gamma: 0.99
+    obs_rms: true
+    truncate_grads: true
+    grad_norm: 1.0
+    rew_scale: 1.0
+    save_interval: 50
+    betas:
+    - 0.7
+    - 0.95
+    player:
+      games_num: 64
+      deterministic: true
+  network:
+    actor_mlp:
+      units:
+      - 128
+      - 128
+      activation: elu
+    actor_logstd_init: -1.0
