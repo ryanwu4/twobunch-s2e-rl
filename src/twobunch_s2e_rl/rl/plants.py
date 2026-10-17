@@ -7,7 +7,12 @@
   flow's own observables (survival heads etc.) pass through unchanged.
 
 The segment quads (Q2/Q1/Q0FF, optionally the spectrometer Q0D/Q1D/Q2D) sit downstream of XTCAVF,
-so the flow never sees them. By default they are held at the spec's golden values; `quad_jitter`
+so the flow never sees them.
+
+Both plants take their beam from the flow by default; `observe.set_cloud_source(fn)` swaps in another
+source with the `_flow_observables` contract, fn(knobs_norm, n) -> (observables, drive (B, n, 6),
+witness (B, n, 6)), physical units: the closed-loop Bmad check (rl/closed_loop_bmad.py) runs the SAME
+screen / measurement pipeline on Bmad-tracked beams. By default they are held at the spec's golden values; `quad_jitter`
 ({name: fractional 1-sigma}) instead draws a hidden per-episode strength for each env
 (`observe.resample(mask, generator)`, called by DeltaControlEnv at reset). The streak calibration
 stays the golden one, so a quad error also acts as a calibration / resolution / energy-axis error,
@@ -64,16 +69,25 @@ def _flow_observables(flow, knobs_norm, n):
 def flow_plant(flow, n_particles: int, norm: dict | None = None):
     """Cloud-mode plant: the flow's observables. With `norm` (the flow's processed norm), also the drive charge
     fraction q_d / (q_d + q_w) at the plane (injected charges x the T heads), as the screen plant reports it."""
+    src = {"fn": None}
+
+    def _obs(knobs_norm):
+        if src["fn"] is None:
+            return flow.observables(knobs_norm, n=n_particles)
+        return src["fn"](knobs_norm, n_particles)[0]
     if norm is None:
-        return lambda knobs_norm: flow.observables(knobs_norm, n=n_particles)
+        observe0 = lambda knobs_norm: _obs(knobs_norm)       # noqa: E731
+        observe0.set_cloud_source = lambda fn: src.__setitem__("fn", fn)
+        return observe0
     q_inj = injected_charges_nC(norm, flow.hparams.knob_keys or [], flow.knob_low.cpu(), flow.knob_high.cpu())
 
     def observe(knobs_norm):
-        obs = flow.observables(knobs_norm, n=n_particles)
+        obs = _obs(knobs_norm)
         qd, qw = q_inj(knobs_norm)
         qd, qw = obs["T_drive"] * qd.to(knobs_norm), obs["T_witness"] * qw.to(knobs_norm)
         obs["drive_charge_fraction"] = qd / (qd + qw).clamp_min(1e-12)
         return obs
+    observe.set_cloud_source = lambda fn: src.__setitem__("fn", fn)
     return observe
 
 
@@ -139,8 +153,11 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
         streak = streaks[0]
     streak_c = torch.tensor(streaks, device=device, dtype=torch.float32)
 
+    src = {"fn": None}
+
     def observe(knobs_norm):
-        obs, drive, witness = _flow_observables(flow, knobs_norm, n_particles)
+        obs, drive, witness = (_flow_observables(flow, knobs_norm, n_particles) if src["fn"] is None
+                               else src["fn"](knobs_norm, n_particles))
         q_in_d, q_in_w = q_inj(knobs_norm)
         q_d, q_w = obs["T_drive"] * q_in_d, obs["T_witness"] * q_in_w
         nd, nw = drive.shape[-2], witness.shape[-2]
@@ -198,6 +215,7 @@ def xtcav_screen_plant(flow, n_particles: int, *, spec_path, norm_json, device,
             q.k1 = torch.where(mask, k1, old)
 
     observe.resample = resample if (quads or v4_state) else None
+    observe.set_cloud_source = lambda fn: src.__setitem__("fn", fn)
     observe.streak = streak
     observe.eta_y = eta_y
     return observe
