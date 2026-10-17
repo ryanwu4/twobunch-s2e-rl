@@ -110,9 +110,10 @@ def main():
             d_ = json.loads(Path(f).read_text())
             meta[(c, int(d_["idx"]))] = d_
     blk = {r: meta[(int(camp[r]), int(idx[r]))] for r in inj_all}
-    gcross = [r for r in inj_all if blk[r]["injector_point"] == "golden" and blk[r]["block"] == "crossed"
-              and camp[r] == orig_test_c][0]
-    cross = [(r, gcross) for r in inj_all if blk[r]["block"] == "crossed" and blk[r]["injector_point"] != "golden"]
+    # reference = the SAME campaign's golden crossed row (same Tao seed rule); injector_full's as the fallback
+    gc_by = {int(camp[r]): r for r in inj_all if blk[r]["injector_point"] == "golden" and blk[r]["block"] == "crossed"}
+    cross = [(r, gc_by.get(int(camp[r]), gc_by[orig_test_c])) for r in inj_all
+             if blk[r]["block"] == "crossed" and blk[r]["injector_point"] != "golden"]
     by = {}
     for r in inj_all:
         if key[r] >= 0:
