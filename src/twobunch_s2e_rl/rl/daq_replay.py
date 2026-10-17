@@ -26,6 +26,7 @@ import torch
 import yaml
 
 REPLAY = "results/online_replay_v6_median_cut_2026-10-15"
+BLEN14 = "results/daq_replay_2026-10-17/blen14_steps.json"   # per-step BLEN_LI14_888_BRAW medians of the same scans
 L2_REF = -41.0          # sim L2 of mkb = 0 (the policy sees no absolute L2; keeps the scan inside the knob box)
 
 
@@ -118,8 +119,25 @@ def run(logdir, scan, k, out, device="cuda:0", policy="final", seed=777):
                                                        episode_length=10 ** 6, no_grad=True)
     plant = ScanPlant(scan, env._ks, shots, seed=seed)
     env._observe_fn = wrap_observe(env._observe_fn, plant)
+    blen_real = bool(getattr(env, "_blen", None))
+    if blen_real:
+        # BLEN-obs policies: the REAL BC14 BLEN of the scan (ln of the step median, interpolated); BC11 = 0 (its
+        # loop held it, and L1 is frozen); slope scale 1 (set after reset); the env's reading noise stays
+        b = json.loads(Path(BLEN14).read_text())[scan]
+        xs, ln14 = np.asarray(b["scan_val"]), np.log(np.asarray(b["blen14_median"]))
+        names = [m[0] for m in env._blen]
+
+        def poly(ctrl):
+            x = (ctrl[:, 1] - L2_REF).cpu().numpy()
+            cols = [torch.as_tensor(np.interp(x, xs, ln14), dtype=ctrl.dtype, device=ctrl.device)
+                    if "LI14" in nm else torch.zeros(ctrl.shape[0], dtype=ctrl.dtype, device=ctrl.device)
+                    for nm in names]
+            return torch.stack(cols, -1)
+        env._blen_poly = poly
     actor, rms = load_policy(str(Path(logdir) / f"{policy}_policy.pt"), device)
     env.reset()                                    # starts, goal points (valid scan readings) via the scan plant
+    if blen_real:
+        env._blen_s = torch.ones_like(env._blen_s)
     goal_mkb = (env._goal_ctrl[:, 1] - L2_REF).cpu().numpy()
     start_mkb = (env.true_controls()[:, 1] - L2_REF).cpu().numpy()
     traj = rollout(env, actor, rms, n_steps=n_steps)
@@ -132,6 +150,7 @@ def run(logdir, scan, k, out, device="cuda:0", policy="final", seed=777):
     valid_frac = float(steps_v[..., 1].mean())
     l2_path = (traj["true_controls"][..., 1] - L2_REF).cpu().numpy() if "true_controls" in traj else None
     summ = {"logdir": str(logdir), "scan": scan, "k": k, "policy": policy, "valid_window_mkb": [lo, hi],
+            "blen_obs_from_daq": blen_real,
             "dmkb_start_median": float(np.median(d0)), "dmkb_final_median": float(np.median(d_end)),
             "dmkb_final_p90": float(np.percentile(d_end, 90)),
             "frac_dmkb_final_le_0p25": float((d_end <= 0.25).mean()),
