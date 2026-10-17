@@ -282,7 +282,7 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
                          offcontext_goal_frac=float(v4.get("offcontext_goal_frac", 0.0)),
                          history=int(v4.get("history", 1)), goal_radius=v4.get("goal_radius"),
                          goal_valid_retries=int(v4.get("goal_valid_retries", 0)),
-                         drift_ramp=v4.get("drift_ramp"))
+                         drift_ramp=v4.get("drift_ramp"), blen_obs=v4.get("blen_obs"))
         return cls(
             num_envs, **extra, device=device, seed=seed, episode_length=episode_length, no_grad=no_grad,
             observe_fn=observe_fn, fallback_keys=tuple(ms.get("fallback_keys", ())),

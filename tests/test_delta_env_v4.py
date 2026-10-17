@@ -157,3 +157,13 @@ def test_blen_obs_off_keeps_the_env_identical_and_bc11_refused_with_loop_on():
     torch.testing.assert_close(runs[0], runs[1])
     with pytest.raises(ValueError, match="BC11 loop is on"):
         _env(blen_obs={"BLEN_LI11_359": BLEN["BLEN_LI11_359"]})          # default L1 actuator = blen_dlog
+
+
+def test_env_factory_forwards_every_v4_option():
+    """build_delta_env_fn builds the v4 kwargs by hand: every DeltaControlEnvV4 option must be forwarded
+    (2026-10-16: blen_obs was silently dropped, so configs trained without the BLEN columns)."""
+    import inspect
+    from twobunch_s2e_rl.rl import _train_utils
+    src = inspect.getsource(_train_utils.build_delta_env_fn)
+    opts = [p for p in inspect.signature(DeltaControlEnvV4.__init__).parameters if p not in ("self", "num_envs", "kw")]
+    assert [o for o in opts if f"{o}=" not in src] == []
