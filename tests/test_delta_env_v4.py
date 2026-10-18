@@ -251,3 +251,33 @@ def test_blen_loop_anti_windup():
     k_sat = env._knob[:, 0].clone()
     env.step(torch.tensor([[1.0, 0.0]] * 16))                       # one step back: the loop responds at once
     assert (env._knob[:, 0] < k_sat - 1e-3).float().mean() > 0.9
+
+
+def test_phase_wander_is_white_and_does_not_accumulate():
+    acts = {"L1PhaseSet": {"type": "direct_rb", "step": 0.25, "gain_range": [1, 1], "readback_noise": 0.0},
+            "L2PhaseSet": {"type": "direct", "gain_range": [1, 1]}}
+    env = _env(actuators=acts, phase_wander={"L1PhaseSet": 0.1}, episode_length=500, num_envs=256)
+    t0 = env._true.clone()
+    seen = []
+    for _ in range(50):
+        env.step(torch.zeros(256, 2))
+        seen.append((env.true_controls() - env._true)[:, 0].clone())
+    torch.testing.assert_close(env._true, t0)                      # the state does not wander
+    w = torch.stack(seen)
+    assert 0.08 < float(w.std()) < 0.12 and abs(float(torch.corrcoef(torch.stack([w[:-1].ravel(), w[1:].ravel()]))[0, 1])) < 0.1
+
+
+def test_jitter_map_adds_state_dependent_noise(tmp_path):
+    import numpy as np
+    L1 = np.array([BASE["L1PhaseSet"] - 5, BASE["L1PhaseSet"] + 5], np.float32)
+    L2 = np.array([-45.0, -30.0], np.float32)
+    big = np.full((2, 2), 30e-6, np.float32)
+    np.savez(tmp_path / "jm.npz", L1=L1, L2=L2, bunch_spacing_sigma_img=big, p_keep_valid_step=np.full((2, 2), 0.5, np.float32))
+    ref = _env()
+    env = _env(jitter_map=str(tmp_path / "jm.npz"))
+    o0 = ref._plant(ref.true_controls(), noise=True)
+    o = env._plant(env.true_controls(), noise=True)
+    e = (o["bunch_spacing"] - o["bunch_spacing_true"]).std() if "bunch_spacing" in o else None
+    if e is not None:
+        e0 = (o0["bunch_spacing"] - o0["bunch_spacing_true"]).std()
+        assert float(e) > float(e0)

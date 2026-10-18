@@ -54,6 +54,15 @@ Realistic operation (2026-10-18; all off by default):
              setpoint-to-phase gain 1 / (s P'(phi)) is state-dependent by construction. Charge: hidden ln Q random
              walk `charge_rw` per step with sensitivity `charge_sens` ~ U(range) (BLEN ~ Q^a): the loop reads it as
              bunch length and moves L1.
+Jitter (2026-10-18; off by default):
+  phase_wander {control: sigma}  beam-side white phase wander per step (NOT accumulated): the plant and the reward
+             see true + N(0, sigma) drawn fresh each step (the DAQ step-mean phase scatter that does not average
+             down with more shots); the state the next step builds on is unaffected
+  jitter_map path              npz on an (L1PhaseSet, L2PhaseSet) grid (keys L1, L2 [deg]; per-feature
+             `<feature>_sigma_img` [feature units, or relative if the key ends in _rel], optional
+             `<feature>_bias_step`, optional `p_keep_valid_step`): per-image jitter noise interpolated at the current
+             true phases, averaged over shots_per_step and added to the reading (the constant shot_noise should then
+             hold only the camera / analysis part); a noiseless-valid step stays valid with p_keep_valid_step
 Obs: v3 obs (cumulative delta column = what the operator side can see: readback dL1 for blen_dlog,
 commanded delta otherwise) + adapter gain estimate (log ratio to prior) + `history` k-1 previous
 (goal error, action, observed delta) frames.
@@ -74,7 +83,7 @@ class DeltaControlEnvV4(DeltaControlEnv):
                  offcontext_goal_frac: float = 0.0, history: int = 1, goal_radius: dict | None = None,
                  goal_valid_retries: int = 0, drift_ramp: dict | None = None,
                  blen_obs: dict | None = None, window: dict | None = None, goal_change=None,
-                 jumps: dict | None = None, **kw):
+                 jumps: dict | None = None, phase_wander: dict | None = None, jitter_map: str | None = None, **kw):
         if reward_on not in ("true", "measured"):
             raise ValueError(f"reward_on must be 'true' or 'measured', got {reward_on!r}")
         self._v4_ready = False
@@ -98,6 +107,17 @@ class DeltaControlEnvV4(DeltaControlEnv):
             raise ValueError("goal_change needs goal_radius (new setpoints are drawn around the current state)")
         self._jump_p = torch.tensor([float((jumps or {}).get(c, [0, 0])[0]) for c in controls], **f)
         self._jump_s = torch.tensor([float((jumps or {}).get(c, [0, 0])[1]) for c in controls], **f)
+        self._wander_s = torch.tensor([float((phase_wander or {}).get(c, 0.0)) for c in controls], **f)
+        self._jmap = None
+        if jitter_map:
+            import numpy as np
+            from pathlib import Path
+            z = np.load(Path(jitter_map))
+            if "L1PhaseSet" not in controls or "L2PhaseSet" not in controls:
+                raise ValueError("jitter_map needs L1PhaseSet and L2PhaseSet controls")
+            self._jmap = {"L1": torch.tensor(z["L1"], **f), "L2": torch.tensor(z["L2"], **f),
+                          "i1": controls.index("L1PhaseSet"), "i2": controls.index("L2PhaseSet"),
+                          "fields": {k: torch.tensor(z[k], **f) for k in z.files if k not in ("L1", "L2")}}
         self._loop = None
         for i, (c, a) in enumerate(zip(controls, acts)):
             if a.get("type") == "blen_loop":
@@ -177,6 +197,7 @@ class DeltaControlEnvV4(DeltaControlEnv):
         self._last_dobs = z(B, n)
         self._hist = z(B, self._k - 1, self._frame_dim) if self._k > 1 else None
         self._knob = z(B, n)                                  # commanded knob position (absolute window)
+        self._wander = z(B, n)                                # this step's beam-side phase wander
         self._goal_cd = torch.zeros(B, dtype=torch.long, device=self.device)
         self._lp_s, self._lp_qa = torch.ones(B, device=self.device), z(B)
         self._lp_target, self._lp_q, self._lp_db = z(B), z(B), z(B)
@@ -241,10 +262,41 @@ class DeltaControlEnvV4(DeltaControlEnv):
     def true_controls(self, cmd=None) -> torch.Tensor:
         if not self._v4_ready:
             return super().true_controls(cmd)
-        return torch.minimum(torch.maximum(self._true, self._lo[self._ci]), self._hi[self._ci])
+        return torch.minimum(torch.maximum(self._true + self._wander, self._lo[self._ci]), self._hi[self._ci])
+
+    def _jmap_at(self, ctrl, field):
+        """Bilinear interpolation of a jitter-map field at the (L1, L2) of `ctrl` (clamped to the grid)."""
+        jm = self._jmap
+        g1, g2, F = jm["L1"], jm["L2"], jm["fields"][field]
+        x = ctrl[:, jm["i1"]].detach().clamp(g1[0], g1[-1])
+        y = ctrl[:, jm["i2"]].detach().clamp(g2[0], g2[-1])
+        i = torch.clamp(torch.searchsorted(g1, x) - 1, 0, len(g1) - 2)
+        j = torch.clamp(torch.searchsorted(g2, y) - 1, 0, len(g2) - 2)
+        tx = (x - g1[i]) / (g1[i + 1] - g1[i])
+        ty = (y - g2[j]) / (g2[j + 1] - g2[j])
+        return ((1 - tx) * (1 - ty) * F[i, j] + tx * (1 - ty) * F[i + 1, j]
+                + (1 - tx) * ty * F[i, j + 1] + tx * ty * F[i + 1, j + 1])
 
     def _plant(self, true_ctrl, noise):
         obs = super()._plant(true_ctrl, noise)
+        if noise and self._v4_ready and self._jmap is not None:
+            m = math.sqrt(self._m)
+            for fld in self._jmap["fields"]:
+                if fld.endswith("_sigma_img") or fld.endswith("_sigma_img_rel"):
+                    key = fld.replace("_sigma_img_rel", "").replace("_sigma_img", "")
+                    if key not in obs:
+                        continue
+                    sig = self._jmap_at(true_ctrl, fld)
+                    if fld.endswith("_rel"):
+                        sig = sig * obs[f"{key}_true"].detach().abs()
+                    obs[key] = obs[key] + self._randn(self.num_envs) * sig / m
+                elif fld.endswith("_bias_step"):
+                    key = fld.replace("_bias_step", "")
+                    if key in obs:
+                        obs[key] = obs[key] + self._jmap_at(true_ctrl, fld)
+            if "p_keep_valid_step" in self._jmap["fields"] and "screen_valid_deployed" in obs:
+                keep = (self._rand(self.num_envs) < self._jmap_at(true_ctrl, "p_keep_valid_step")).float()
+                obs["screen_valid_deployed"] = obs["screen_valid_deployed"] * keep
         if noise and self._v4_ready:
             for key, sig in self._floor.items():
                 obs[key] = obs[key] + self._randn(self.num_envs) * sig
@@ -292,6 +344,7 @@ class DeltaControlEnvV4(DeltaControlEnv):
         # beam-effective controls start at the true start; re-evaluate the reset envs there
         self._true = torch.where(mc, self._start.detach(), self._true.detach() if m.all() else self._true)
         self._knob = torch.where(mc, self._start.detach(), self._knob.detach())
+        self._wander = torch.where(mc, torch.zeros_like(self._wander), self._wander.detach())
         if self._goal_change is not None:
             lo, hi = self._goal_change
             cd = lo + (self._rand(B) * (hi - lo + 1)).long()
@@ -438,6 +491,8 @@ class DeltaControlEnvV4(DeltaControlEnv):
             d_true[:, i] = knob_step[:, i]          # the readback below sees the knob move
         self._knob = (self._knob + knob_step).detach()
         self._true = new_true
+        if bool((self._wander_s > 0).any()):
+            self._wander = self._randn(*act.shape) * self._wander_s
         # observed delta: readback dL1 (+ noise + the loop's drift compensation) for BLEN / adapter
         # actuators, the commanded delta for direct ones
         readback = torch.tensor([t in ("blen_dlog", "adapter", "direct_rb", "blen_loop") for t in self._a_type],

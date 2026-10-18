@@ -283,7 +283,9 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
                          history=int(v4.get("history", 1)), goal_radius=v4.get("goal_radius"),
                          goal_valid_retries=int(v4.get("goal_valid_retries", 0)),
                          drift_ramp=v4.get("drift_ramp"), blen_obs=v4.get("blen_obs"),
-                         window=v4.get("window"), goal_change=v4.get("goal_change"), jumps=v4.get("jumps"))
+                         window=v4.get("window"), goal_change=v4.get("goal_change"), jumps=v4.get("jumps"),
+                         phase_wander=v4.get("phase_wander"),
+                         jitter_map=(str(repo_root() / v4["jitter_map"]) if v4.get("jitter_map") else None))
         return cls(
             num_envs, **extra, device=device, seed=seed, episode_length=episode_length, no_grad=no_grad,
             observe_fn=observe_fn, fallback_keys=tuple(ms.get("fallback_keys", ())),
