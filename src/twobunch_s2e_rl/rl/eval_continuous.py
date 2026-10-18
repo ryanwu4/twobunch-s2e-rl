@@ -18,16 +18,19 @@ import numpy as np
 import torch
 import yaml
 
-from .eval_delta import _apply_overrides
+from .eval_delta import _apply_overrides, _deep_merge
 
 TOL_SP, TOL_SZ = 10e-6, 0.10
 
 
-def run(logdir, out, sets=(), k=256, steps=128, policy="final", device="cuda:0", seed=97531, settle=8, tail=4):
+def run(logdir, out, sets=(), k=256, steps=128, policy="final", device="cuda:0", seed=97531, settle=8, tail=4,
+        de_yaml=None):
     from ..artifacts import policy_flow_ckpt
     from ._train_utils import build_env_fn
     from .rollout import load_policy, rollout
     cfg = yaml.safe_load((Path(logdir) / "cfg.yaml").read_text())
+    if de_yaml:
+        cfg["params"]["diff_env"] = _deep_merge(cfg["params"]["diff_env"], yaml.safe_load(Path(de_yaml).read_text()))
     de = _apply_overrides(cfg["params"]["diff_env"], sets)
     if not (de.get("v4") or {}).get("goal_change"):
         raise SystemExit("needs v4.goal_change (set it with --set v4.goal_change=[16,48])")
@@ -56,7 +59,7 @@ def run(logdir, out, sets=(), k=256, steps=128, policy="final", device="cuda:0",
             reach.append(float(ok[0]) if len(ok) else np.inf)
             inside.append((e_sp[s0 + settle:s1, b] <= TOL_SP).mean())
     settled_sp, settled_sz, reach = map(np.asarray, (settled_sp, settled_sz, reach))
-    summ = {"logdir": str(logdir), "sets": list(sets), "k": k, "steps": steps, "n_segments": int(len(settled_sp)),
+    summ = {"logdir": str(logdir), "sets": list(sets), "de_yaml": de_yaml, "k": k, "steps": steps, "n_segments": int(len(settled_sp)),
             "settled_spacing_median_um": float(np.median(settled_sp) * 1e6),
             "settled_spacing_p90_um": float(np.percentile(settled_sp, 90) * 1e6),
             "settled_within_10um": float((settled_sp <= TOL_SP).mean()),
@@ -81,13 +84,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--logdir", required=True)
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
+    ap.add_argument("--de-yaml", default=None, help="diff_env fragment deep-merged into the policy's config")
     ap.add_argument("--k", type=int, default=256)
     ap.add_argument("--steps", type=int, default=128)
     ap.add_argument("--policy", default="final")
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    run(a.logdir, a.out, sets=a.set, k=a.k, steps=a.steps, policy=a.policy, device=a.device)
+    run(a.logdir, a.out, sets=a.set, k=a.k, steps=a.steps, policy=a.policy, device=a.device, de_yaml=a.de_yaml)
 
 
 if __name__ == "__main__":

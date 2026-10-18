@@ -107,6 +107,8 @@ def run(logdir, scan, k, out, device="cuda:0", policy="final", seed=777, blen_so
     v4["drift_ramp"] = {}
     v4["jumps"] = {}                     # a hidden L2 jump would shift the policy off the scan's multiknob mapping
     v4["goal_change"] = None             # one setpoint per replay episode
+    v4["jitter_map"] = None              # real data carries its own jitter and wander
+    v4["phase_wander"] = {}
     ms = de.setdefault("measurement", {})
     ms["shot_noise"] = {kk: 0.0 for kk in ms.get("shot_noise", {})}
     ms["step_noise_floor"] = {kk: 0.0 for kk in ms.get("step_noise_floor", {})}

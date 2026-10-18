@@ -21,6 +21,8 @@ def main():
     ap.add_argument("--wander-deg", type=float, nargs=2, default=[0.1, 0.1], help="L1, L2 per-step beam-side wander")
     ap.add_argument("--tag", default="jit")
     ap.add_argument("--iters", type=int, default=900)
+    ap.add_argument("--floor-um", type=float, default=0.0, help="per-step spacing floor (the wander replaces it)")
+    ap.add_argument("--outlier-prob", type=float, default=0.025)
     a = ap.parse_args()
     out = Path("configs/rl/realistic_2026-10-17")
     for kind, src in SRC.items():
@@ -30,6 +32,8 @@ def main():
         v4["phase_wander"] = {"L1PhaseSet": a.wander_deg[0], "L2PhaseSet": a.wander_deg[1]}
         v4["jitter_map"] = a.map
         de["measurement"]["shot_noise"]["bunch_spacing"] = a.camera_sigma_um * 1e-6
+        de["measurement"]["step_noise_floor"]["bunch_spacing"] = a.floor_um * 1e-6
+        de["measurement"]["outlier_prob"] = a.outlier_prob
         c["params"]["config"]["max_epochs"] = a.iters
         stem = f"real_covB2_screen_{kind}_{a.tag}"
         de["reward_norms_json"] = f"results/rl/_shared/norms/metric_norms_{stem}.json"
