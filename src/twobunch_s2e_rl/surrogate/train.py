@@ -275,7 +275,7 @@ def main():
         missing = [k for k in missing if k not in new_ok]
         if missing or unexpected:
             raise SystemExit(f"warm start from {ck} incomplete: missing={missing} unexpected={unexpected}")
-        print(f"warm-started all weights from {ck}" + (f" (fresh: {len(new_ok)} t_full_head tensors)" if new_ok else ""))
+        print(f"warm-started all weights from {ck}" + (f" (fresh: {len(new_ok)} new-head tensors)" if new_ok else ""))
     fresh_t = args.t_two_part and (init_state is None or not any(k.startswith("t_full_head.") for k in init_state))
     if fresh_t:
         # fresh head starts at the training data's P(T = 1) per bunch (a warm-started trained head keeps its bias)
