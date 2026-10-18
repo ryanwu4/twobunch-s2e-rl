@@ -109,31 +109,49 @@ def build_pair_source(dm, model, crossed_frac):
     return PairSource(ds.knobs[p_i], ds.knobs[r_i], dtrue, crossed, crossed_frac)
 
 
-def prefit_centroids(model, dm, steps: int, lr: float = 1e-3, batch: int = 512) -> None:
-    """Fit fresh centroid heads to the TRAIN rows' true per-bunch centroids (standardized), so a warm-started
-    density starts centred where it already was (Adam, Huber, CPU/GPU of the model)."""
+def prefit_centroids(model, dm, steps: int, lr: float = 1e-3, batch: int = 512, w_pair: float = 3.0,
+                     w_spacing: float = 1.0, pair_batch: int = 64) -> None:
+    """Fit fresh centroid heads on the TRAIN rows before the flow fine-tune: Huber on the 6 standardized centroids
+    + Huber on the physical spacing (z_drive - z_witness, rows with both bunches) + w_pair x Huber on the
+    injector-pair spacing differences (model.pair_source, if set), cosine lr over `steps`. The flow fine-tune's
+    epochs give a head far too few updates (2026-10-17: a 128x2 MLP fitted this way reaches val pair slope 0.86 /
+    R2 0.88 where the in-loop head was stuck at 6.3-6.5 um val paired-delta rms)."""
     tr = np.asarray(dm.train.indices)
     ds = dm.full
     dev = next(model.parameters()).device
     opt = torch.optim.Adam(model.centroid_heads.parameters(), lr=lr)
+    sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, max(int(steps), 1))
     data = []
     for k, (parts, dens) in enumerate(((ds.drive, ds.drive_density), (ds.witness, ds.witness_density))):
         rows = tr[dens[tr].numpy().astype(bool)]
         data.append((ds.knobs[rows].to(dev), parts[rows].mean(1).to(dev)))
+    both = tr[(ds.drive_density[tr] & ds.witness_density[tr]).numpy().astype(bool)]
+    kb = ds.knobs[both].to(dev)
+    (md, sd), (mw, sw) = model._scaler(0), model._scaler(1)
+    sp_true = ((ds.drive[both].mean(1)[:, 2].to(dev) * sd[2] + md[2]) - (ds.witness[both].mean(1)[:, 2].to(dev) * sw[2] + mw[2]))
+    scale = float(model.hparams.get("spacing_scale_m", 1e-5))
+    F = torch.nn.functional
     g = torch.Generator().manual_seed(0)
     for it in range(int(steps)):
         loss = 0.0
         for k, (kn, tgt) in enumerate(data):
             i = torch.randint(len(kn), (min(batch, len(kn)),), generator=g)
-            loss = loss + torch.nn.functional.smooth_l1_loss(model.centroid_heads[k](kn[i]), tgt[i], beta=0.05)
-        opt.zero_grad(); loss.backward(); opt.step()
+            loss = loss + F.smooth_l1_loss(model.centroid_heads[k](kn[i]), tgt[i], beta=0.05)
+        i = torch.randint(len(kb), (min(batch, len(kb)),), generator=g)
+        sp = model.centroid_phys(kb[i], 0)[:, 2] - model.centroid_phys(kb[i], 1)[:, 2]
+        loss = loss + w_spacing * F.smooth_l1_loss(sp / scale, sp_true[i] / scale, beta=0.5)
+        if w_pair > 0 and model.pair_source is not None:
+            loss = loss + w_pair * model._pair_loss()
+        opt.zero_grad(); loss.backward(); opt.step(); sch.step()
     with torch.no_grad():
         msg = []
         for k, (kn, tgt) in enumerate(data):
             mean, std = model._scaler(k)
             err = ((model.centroid_heads[k](kn) - tgt)[:, 2] * std[2]).abs().median()
             msg.append(f"bunch {k} median |dz| {float(err) * 1e6:.2f} um")
-    print(f"[centroid prefit] {steps} steps: " + ", ".join(msg))
+        sp = model.centroid_phys(kb, 0)[:, 2] - model.centroid_phys(kb, 1)[:, 2]
+        msg.append(f"train spacing MAE {float((sp - sp_true).abs().mean()) * 1e6:.2f} um")
+    print(f"[centroid prefit] {steps} steps (w_pair {w_pair}): " + ", ".join(msg), flush=True)
 
 
 def build_model(norm: dict, **overrides) -> TwoBunchFlow:
@@ -289,10 +307,10 @@ def main():
                 p1 = float(np.clip((frac[tr].numpy()[m] >= 1 - 1e-4).mean(), 0.02, 0.98))
                 model.t_full_head[-1].bias[j] = float(np.log(p1 / (1 - p1)))
                 print(f"[t_two_part] bunch {j}: train P(T=1) = {p1:.3f}")
-    if args.centroid_head and (init_state is None or not any(k.startswith("centroid_heads.") for k in init_state)):
-        prefit_centroids(model, dm, args.centroid_prefit_steps)
     if args.w_pair > 0:
         model.pair_source = build_pair_source(dm, model, args.pair_crossed_frac)
+    if args.centroid_head and (init_state is None or not any(k.startswith("centroid_heads.") for k in init_state)):
+        prefit_centroids(model, dm, args.centroid_prefit_steps, w_pair=args.w_pair, w_spacing=max(args.w_spacing, 1.0))
 
     callbacks = []
     if args.split == "group":
