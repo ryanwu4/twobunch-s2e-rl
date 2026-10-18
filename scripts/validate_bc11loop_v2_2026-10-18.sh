@@ -8,7 +8,7 @@ EV=results/eval_realistic_2026-10-18
 ZS=$(ls trained/xtcav23e_inj_covB2zs_2026-10-18/checkpoints/*.ckpt)
 STRESS=(--set v4.drift_per_step.L1PhaseSet=0.07 --set v4.drift_per_step.L2PhaseSet=0.10 --set v4.drift_ramp.L1PhaseSet=0.08
         --set v4.drift_ramp.L2PhaseSet=0.07 --set 'v4.jumps={"L2PhaseSet": [0.05, 0.6]}')
-bash scripts/deadline_2026-10-18.sh 07:30 real_covB2_screen_bc11loop_v2_s0 real_covB2_screen_bc11loop_v2_s1
+bash scripts/deadline_2026-10-18.sh 07:30 real_covB2_screen_bc11loop_v2_s0 real_covB2_screen_bc11loop_v2_s1 &
 v() {
   local n=$1 g=$2 L=$R/$1
   until [ -e $L/final_policy.pt ]; do sleep 60; done
