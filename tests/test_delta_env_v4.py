@@ -167,3 +167,49 @@ def test_env_factory_forwards_every_v4_option():
     src = inspect.getsource(_train_utils.build_delta_env_fn)
     opts = [p for p in inspect.signature(DeltaControlEnvV4.__init__).parameters if p not in ("self", "num_envs", "kw")]
     assert [o for o in opts if f"{o}=" not in src] == []
+
+
+LOOP = {"L1PhaseSet": {"type": "blen_loop", "step": 0.1, "cum_limit": 0.75, "readback_noise": 0.0,
+                       "center": -20.29, "poly": {"L1PhaseSet": -0.218, "L1PhaseSet^2": 0.0246, "L1PhaseSet^3": 0.00233},
+                       "slope_scale": [0.8, 1.3], "settle": 1.0, "loop_noise": 0.0},
+        "L2PhaseSet": {"type": "direct", "gain_range": [0.35, 1.1]}}
+
+
+def test_blen_loop_cancels_beam_drift_and_moves_the_knob():
+    env = _env(actuators=LOOP, drift_per_step={"L1PhaseSet": 0.1})
+    t0, k0 = env.true_controls().clone(), env._knob.clone()
+    for _ in range(3):
+        env.step(torch.zeros(16, 2))
+    torch.testing.assert_close(env.true_controls()[:, 0], t0[:, 0], atol=1e-4, rtol=0)   # beam held by the loop
+    torch.testing.assert_close(env._knob[:, 0] - k0[:, 0], -env._lp_db, atol=1e-5, rtol=0)  # knob cancels drift
+    torch.testing.assert_close(env._cum_obs[:, 0], env._knob[:, 0] - k0[:, 0], atol=1e-5, rtol=0)  # readback = knob
+
+
+def test_blen_loop_setpoint_gain_is_state_dependent():
+    env = _env(actuators=LOOP)
+    t0 = env.true_controls().clone()
+    env.step(torch.tensor([[1.0, 0.0]] * 16))                    # +0.1 ln setpoint
+    t1 = env.true_controls()
+    P = lambda phi: -0.218 * (phi + 20.29) + 0.0246 * (phi + 20.29) ** 2 + 0.00233 * (phi + 20.29) ** 3
+    torch.testing.assert_close(env._lp_s * (P(t1[:, 0]) - P(t0[:, 0])), torch.full((16,), 0.1), atol=1e-4, rtol=0)
+    d = t1[:, 0] - t0[:, 0]
+    assert (d < 0).all() and d.max() / d.min() < 0.8                  # L1 lower; gain varies with the state
+
+
+def test_window_goal_change_and_jumps():
+    acts = {"L1PhaseSet": {"type": "direct_rb", "step": 0.25, "gain_range": [1, 1], "readback_noise": 0.0},
+            "L2PhaseSet": {"type": "direct", "gain_range": [1, 1]}}
+    env = _env(actuators=acts, window={"L1PhaseSet": [BASE["L1PhaseSet"] - 2.1, BASE["L1PhaseSet"] + 2.1]})
+    for _ in range(5):
+        env.step(torch.tensor([[1.0, 0.0]] * 16))
+    assert (env._knob[:, 0] <= BASE["L1PhaseSet"] + 2.1 + 1e-5).all()
+    env2 = _env(actuators=acts, goal_change=[2, 2], episode_length=50,
+                goal_radius={"L1PhaseSet": 1.0, "L2PhaseSet": 1.0})
+    g0 = dict((k, v.clone()) for k, v in env2._goals.items())
+    for _ in range(2):
+        env2.step(torch.zeros(16, 2))
+    assert any(not torch.allclose(g0[k], env2._goals[k]) for k in g0)
+    env3 = _env(actuators=acts, jumps={"L2PhaseSet": [1.0, 0.5]})
+    t0 = env3.true_controls().clone()
+    env3.step(torch.zeros(16, 2))
+    assert (env3.true_controls()[:, 1] - t0[:, 1]).abs().max() > 0.05

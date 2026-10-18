@@ -40,6 +40,20 @@ controls (terms "A", "A^n", "A*B" of (control - center), physical units) and a h
 scale s ~ U(slope_scale). Injector / day offsets are constant within an episode and cancel in the ratio.
 BLEN model v1 (results/blen_model_2026-10-16): BC11 = witness-length monitor, a free beam-side L1 signal
 only with the BC11 loop off (refused with a blen_dlog / adapter L1); BC14 = readback of the realised L2.
+Realistic operation (2026-10-18; all off by default):
+  window {control: [lo, hi]}  absolute limits on the commanded KNOB (PREQ / multiknob position; ops limits are
+             absolute ranges, not per-episode budgets); the knob starts at the true start
+  goal_change [lo, hi]        continuous operation: each env gets a new setpoint every U[lo, hi] steps, drawn
+             within goal_radius of its CURRENT true controls (an operator asking for a new state mid-run)
+  jumps {control: [p, sigma]} hidden phase jumps: per step with probability p, N(0, sigma) deg
+  blen_loop actuator (L1, BC11 loop ON, solved): the action changes ln(setpoint) by a * step; the loop drives
+             the beam-effective L1 phi_e towards the solution of s * P(phi) + q = s * P(phi_e,0) + q_0 + target
+             (P = the BLEN polynomial of the actuator, s ~ U(slope_scale) hidden, q = charge term) by a fraction
+             `settle` per step plus `loop_noise`; beam-side drift moves phi_e and the loop cancels it by moving the
+             knob, so the FAST_PACT readback (knob change + readback_noise) shows the compensation. The
+             setpoint-to-phase gain 1 / (s P'(phi)) is state-dependent by construction. Charge: hidden ln Q random
+             walk `charge_rw` per step with sensitivity `charge_sens` ~ U(range) (BLEN ~ Q^a): the loop reads it as
+             bunch length and moves L1.
 Obs: v3 obs (cumulative delta column = what the operator side can see: readback dL1 for blen_dlog,
 commanded delta otherwise) + adapter gain estimate (log ratio to prior) + `history` k-1 previous
 (goal error, action, observed delta) frames.
@@ -59,7 +73,8 @@ class DeltaControlEnvV4(DeltaControlEnv):
                  outlier_scale: float = 5.0, reward_on: str = "true", action_cost: float = 0.0,
                  offcontext_goal_frac: float = 0.0, history: int = 1, goal_radius: dict | None = None,
                  goal_valid_retries: int = 0, drift_ramp: dict | None = None,
-                 blen_obs: dict | None = None, **kw):
+                 blen_obs: dict | None = None, window: dict | None = None, goal_change=None,
+                 jumps: dict | None = None, **kw):
         if reward_on not in ("true", "measured"):
             raise ValueError(f"reward_on must be 'true' or 'measured', got {reward_on!r}")
         self._v4_ready = False
@@ -68,12 +83,34 @@ class DeltaControlEnvV4(DeltaControlEnv):
         f = dict(device=dev, dtype=torch.float32)
         acts = [dict(actuators.get(c, {"type": "direct"})) for c in controls]
         for c, a in zip(controls, acts):
-            if a.get("type", "direct") not in ("direct", "direct_rb", "blen_dlog", "adapter"):
-                raise ValueError(f"actuator type for {c} must be direct | direct_rb | blen_dlog | adapter")
+            if a.get("type", "direct") not in ("direct", "direct_rb", "blen_dlog", "adapter", "blen_loop"):
+                raise ValueError(f"actuator type for {c} must be direct | direct_rb | blen_dlog | adapter | blen_loop")
             a.setdefault("type", "direct")
             a.setdefault("gain_range", [1.0 - kw.get("gain_halfwidth", 0.2), 1.0 + kw.get("gain_halfwidth", 0.2)]
-                         if a["type"] in ("direct", "direct_rb") else [1.5, 4.0])
+                         if a["type"] in ("direct", "direct_rb", "blen_loop") else [1.5, 4.0])
         self._acts = acts
+        # absolute knob window, goal changes, jumps, solved BC11 loop (realistic operation; off by default)
+        big = 1e9
+        self._win_lo = torch.tensor([float((window or {}).get(c, [-big, big])[0]) for c in controls], **f)
+        self._win_hi = torch.tensor([float((window or {}).get(c, [-big, big])[1]) for c in controls], **f)
+        self._goal_change = [int(goal_change[0]), int(goal_change[1])] if goal_change else None
+        if self._goal_change and not goal_radius:
+            raise ValueError("goal_change needs goal_radius (new setpoints are drawn around the current state)")
+        self._jump_p = torch.tensor([float((jumps or {}).get(c, [0, 0])[0]) for c in controls], **f)
+        self._jump_s = torch.tensor([float((jumps or {}).get(c, [0, 0])[1]) for c in controls], **f)
+        self._loop = None
+        for i, (c, a) in enumerate(zip(controls, acts)):
+            if a.get("type") == "blen_loop":
+                terms = []
+                for t, coef in a["poly"].items():
+                    pw = int(t.partition("^")[2] or 1)
+                    terms.append((float(coef), pw))
+                self._loop = dict(i=i, center=float(a.get("center", 0.0)), terms=terms,
+                                  s_lo=float(a.get("slope_scale", [1, 1])[0]), s_hi=float(a.get("slope_scale", [1, 1])[1]),
+                                  settle=float(a.get("settle", 1.0)), noise=float(a.get("loop_noise", 0.0)),
+                                  q_rw=float(a.get("charge_rw", 0.0)),
+                                  qa_lo=float(a.get("charge_sens", [0, 0])[0]), qa_hi=float(a.get("charge_sens", [0, 0])[1]))
+                a.setdefault("gain_range", [1.0, 1.0])
         self._a_type = [a["type"] for a in acts]
         self._a_step = torch.tensor([float(a.get("step", kw["action_step"][c])) for c, a in zip(controls, acts)], **f)
         self._g_lo = torch.tensor([float(a["gain_range"][0]) for a in acts], **f)
@@ -81,6 +118,7 @@ class DeltaControlEnvV4(DeltaControlEnv):
         self._g_log = torch.tensor([bool(a.get("log_uniform", False)) for a in acts], device=dev)
         self._g_prior = (self._g_lo * self._g_hi).sqrt()
         self._sign = torch.tensor([-1.0 if a["type"] in ("blen_dlog", "adapter") else 1.0 for a in acts], **f)
+        self._is_loop = torch.tensor([a["type"] == "blen_loop" for a in acts], device=dev)
         self._rb_noise = torch.tensor([float(a.get("readback_noise", 0.0)) for a in acts], **f)
         self._rb_drift = torch.tensor([float(a.get("readback_drift", 0.0)) for a in acts], **f)
         self._cum_limit = torch.tensor([float(a.get("cum_limit", math.inf)) for a in acts], **f)
@@ -137,6 +175,11 @@ class DeltaControlEnvV4(DeltaControlEnv):
         self._ls_xx, self._ls_xy = z(B, n), z(B, n)
         self._last_dobs = z(B, n)
         self._hist = z(B, self._k - 1, self._frame_dim) if self._k > 1 else None
+        self._knob = z(B, n)                                  # commanded knob position (absolute window)
+        self._goal_cd = torch.zeros(B, dtype=torch.long, device=self.device)
+        self._lp_s, self._lp_qa = torch.ones(B, device=self.device), z(B)
+        self._lp_target, self._lp_q, self._lp_db = z(B), z(B), z(B)
+        self._lp_ref = z(B)
         nb = len(self._blen)
         self._blen_s = torch.ones(B, nb, device=self.device)
         self._blen_ref = z(B, nb)
@@ -168,6 +211,23 @@ class DeltaControlEnvV4(DeltaControlEnv):
                 v = v + t
             cols.append(v)
         return torch.stack(cols, -1)
+
+    def _loop_P(self, phi):
+        d = phi - self._loop["center"]
+        out = torch.zeros_like(phi)
+        for coef, pw in self._loop["terms"]:
+            out = out + coef * d ** pw
+        return out
+
+    def _loop_solve(self, y, phi0):
+        """phi with P(phi) = y (Newton from phi0; P is monotone over the controller box)."""
+        phi = phi0
+        for _ in range(6):
+            d = phi - self._loop["center"]
+            dp = sum(coef * pw * d ** (pw - 1) for coef, pw in self._loop["terms"])
+            dp = torch.where(dp.abs() < 1e-3, torch.full_like(dp, -1e-3), dp)
+            phi = phi - (self._loop_P(phi) - y) / dp
+        return phi
 
     def _blen_read(self):
         """Log-ratio readings of the BLEN monitors at the current beam-effective controls."""
@@ -229,6 +289,21 @@ class DeltaControlEnvV4(DeltaControlEnv):
             self._hist = torch.where(m.view(-1, 1, 1), torch.zeros_like(self._hist), self._hist)
         # beam-effective controls start at the true start; re-evaluate the reset envs there
         self._true = torch.where(mc, self._start.detach(), self._true.detach() if m.all() else self._true)
+        self._knob = torch.where(mc, self._start.detach(), self._knob.detach())
+        if self._goal_change is not None:
+            lo, hi = self._goal_change
+            cd = lo + (self._rand(B) * (hi - lo + 1)).long()
+            self._goal_cd = torch.where(m, cd, self._goal_cd)
+        if self._loop is not None:                            # extra draws only then (RNG stream)
+            lp = self._loop
+            u1, u2 = self._rand(B), self._rand(B)
+            self._lp_s = torch.where(m, lp["s_lo"] + u1 * (lp["s_hi"] - lp["s_lo"]), self._lp_s)
+            self._lp_qa = torch.where(m, lp["qa_lo"] + u2 * (lp["qa_hi"] - lp["qa_lo"]), self._lp_qa)
+            zB = torch.zeros(B, device=self.device)
+            for name in ("_lp_target", "_lp_q", "_lp_db"):
+                setattr(self, name, torch.where(m, zB, getattr(self, name).detach()))
+            ref = self._loop_P(self._start[:, lp["i"]]).detach()
+            self._lp_ref = torch.where(m, ref, self._lp_ref)
         if self._blen:                                        # extra draws only then (RNG stream)
             nb = len(self._blen)
             lo = torch.tensor([b[3] for b in self._blen], device=self.device)
@@ -323,11 +398,41 @@ class DeltaControlEnvV4(DeltaControlEnv):
         ratio = torch.where(adapter, self._g / self._g_hat.detach(), self._g)
         d_true = torch.where(adapter, act * ratio, self._sign * self._g * act)
         drift_step = self._randn(*act.shape) * self._drift + self._ramp   # hidden random walk + ramp
+        if bool((self._jump_p > 0).any()):
+            hit = (self._rand(*act.shape) < self._jump_p).float()
+            drift_step = drift_step + hit * self._randn(*act.shape) * self._jump_s
+        direct = torch.tensor([t in ("direct", "direct_rb") for t in self._a_type], device=self.device)
+        if bool((self._win_hi < 1e8).any()):                 # absolute knob window (direct actuators)
+            room_hi, room_lo = self._win_hi - self._knob, self._win_lo - self._knob
+            act = torch.where(direct, torch.minimum(torch.maximum(act, room_lo), room_hi), act)
+            d_true = torch.where(adapter, act * ratio, self._sign * self._g * act)
+        knob_step = torch.where(direct, act, torch.zeros_like(act))
         new_true = self._true + d_true + drift_step
+        if self._loop is not None:
+            lp, i = self._loop, self._loop["i"]
+            self._lp_target = self._lp_target + act[:, i]                 # ln setpoint change since the start
+            self._lp_db = self._lp_db + drift_step[:, i]                   # beam-side drift the loop must cancel
+            self._lp_q = self._lp_q + self._randn(act.shape[0]) * lp["q_rw"]
+            y = self._lp_ref + (self._lp_target - self._lp_qa * self._lp_q) / self._lp_s
+            phi_star = self._loop_solve(y, self._true[:, i].detach())
+            phi_e = self._true[:, i] + drift_step[:, i]
+            phi_e = phi_e + lp["settle"] * (phi_star - phi_e) + self._randn(act.shape[0]) * lp["noise"]
+            knob_new = phi_e - self._lp_db
+            lo_w, hi_w = self._win_lo[i], self._win_hi[i]
+            knob_new = torch.minimum(torch.maximum(knob_new, lo_w), hi_w)  # loop saturates at the window
+            phi_e = knob_new + self._lp_db
+            knob_step = knob_step.clone()
+            knob_step[:, i] = (knob_new - self._knob[:, i]).detach()
+            new_true = new_true.clone()
+            new_true[:, i] = phi_e
+            d_true = d_true.clone()
+            d_true[:, i] = knob_step[:, i]          # the readback below sees the knob move
+        self._knob = (self._knob + knob_step).detach()
         self._true = new_true
         # observed delta: readback dL1 (+ noise + the loop's drift compensation) for BLEN / adapter
         # actuators, the commanded delta for direct ones
-        readback = torch.tensor([t in ("blen_dlog", "adapter", "direct_rb") for t in self._a_type], device=self.device)
+        readback = torch.tensor([t in ("blen_dlog", "adapter", "direct_rb", "blen_loop") for t in self._a_type],
+                                device=self.device)
         rb_step = self._randn(*act.shape) * self._rb_noise + self._randn(*act.shape) * self._rb_drift
         rb_val = torch.where(self._rbg_on, act * self._g_rf, d_true).detach()   # klystron-side readback if set
         d_obs = torch.where(readback, rb_val + rb_step, act.detach())
@@ -367,6 +472,16 @@ class DeltaControlEnvV4(DeltaControlEnv):
         achieved_info.update({f"{g}_cloud": v.clone() for g, v in self._goals_cloud.items()})
         achieved_info["true_gain"] = self._g.clone()
         achieved_info["gain_estimate"] = self._g_hat.clone()
+        if self._goal_change is not None:
+            self._goal_cd = self._goal_cd - 1
+            chg = (self._goal_cd <= 0) & ~done
+            if bool(chg.any()):
+                saved = self._start
+                self._start = torch.where(chg.unsqueeze(-1), self.true_controls().detach(), self._start)
+                self._reachable_goals(chg)
+                self._start = saved
+                lo, hi = self._goal_change
+                self._goal_cd = torch.where(chg, lo + (self._rand(self.num_envs) * (hi - lo + 1)).long(), self._goal_cd)
         done_ids = done.nonzero(as_tuple=False).squeeze(-1)
         if done_ids.numel() > 0:
             self.reset(done_ids)
