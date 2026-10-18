@@ -15,7 +15,7 @@ import torch.nn.functional as F
 
 from twobunch_s2e_rl.surrogate.dataset import TwoBunchFlowDataModule
 from twobunch_s2e_rl.surrogate.model import TwoBunchFlow
-from twobunch_s2e_rl.surrogate.train import build_pair_source
+from twobunch_s2e_rl.surrogate.train import SCALER_KEYS, build_pair_source
 
 SRC = "trained/xtcav23e_inj_covB2_2026-10-17/checkpoints/best-epoch=034-val_paired_delta_rms_um=5.4293.ckpt"
 TABLE = "processed/xtcav23e_inj_cov_2026-10-17.h5"
@@ -29,6 +29,8 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--weight-decay", type=float, default=1e-4)
     ap.add_argument("--eval-every", type=int, default=500)
+    ap.add_argument("--abs-mae-max", type=float, default=4.5,
+                    help="selection: best val paired-delta rms among steps whose val ABSOLUTE spacing MAE [um] is <= this")
     a = ap.parse_args()
     torch.manual_seed(0)
     ck = torch.load(SRC, map_location="cpu", weights_only=False)
@@ -38,7 +40,10 @@ def main():
     missing, unexpected = model.load_state_dict(ck["state_dict"], strict=False)
     assert not unexpected and all(k.startswith("centroid_heads.") or k == "_z_center" for k in missing), (missing, unexpected)
     roles = json.loads(Path("processed/role_map_ftc_s0_2026-10-16.json").read_text())["roles"]
-    dm = TwoBunchFlowDataModule(processed_h5=TABLE, split="group", orig_split=roles)
+    # the data in the CHECKPOINT's standardized frame (as train.py does for a warm start; B2-cov carries its lineage's
+    # scaler, not the cov table's -- the first build used the table's own and fitted the head in the wrong frame)
+    scaler = {k: ck["state_dict"][k].tolist() for k in SCALER_KEYS}
+    dm = TwoBunchFlowDataModule(processed_h5=TABLE, split="group", orig_split=roles, scaler=scaler)
     dm.setup()
     model.pair_source = build_pair_source(dm, model, 0.3)
     ds = dm.full
@@ -68,14 +73,20 @@ def main():
     g = torch.Generator().manual_seed(0)
     scale = 1e-5
 
+    vrows = np.array(sorted(i for i in va if both[i]))
+
     def val_rms():
+        with torch.no_grad():
+            kv = knobs[vrows]
+            spv = (model.centroid_phys(kv, 0)[:, 2] - model.centroid_phys(kv, 1)[:, 2]).numpy()
+        mae = float(np.mean(np.abs(spv - sp_all[vrows])) * 1e6)
         with torch.no_grad():
             kk = knobs[vpairs.ravel()]
             sp = (model.centroid_phys(kk, 0)[:, 2] - model.centroid_phys(kk, 1)[:, 2]).numpy().reshape(-1, 2)
         dpred = sp[:, 0] - sp[:, 1]
         dtrue = sp_all[vpairs[:, 0]] - sp_all[vpairs[:, 1]]
         e = dpred - dtrue
-        return float(np.sqrt(np.mean(e ** 2)) * 1e6), float(np.polyfit(dtrue, dpred, 1)[0]), float(1 - np.var(e) / np.var(dtrue))
+        return float(np.sqrt(np.mean(e ** 2)) * 1e6), float(np.polyfit(dtrue, dpred, 1)[0]), float(1 - np.var(e) / np.var(dtrue)), mae
 
     best = (np.inf, None, -1)
     for it in range(a.steps):
@@ -88,10 +99,13 @@ def main():
         loss = loss + F.smooth_l1_loss(sp / scale, spb[i] / scale, beta=0.5) + a.w_pair * model._pair_loss()
         opt.zero_grad(); loss.backward(); opt.step(); sch.step()
         if (it + 1) % a.eval_every == 0:
-            r, sl, r2 = val_rms()
-            if r < best[0]:
+            r, sl, r2, mae = val_rms()
+            if mae <= a.abs_mae_max and r < best[0]:
                 best = (r, {k: v.clone() for k, v in model.centroid_heads.state_dict().items()}, it + 1)
-            print(f"step {it + 1}: val paired-delta rms {r:.2f} um, slope {sl:.2f}, R2 {r2:.2f} (best {best[0]:.2f} @ {best[2]})", flush=True)
+            print(f"step {it + 1}: val paired-delta rms {r:.2f} um, slope {sl:.2f}, R2 {r2:.2f}, abs spacing MAE {mae:.2f} um "
+                  f"(best {best[0]:.2f} @ {best[2]})", flush=True)
+    if best[1] is None:
+        raise SystemExit(f"no step with val absolute spacing MAE <= {a.abs_mae_max} um")
     model.centroid_heads.load_state_dict(best[1])
     out = Path(a.out)
     (out / "checkpoints").mkdir(parents=True, exist_ok=True)
