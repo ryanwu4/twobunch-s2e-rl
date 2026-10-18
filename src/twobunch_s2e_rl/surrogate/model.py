@@ -189,6 +189,10 @@ class TwoBunchFlow(L.LightningModule):
         # direct regression on the true centroids (w_centroid) and drives the spacing / pair losses without
         # sampling; the NLL sees it detached (it only shapes the cloud around the centre).
         centroid_head=False, w_centroid=0.0, centroid_buffer=512, centroid_head_lr=None,
+        # coordinates the centroid head owns (None = all 6); e.g. [2] = z only: spacing becomes deterministic while
+        # the transverse / momentum centres and the whole shape stay the flow's (a 6-D head let its transverse
+        # errors leak into the shape: witness emittance R2 0.88 -> ~0, 2026-10-17)
+        centroid_dims=None,
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
 
@@ -279,6 +283,10 @@ class TwoBunchFlow(L.LightningModule):
         w, _ = self._forward_enc(z, h.unsqueeze(1).expand(b, kz, -1).reshape(b * kz, -1))
         return w.reshape(b, kz, -1).mean(1)
 
+    def _cdims(self):
+        d = self.hparams.get("centroid_dims") if self.hparams.get("centroid_head", False) else None
+        return None if d is None else list(d)
+
     def centroid_phys(self, knobs, k):
         """(B, 6) deterministic physical centroid of bunch k (centroid_head models)."""
         mean, std = self._scaler(k)
@@ -313,12 +321,17 @@ class TwoBunchFlow(L.LightningModule):
         m, p = parts_std.shape[0], parts_std.shape[1]
         h = self._encode(knobs, k)
         mu, Lm = self._whiten(h, k)
-        if self.hparams.get("centroid_head", False):
-            mu = self.centroid_heads[k](knobs).detach()
-        xc = parts_std - mu.unsqueeze(1)                                # (M,P,6)
-        w = torch.linalg.solve_triangular(Lm, xc.transpose(1, 2), upper=False).transpose(1, 2)
-        if self.hparams.get("centroid_head", False):
-            w = w + self._residual_mean(h).unsqueeze(1)
+        cdims = self._cdims()
+        if cdims is None:                     # all 6 coordinates owned by the head (or no head)
+            if self.hparams.get("centroid_head", False):
+                mu = self.centroid_heads[k](knobs).detach()
+            xc = parts_std - mu.unsqueeze(1)                                # (M,P,6)
+            w = torch.linalg.solve_triangular(Lm, xc.transpose(1, 2), upper=False).transpose(1, 2)
+            if self.hparams.get("centroid_head", False):
+                w = w + self._residual_mean(h).unsqueeze(1)
+        else:                                 # partial head: the NLL is the flow's own (the head only moves sampled clouds)
+            xc = parts_std - mu.unsqueeze(1)
+            w = torch.linalg.solve_triangular(Lm, xc.transpose(1, 2), upper=False).transpose(1, 2)
         h_flat = h.unsqueeze(1).expand(m, p, -1).reshape(m * p, -1)
         z, ld_flow = self._inverse_enc(w.reshape(m * p, self.latent_dim), h_flat)
         logpz = (-0.5 * z ** 2 - 0.5 * _LOG_2PI).sum(dim=1)
@@ -354,12 +367,18 @@ class TwoBunchFlow(L.LightningModule):
         w, _ = self._forward_enc(z, h_flat)
         w = w.reshape(b, n, self.latent_dim)
         mu, Lm = self._whiten(h, k)
-        if self.hparams.get("centroid_head", False):
+        cdims = self._cdims()
+        if self.hparams.get("centroid_head", False) and cdims is None:
             # recentre on the drawn sample's own mean: the cloud mean is exactly c_k for any n
             # (the frozen-buffer mean only keeps the NLL's density consistent)
             mu = self.centroid_heads[k](knobs)
             w = w - w.mean(1, keepdim=True)
         x_std = mu.unsqueeze(1) + torch.einsum("bij,bnj->bni", Lm, w)
+        if cdims is not None:                 # partial head: shift the owned coordinates' sample mean onto c_k
+            c = self.centroid_heads[k](knobs)
+            sel = torch.zeros(self.latent_dim, device=x_std.device, dtype=x_std.dtype)
+            sel[cdims] = 1.0
+            x_std = x_std + sel * (c - x_std.mean(1)).unsqueeze(1)
         if not physical:
             return x_std
         mean, std = self._scaler(k)

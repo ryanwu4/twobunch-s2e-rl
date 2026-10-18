@@ -41,3 +41,17 @@ def test_pair_loss_is_deterministic_with_the_head():
 def test_no_head_means_no_new_parameters():
     f = _flow()
     assert not hasattr(f, "centroid_heads") and "_z_center" not in dict(f.named_buffers())
+
+
+def test_partial_head_owns_only_z():
+    f0 = _flow().eval()
+    f = _flow(centroid_head=True, centroid_dims=[2]).eval()
+    f.load_state_dict({**f0.state_dict(), **{k: v for k, v in f.state_dict().items() if k.startswith("centroid_heads") or k == "_z_center"}})
+    knobs = torch.rand(3, 5)
+    z = torch.randn(64, 6)
+    a, b = f0.sample_bunch(knobs, 0, 64, physical=False, z=z), f.sample_bunch(knobs, 0, 64, physical=False, z=z)
+    torch.testing.assert_close(b.mean(1)[:, 2], f.centroid_heads[0](knobs)[:, 2], rtol=1e-4, atol=1e-5)   # z mean = head
+    torch.testing.assert_close(b[..., [0, 1, 3, 4, 5]], a[..., [0, 1, 3, 4, 5]])                         # rest untouched
+    torch.testing.assert_close(b[..., 2] - b[..., 2].mean(1, keepdim=True), a[..., 2] - a[..., 2].mean(1, keepdim=True))
+    parts = torch.randn(4, 32, 6)
+    torch.testing.assert_close(f.bunch_nll(parts, knobs[:1].expand(4, 5), 0), f0.bunch_nll(parts, knobs[:1].expand(4, 5), 0))
