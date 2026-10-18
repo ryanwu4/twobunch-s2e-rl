@@ -109,6 +109,33 @@ def build_pair_source(dm, model, crossed_frac):
     return PairSource(ds.knobs[p_i], ds.knobs[r_i], dtrue, crossed, crossed_frac)
 
 
+def prefit_centroids(model, dm, steps: int, lr: float = 1e-3, batch: int = 512) -> None:
+    """Fit fresh centroid heads to the TRAIN rows' true per-bunch centroids (standardized), so a warm-started
+    density starts centred where it already was (Adam, Huber, CPU/GPU of the model)."""
+    tr = np.asarray(dm.train.indices)
+    ds = dm.full
+    dev = next(model.parameters()).device
+    opt = torch.optim.Adam(model.centroid_heads.parameters(), lr=lr)
+    data = []
+    for k, (parts, dens) in enumerate(((ds.drive, ds.drive_density), (ds.witness, ds.witness_density))):
+        rows = tr[dens[tr].numpy().astype(bool)]
+        data.append((ds.knobs[rows].to(dev), parts[rows].mean(1).to(dev)))
+    g = torch.Generator().manual_seed(0)
+    for it in range(int(steps)):
+        loss = 0.0
+        for k, (kn, tgt) in enumerate(data):
+            i = torch.randint(len(kn), (min(batch, len(kn)),), generator=g)
+            loss = loss + torch.nn.functional.smooth_l1_loss(model.centroid_heads[k](kn[i]), tgt[i], beta=0.05)
+        opt.zero_grad(); loss.backward(); opt.step()
+    with torch.no_grad():
+        msg = []
+        for k, (kn, tgt) in enumerate(data):
+            mean, std = model._scaler(k)
+            err = ((model.centroid_heads[k](kn) - tgt)[:, 2] * std[2]).abs().median()
+            msg.append(f"bunch {k} median |dz| {float(err) * 1e6:.2f} um")
+    print(f"[centroid prefit] {steps} steps: " + ", ".join(msg))
+
+
 def build_model(norm: dict, **overrides) -> TwoBunchFlow:
     kw = dict(
         condition_dim=len(norm["knob_keys"]),
@@ -157,6 +184,12 @@ def main():
     ap.add_argument("--pair-crossed-frac", type=float, default=0.3,
                     help="max share of crossed (golden-linac) pairs in the pair draws (they all share one linac point)")
     ap.add_argument("--t-two-part", action="store_true", help="two-part transmission head (P(T=1) + tail)")
+    ap.add_argument("--centroid-head", action="store_true",
+                    help="deterministic per-bunch centroid MLP (centred flow residual); spacing / pair losses on it")
+    ap.add_argument("--w-centroid", type=float, default=0.0, help="centroid regression weight (centroid head)")
+    ap.add_argument("--centroid-buffer", type=int, default=512, help="frozen base sample for the residual mean")
+    ap.add_argument("--centroid-prefit-steps", type=int, default=3000,
+                    help="regression steps fitting FRESH centroid heads to the train centroids before training")
     ap.add_argument("--t-sharp", type=float, default=4.0)
     ap.add_argument("--t-head-lr", type=float, default=1e-3, help="lr of the fresh two-part T head")
     ap.add_argument("--role-map", default=None,
@@ -230,12 +263,15 @@ def main():
                         w_mean=args.w_mean, w_spacing=args.w_spacing, spacing_scale_m=args.spacing_scale_m,
                         w_pair=args.w_pair, pair_batch=args.pair_batch, pair_particles=args.pair_particles,
                         t_two_part=args.t_two_part, t_sharp=args.t_sharp,
+                        centroid_head=args.centroid_head, w_centroid=args.w_centroid,
+                        centroid_buffer=args.centroid_buffer,
                         t_head_lr=args.t_head_lr if args.t_two_part else None,
                         lr_schedule=args.lr_schedule, t_max=args.epochs)
     if init_state is not None:
         # warm-start weights only (new hparams + fresh optimizer/LR schedule); not a full resume
         missing, unexpected = model.load_state_dict(init_state, strict=False)
-        new_ok = [k for k in missing if args.t_two_part and k.startswith("t_full_head.")]
+        new_ok = [k for k in missing if (args.t_two_part and k.startswith("t_full_head."))
+                  or (args.centroid_head and (k.startswith("centroid_heads.") or k == "_z_center"))]
         missing = [k for k in missing if k not in new_ok]
         if missing or unexpected:
             raise SystemExit(f"warm start from {ck} incomplete: missing={missing} unexpected={unexpected}")
@@ -251,6 +287,8 @@ def main():
                 p1 = float(np.clip((frac[tr].numpy()[m] >= 1 - 1e-4).mean(), 0.02, 0.98))
                 model.t_full_head[-1].bias[j] = float(np.log(p1 / (1 - p1)))
                 print(f"[t_two_part] bunch {j}: train P(T=1) = {p1:.3f}")
+    if args.centroid_head and (init_state is None or not any(k.startswith("centroid_heads.") for k in init_state)):
+        prefit_centroids(model, dm, args.centroid_prefit_steps)
     if args.w_pair > 0:
         model.pair_source = build_pair_source(dm, model, args.pair_crossed_frac)
 

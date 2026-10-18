@@ -183,6 +183,12 @@ class TwoBunchFlow(L.LightningModule):
         # P(T = 1) (BCE), the existing T logits are fitted on lossy rows only, and the output is
         # T = T_tail + (1 - T_tail) * sigmoid(t_sharp * full_logit) (median-like for t_sharp > 1)
         t_two_part=False, t_sharp=4.0, t_head_lr=None,
+        # deterministic centroid head (False = v1-v6): a per-bunch MLP c_k(knobs) IS the bunch centroid
+        # (standardized frame); the flow residual is centred by its mean over a frozen base sample, so
+        # x_std = c_k + L_k (w - m_k(h)) in the NLL; samples are recentred on their own mean (cloud mean = c_k exactly). c_k is fitted by
+        # direct regression on the true centroids (w_centroid) and drives the spacing / pair losses without
+        # sampling; the NLL sees it detached (it only shapes the cloud around the centre).
+        centroid_head=False, w_centroid=0.0, centroid_buffer=512,
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
 
@@ -228,6 +234,13 @@ class TwoBunchFlow(L.LightningModule):
                 nn.Linear(condition_dim, hidden_dim), nn.ReLU(),
                 nn.Linear(hidden_dim, 2))
         self.pair_source = None
+        if centroid_head:
+            self.centroid_heads = nn.ModuleList([
+                nn.Sequential(nn.Linear(condition_dim, hidden_dim), nn.ReLU(),
+                              nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+                              nn.Linear(hidden_dim, latent_dim)) for _ in range(2)])
+            g = torch.Generator().manual_seed(20261017)
+            self.register_buffer("_z_center", torch.randn(int(centroid_buffer), latent_dim, generator=g))
 
         tril = torch.tril_indices(latent_dim, latent_dim, offset=-1)
         self.register_buffer("_tril_r", tril[0])
@@ -259,6 +272,18 @@ class TwoBunchFlow(L.LightningModule):
         Lm[:, self._tril_r, self._tril_c] = off
         return mu, Lm
 
+    def _residual_mean(self, h):
+        """(B, latent) mean of the flow residual w over the frozen base sample, per conditioning row."""
+        b, kz = h.shape[0], self._z_center.shape[0]
+        z = self._z_center.to(h.dtype).unsqueeze(0).expand(b, kz, -1).reshape(b * kz, -1)
+        w, _ = self._forward_enc(z, h.unsqueeze(1).expand(b, kz, -1).reshape(b * kz, -1))
+        return w.reshape(b, kz, -1).mean(1)
+
+    def centroid_phys(self, knobs, k):
+        """(B, 6) deterministic physical centroid of bunch k (centroid_head models)."""
+        mean, std = self._scaler(k)
+        return self.centroid_heads[k](knobs) * std + mean
+
     def _scaler(self, k):
         return (self.drive_mean, self.drive_std) if k == 0 else (self.witness_mean, self.witness_std)
 
@@ -288,8 +313,12 @@ class TwoBunchFlow(L.LightningModule):
         m, p = parts_std.shape[0], parts_std.shape[1]
         h = self._encode(knobs, k)
         mu, Lm = self._whiten(h, k)
+        if self.hparams.get("centroid_head", False):
+            mu = self.centroid_heads[k](knobs).detach()
         xc = parts_std - mu.unsqueeze(1)                                # (M,P,6)
         w = torch.linalg.solve_triangular(Lm, xc.transpose(1, 2), upper=False).transpose(1, 2)
+        if self.hparams.get("centroid_head", False):
+            w = w + self._residual_mean(h).unsqueeze(1)
         h_flat = h.unsqueeze(1).expand(m, p, -1).reshape(m * p, -1)
         z, ld_flow = self._inverse_enc(w.reshape(m * p, self.latent_dim), h_flat)
         logpz = (-0.5 * z ** 2 - 0.5 * _LOG_2PI).sum(dim=1)
@@ -325,6 +354,11 @@ class TwoBunchFlow(L.LightningModule):
         w, _ = self._forward_enc(z, h_flat)
         w = w.reshape(b, n, self.latent_dim)
         mu, Lm = self._whiten(h, k)
+        if self.hparams.get("centroid_head", False):
+            # recentre on the drawn sample's own mean: the cloud mean is exactly c_k for any n
+            # (the frozen-buffer mean only keeps the NLL's density consistent)
+            mu = self.centroid_heads[k](knobs)
+            w = w - w.mean(1, keepdim=True)
         x_std = mu.unsqueeze(1) + torch.einsum("bij,bnj->bni", Lm, w)
         if not physical:
             return x_std
@@ -444,6 +478,20 @@ class TwoBunchFlow(L.LightningModule):
                     lc = (2 * torch.abs(cp - ct) / (torch.abs(cp) + torch.abs(ct) + 1e-6)).mean()
                     add(lc, hp.w_cov, f"cov_{key}")
 
+        if hp.get("centroid_head", False):
+            cz = {}
+            for k, mask, key in ((0, dd, "drive"), (1, wd, "witness")):
+                if not mask.any():
+                    continue
+                c = self.centroid_heads[k](knobs[mask])
+                tmean = batch[key][mask].mean(1)
+                if float(hp.get("w_centroid", 0.0)) > 0:
+                    add(F.smooth_l1_loss(c, tmean, beta=0.05), float(hp.w_centroid), f"centroid_{key}")
+                mean_k, std_k = self._scaler(k)
+                cz[k] = (mask, c[:, 2] * std_k[2] + mean_k[2], tmean[:, 2] * std_k[2] + mean_k[2])
+            if 0 in cz and 1 in cz:
+                zc = cz                          # the spacing term below then uses the deterministic centroids
+
         w_pair = float(hp.get("w_pair", 0.0))
         if w_pair > 0 and prefix == "train" and self.pair_source is not None:
             add(self._pair_loss(), w_pair, "pair")
@@ -469,6 +517,12 @@ class TwoBunchFlow(L.LightningModule):
     def _pair_loss(self):
         """Huber on (pred - true) of the spacing difference of a random batch of (point, ref) pairs."""
         kp, kr, d_true = self.pair_source(int(self.hparams.get("pair_batch", 32)), self.device)
+        scale = float(self.hparams.get("spacing_scale_m", 1e-5))
+        if self.hparams.get("centroid_head", False):
+            knobs = torch.cat([kp, kr], 0)
+            sp = self.centroid_phys(knobs, 0)[:, 2] - self.centroid_phys(knobs, 1)[:, 2]
+            m = kp.shape[0]
+            return F.smooth_l1_loss((sp[:m] - sp[m:]) / scale, d_true / scale, beta=0.5)
         n = int(self.hparams.get("pair_particles", 512))
         zd = torch.randn(n, self.latent_dim, device=self.device)
         zw = torch.randn(n, self.latent_dim, device=self.device)
