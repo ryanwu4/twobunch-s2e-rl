@@ -193,6 +193,10 @@ class TwoBunchFlow(L.LightningModule):
         # the transverse / momentum centres and the whole shape stay the flow's (a 6-D head let its transverse
         # errors leak into the shape: witness emittance R2 0.88 -> ~0, 2026-10-17)
         centroid_dims=None,
+        # "per_bunch" (default): head k predicts bunch k's centroid; "spacing": head 0 = drive centroid, head 1's z
+        # output = the bunch SPACING in units of spacing_scale_m (witness z = drive z - spacing), so the spacing is a
+        # single regression output (as the offline MLP that passed the pair gates); centroid_act: relu | silu
+        centroid_param="per_bunch", centroid_act="relu",
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
 
@@ -239,9 +243,10 @@ class TwoBunchFlow(L.LightningModule):
                 nn.Linear(hidden_dim, 2))
         self.pair_source = None
         if centroid_head:
+            act = {"relu": nn.ReLU, "silu": nn.SiLU}[centroid_act]
             self.centroid_heads = nn.ModuleList([
-                nn.Sequential(nn.Linear(condition_dim, hidden_dim), nn.ReLU(),
-                              nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+                nn.Sequential(nn.Linear(condition_dim, hidden_dim), act(),
+                              nn.Linear(hidden_dim, hidden_dim), act(),
                               nn.Linear(hidden_dim, latent_dim)) for _ in range(2)])
             g = torch.Generator().manual_seed(20261017)
             self.register_buffer("_z_center", torch.randn(int(centroid_buffer), latent_dim, generator=g))
@@ -287,10 +292,20 @@ class TwoBunchFlow(L.LightningModule):
         d = self.hparams.get("centroid_dims") if self.hparams.get("centroid_head", False) else None
         return None if d is None else list(d)
 
+    def centroid_std(self, knobs, k):
+        """(B, 6) deterministic centroid of bunch k in its standardized frame (centroid_head models)."""
+        out = self.centroid_heads[k](knobs)
+        if k == 1 and self.hparams.get("centroid_param", "per_bunch") == "spacing":
+            (md, sd), (mw, sw) = self._scaler(0), self._scaler(1)
+            zd = self.centroid_heads[0](knobs)[:, 2] * sd[2] + md[2]
+            zw = zd - out[:, 2] * float(self.hparams.get("spacing_scale_m", 1e-5))
+            out = torch.cat([out[:, :2], ((zw - mw[2]) / sw[2]).unsqueeze(-1), out[:, 3:]], -1)
+        return out
+
     def centroid_phys(self, knobs, k):
         """(B, 6) deterministic physical centroid of bunch k (centroid_head models)."""
         mean, std = self._scaler(k)
-        return self.centroid_heads[k](knobs) * std + mean
+        return self.centroid_std(knobs, k) * std + mean
 
     def _scaler(self, k):
         return (self.drive_mean, self.drive_std) if k == 0 else (self.witness_mean, self.witness_std)
@@ -324,7 +339,7 @@ class TwoBunchFlow(L.LightningModule):
         cdims = self._cdims()
         if cdims is None:                     # all 6 coordinates owned by the head (or no head)
             if self.hparams.get("centroid_head", False):
-                mu = self.centroid_heads[k](knobs).detach()
+                mu = self.centroid_std(knobs, k).detach()
             xc = parts_std - mu.unsqueeze(1)                                # (M,P,6)
             w = torch.linalg.solve_triangular(Lm, xc.transpose(1, 2), upper=False).transpose(1, 2)
             if self.hparams.get("centroid_head", False):
@@ -371,11 +386,11 @@ class TwoBunchFlow(L.LightningModule):
         if self.hparams.get("centroid_head", False) and cdims is None:
             # recentre on the drawn sample's own mean: the cloud mean is exactly c_k for any n
             # (the frozen-buffer mean only keeps the NLL's density consistent)
-            mu = self.centroid_heads[k](knobs)
+            mu = self.centroid_std(knobs, k)
             w = w - w.mean(1, keepdim=True)
         x_std = mu.unsqueeze(1) + torch.einsum("bij,bnj->bni", Lm, w)
         if cdims is not None:                 # partial head: shift the owned coordinates' sample mean onto c_k
-            c = self.centroid_heads[k](knobs)
+            c = self.centroid_std(knobs, k)
             sel = torch.zeros(self.latent_dim, device=x_std.device, dtype=x_std.dtype)
             sel[cdims] = 1.0
             x_std = x_std + sel * (c - x_std.mean(1)).unsqueeze(1)
@@ -502,7 +517,7 @@ class TwoBunchFlow(L.LightningModule):
             for k, mask, key in ((0, dd, "drive"), (1, wd, "witness")):
                 if not mask.any():
                     continue
-                c = self.centroid_heads[k](knobs[mask])
+                c = self.centroid_std(knobs[mask], k)
                 tmean = batch[key][mask].mean(1)
                 if float(hp.get("w_centroid", 0.0)) > 0:
                     add(F.smooth_l1_loss(c, tmean, beta=0.05), float(hp.w_centroid), f"centroid_{key}")

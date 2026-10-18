@@ -55,3 +55,12 @@ def test_partial_head_owns_only_z():
     torch.testing.assert_close(b[..., 2] - b[..., 2].mean(1, keepdim=True), a[..., 2] - a[..., 2].mean(1, keepdim=True))
     parts = torch.randn(4, 32, 6)
     torch.testing.assert_close(f.bunch_nll(parts, knobs[:1].expand(4, 5), 0), f0.bunch_nll(parts, knobs[:1].expand(4, 5), 0))
+
+
+def test_spacing_parametrization():
+    f = _flow(centroid_head=True, centroid_dims=[2], centroid_param="spacing", centroid_act="silu").eval()
+    knobs = torch.rand(3, 5)
+    sp = f.centroid_phys(knobs, 0)[:, 2] - f.centroid_phys(knobs, 1)[:, 2]
+    torch.testing.assert_close(sp, f.centroid_heads[1](knobs)[:, 2] * 1e-5, rtol=0, atol=1e-7)   # float32: ~10 nm
+    d, w = f.sample_bunch(knobs, 0, 64), f.sample_bunch(knobs, 1, 64)
+    torch.testing.assert_close(d[..., 2].mean(1) - w[..., 2].mean(1), sp, rtol=0, atol=1e-7)

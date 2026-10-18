@@ -29,13 +29,15 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--weight-decay", type=float, default=1e-4)
     ap.add_argument("--eval-every", type=int, default=500)
+    ap.add_argument("--param", choices=("per_bunch", "spacing"), default="per_bunch")
+    ap.add_argument("--act", choices=("relu", "silu"), default="relu")
     ap.add_argument("--abs-mae-max", type=float, default=4.5,
                     help="selection: best val paired-delta rms among steps whose val ABSOLUTE spacing MAE [um] is <= this")
     a = ap.parse_args()
     torch.manual_seed(0)
     ck = torch.load(SRC, map_location="cpu", weights_only=False)
     hp = dict(ck["hyper_parameters"])
-    hp.update(centroid_head=True, centroid_dims=[2], w_centroid=1.0)
+    hp.update(centroid_head=True, centroid_dims=[2], w_centroid=1.0, centroid_param=a.param, centroid_act=a.act)
     model = TwoBunchFlow(**hp)
     missing, unexpected = model.load_state_dict(ck["state_dict"], strict=False)
     assert not unexpected and all(k.startswith("centroid_heads.") or k == "_z_center" for k in missing), (missing, unexpected)
@@ -92,8 +94,10 @@ def main():
     for it in range(a.steps):
         loss = 0.0
         for k, (kn, tz) in enumerate(data):
+            if k == 1 and a.param == "spacing":
+                continue                      # the witness z is drive z - spacing: fitted through the spacing terms
             i = torch.randint(len(kn), (512,), generator=g)
-            loss = loss + F.smooth_l1_loss(model.centroid_heads[k](kn[i])[:, 2], tz[i], beta=0.05)
+            loss = loss + F.smooth_l1_loss(model.centroid_std(kn[i], k)[:, 2], tz[i], beta=0.05)
         i = torch.randint(len(kb), (512,), generator=g)
         sp = model.centroid_phys(kb[i], 0)[:, 2] - model.centroid_phys(kb[i], 1)[:, 2]
         loss = loss + F.smooth_l1_loss(sp / scale, spb[i] / scale, beta=0.5) + a.w_pair * model._pair_loss()
