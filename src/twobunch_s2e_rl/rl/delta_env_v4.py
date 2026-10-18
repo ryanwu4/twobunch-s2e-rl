@@ -180,6 +180,7 @@ class DeltaControlEnvV4(DeltaControlEnv):
         self._lp_s, self._lp_qa = torch.ones(B, device=self.device), z(B)
         self._lp_target, self._lp_q, self._lp_db = z(B), z(B), z(B)
         self._lp_ref = z(B)
+        self._lp_rbn = z(B)                                   # white readback noise of the current reading
         nb = len(self._blen)
         self._blen_s = torch.ones(B, nb, device=self.device)
         self._blen_ref = z(B, nb)
@@ -300,7 +301,7 @@ class DeltaControlEnvV4(DeltaControlEnv):
             self._lp_s = torch.where(m, lp["s_lo"] + u1 * (lp["s_hi"] - lp["s_lo"]), self._lp_s)
             self._lp_qa = torch.where(m, lp["qa_lo"] + u2 * (lp["qa_hi"] - lp["qa_lo"]), self._lp_qa)
             zB = torch.zeros(B, device=self.device)
-            for name in ("_lp_target", "_lp_q", "_lp_db"):
+            for name in ("_lp_target", "_lp_q", "_lp_db", "_lp_rbn"):
                 setattr(self, name, torch.where(m, zB, getattr(self, name).detach()))
             ref = self._loop_P(self._start[:, lp["i"]]).detach()
             self._lp_ref = torch.where(m, ref, self._lp_ref)
@@ -436,6 +437,12 @@ class DeltaControlEnvV4(DeltaControlEnv):
         rb_step = self._randn(*act.shape) * self._rb_noise + self._randn(*act.shape) * self._rb_drift
         rb_val = torch.where(self._rbg_on, act * self._g_rf, d_true).detach()   # klystron-side readback if set
         d_obs = torch.where(readback, rb_val + rb_step, act.detach())
+        if self._loop is not None:            # loop-on PACT noise is white on the READING (not a random walk)
+            i = self._loop["i"]
+            n_new = self._randn(act.shape[0]) * self._rb_noise[i]
+            d_obs = d_obs.clone()
+            d_obs[:, i] = rb_val[:, i] + self._randn(act.shape[0]) * self._rb_drift[i] + n_new - self._lp_rbn
+            self._lp_rbn = n_new
         # adapter gain estimate: forgetting least squares of -dL1_obs on dln
         with torch.no_grad():
             dln = torch.where(adapter, -act / self._g_hat, torch.zeros_like(act))

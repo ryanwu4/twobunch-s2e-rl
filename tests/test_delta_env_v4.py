@@ -228,3 +228,13 @@ def test_blen_loop_backprop_across_truncation_windows():
         loss.backward()
         env.clear_grad()
     assert w.grad is not None and torch.isfinite(w.grad).all()
+
+
+def test_blen_loop_readback_noise_is_white_on_the_reading():
+    acts = {**LOOP, "L1PhaseSet": {**LOOP["L1PhaseSet"], "readback_noise": 0.1}}
+    env = _env(actuators=acts, episode_length=500, num_envs=256)
+    k0 = env._knob.clone()
+    for _ in range(100):
+        env.step(torch.zeros(256, 2))
+    err = env._cum_obs[:, 0] - (env._knob[:, 0] - k0[:, 0])     # reading minus true knob move
+    assert 0.07 < float(err.std()) < 0.13                         # one reading's noise (0.1), not sqrt(100) * 0.1
