@@ -211,9 +211,10 @@ def run(logdir, mode, k, num_macro, workers, out, plant="bmad", device="cuda:0",
     out.mkdir(parents=True, exist_ok=True)
     cfg = yaml.safe_load((Path(logdir) / "cfg.yaml").read_text())
     de = cfg["params"]["diff_env"]
-    n_steps = int(steps or de["episode_length"])
+    n_steps = int(steps or min(int(de["episode_length"]), 32))
     if de.get("v4"):
         de["v4"]["offcontext_goal_frac"] = 0.0
+        de["v4"]["goal_change"] = None              # one setpoint per Bmad episode (continuous-op configs)
     env = build_env_fn(cfg, policy_flow_ckpt(logdir))(num_envs=k, device=device, seed=seed,
                                                        episode_length=10 ** 6, no_grad=True)
     actor, rms = load_policy(str(Path(logdir) / f"{policy}_policy.pt"), device)

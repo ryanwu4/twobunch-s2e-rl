@@ -105,6 +105,8 @@ def run(logdir, scan, k, out, device="cuda:0", policy="final", seed=777, blen_so
     v4["actuators"]["L2PhaseSet"]["gain_range"] = [1.0, 1.0]
     v4["drift_per_step"] = {}
     v4["drift_ramp"] = {}
+    v4["jumps"] = {}                     # a hidden L2 jump would shift the policy off the scan's multiknob mapping
+    v4["goal_change"] = None             # one setpoint per replay episode
     ms = de.setdefault("measurement", {})
     ms["shot_noise"] = {kk: 0.0 for kk in ms.get("shot_noise", {})}
     ms["step_noise_floor"] = {kk: 0.0 for kk in ms.get("step_noise_floor", {})}
@@ -114,7 +116,7 @@ def run(logdir, scan, k, out, device="cuda:0", policy="final", seed=777, blen_so
     probe = ScanPlant(scan)
     lo, hi = probe.valid_window()
     de["start_box"]["L2PhaseSet"] = [L2_REF + lo, L2_REF + hi]
-    n_steps = int(de["episode_length"])
+    n_steps = min(int(de["episode_length"]), 32)
     env = build_env_fn(cfg, policy_flow_ckpt(logdir))(num_envs=k, device=device, seed=seed,
                                                        episode_length=10 ** 6, no_grad=True)
     plant = ScanPlant(scan, env._ks, shots, seed=seed)
