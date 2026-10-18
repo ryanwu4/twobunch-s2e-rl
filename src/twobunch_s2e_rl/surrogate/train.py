@@ -187,6 +187,8 @@ def main():
     ap.add_argument("--centroid-head", action="store_true",
                     help="deterministic per-bunch centroid MLP (centred flow residual); spacing / pair losses on it")
     ap.add_argument("--w-centroid", type=float, default=0.0, help="centroid regression weight (centroid head)")
+    ap.add_argument("--centroid-head-lr", type=float, default=None,
+                    help="own lr for the centroid heads (a warm-started fine-tune's lr is far too small for fresh heads)")
     ap.add_argument("--centroid-buffer", type=int, default=512, help="frozen base sample for the residual mean")
     ap.add_argument("--centroid-prefit-steps", type=int, default=3000,
                     help="regression steps fitting FRESH centroid heads to the train centroids before training")
@@ -264,7 +266,7 @@ def main():
                         w_pair=args.w_pair, pair_batch=args.pair_batch, pair_particles=args.pair_particles,
                         t_two_part=args.t_two_part, t_sharp=args.t_sharp,
                         centroid_head=args.centroid_head, w_centroid=args.w_centroid,
-                        centroid_buffer=args.centroid_buffer,
+                        centroid_buffer=args.centroid_buffer, centroid_head_lr=args.centroid_head_lr,
                         t_head_lr=args.t_head_lr if args.t_two_part else None,
                         lr_schedule=args.lr_schedule, t_max=args.epochs)
     if init_state is not None:

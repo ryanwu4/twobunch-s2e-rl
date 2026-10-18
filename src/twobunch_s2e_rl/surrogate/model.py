@@ -188,7 +188,7 @@ class TwoBunchFlow(L.LightningModule):
         # x_std = c_k + L_k (w - m_k(h)) in the NLL; samples are recentred on their own mean (cloud mean = c_k exactly). c_k is fitted by
         # direct regression on the true centroids (w_centroid) and drives the spacing / pair losses without
         # sampling; the NLL sees it detached (it only shapes the cloud around the centre).
-        centroid_head=False, w_centroid=0.0, centroid_buffer=512,
+        centroid_head=False, w_centroid=0.0, centroid_buffer=512, centroid_head_lr=None,
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
 
@@ -542,11 +542,17 @@ class TwoBunchFlow(L.LightningModule):
 
     def configure_optimizers(self):
         t_lr = self.hparams.get("t_head_lr")
+        c_lr = self.hparams.get("centroid_head_lr")
+        heads = []
         if self.hparams.get("t_two_part", False) and t_lr:
             # the fresh two-part T head trains at its own lr (a warm-started fine-tune's lr is tiny)
-            t_ids = {id(p) for p in self.t_full_head.parameters()}
-            groups = [{"params": [p for p in self.parameters() if id(p) not in t_ids]},
-                      {"params": list(self.t_full_head.parameters()), "lr": float(t_lr)}]
+            heads.append((list(self.t_full_head.parameters()), float(t_lr)))
+        if self.hparams.get("centroid_head", False) and c_lr:
+            heads.append((list(self.centroid_heads.parameters()), float(c_lr)))     # same reason
+        if heads:
+            ids = {id(p) for ps, _ in heads for p in ps}
+            groups = [{"params": [p for p in self.parameters() if id(p) not in ids]}] + \
+                     [{"params": ps, "lr": lr} for ps, lr in heads]
             opt = torch.optim.Adam(groups, lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
         else:
             opt = torch.optim.Adam(self.parameters(), lr=self.hparams.lr,
