@@ -238,3 +238,16 @@ def test_blen_loop_readback_noise_is_white_on_the_reading():
         env.step(torch.zeros(256, 2))
     err = env._cum_obs[:, 0] - (env._knob[:, 0] - k0[:, 0])     # reading minus true knob move
     assert 0.07 < float(err.std()) < 0.13                         # one reading's noise (0.1), not sqrt(100) * 0.1
+
+
+def test_blen_loop_anti_windup():
+    acts = {**LOOP, "L1PhaseSet": {**LOOP["L1PhaseSet"], "cum_limit": 3.0, "anti_windup": True}}
+    win = {"L1PhaseSet": [BASE["L1PhaseSet"] - 1.0, BASE["L1PhaseSet"] + 1.0]}
+    env = _env(actuators=acts, window=win, episode_length=500)
+    for _ in range(30):                                            # push the setpoint down -> L1 up into the window
+        env.step(torch.tensor([[-1.0, 0.0]] * 16))
+    assert (env._knob[:, 0] <= BASE["L1PhaseSet"] + 1.0 + 1e-5).all()
+    assert env._lp_target.min() > -3.0 + 0.5                       # no windup to the budget
+    k_sat = env._knob[:, 0].clone()
+    env.step(torch.tensor([[1.0, 0.0]] * 16))                       # one step back: the loop responds at once
+    assert (env._knob[:, 0] < k_sat - 1e-3).float().mean() > 0.9

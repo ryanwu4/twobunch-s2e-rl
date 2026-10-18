@@ -109,7 +109,8 @@ class DeltaControlEnvV4(DeltaControlEnv):
                                   s_lo=float(a.get("slope_scale", [1, 1])[0]), s_hi=float(a.get("slope_scale", [1, 1])[1]),
                                   settle=float(a.get("settle", 1.0)), noise=float(a.get("loop_noise", 0.0)),
                                   q_rw=float(a.get("charge_rw", 0.0)),
-                                  qa_lo=float(a.get("charge_sens", [0, 0])[0]), qa_hi=float(a.get("charge_sens", [0, 0])[1]))
+                                  qa_lo=float(a.get("charge_sens", [0, 0])[0]), qa_hi=float(a.get("charge_sens", [0, 0])[1]),
+                                  anti_windup=bool(a.get("anti_windup", False)))
                 a.setdefault("gain_range", [1.0, 1.0])
         self._a_type = [a["type"] for a in acts]
         self._a_step = torch.tensor([float(a.get("step", kw["action_step"][c])) for c, a in zip(controls, acts)], **f)
@@ -420,8 +421,15 @@ class DeltaControlEnvV4(DeltaControlEnv):
             phi_e = phi_e + lp["settle"] * (phi_star - phi_e) + self._randn(act.shape[0]) * lp["noise"]
             knob_new = phi_e - self._lp_db
             lo_w, hi_w = self._win_lo[i], self._win_hi[i]
-            knob_new = torch.minimum(torch.maximum(knob_new, lo_w), hi_w)  # loop saturates at the window
-            phi_e = knob_new + self._lp_db
+            knob_sat = torch.minimum(torch.maximum(knob_new, lo_w), hi_w)  # loop saturates at the window
+            phi_e = knob_sat + self._lp_db
+            if lp.get("anti_windup", False):
+                # back-calculation: a saturated loop's setpoint is reset to what it achieves (the BLEN reading at the
+                # window), so the target cannot wind up past the reachable range
+                sat = (knob_sat - knob_new).abs() > 1e-9
+                achieved = self._lp_s * (self._loop_P(phi_e) - self._lp_ref) + self._lp_qa * self._lp_q
+                self._lp_target = torch.where(sat, achieved.detach(), self._lp_target)
+            knob_new = knob_sat
             knob_step = knob_step.clone()
             knob_step[:, i] = (knob_new - self._knob[:, i]).detach()
             new_true = new_true.clone()
@@ -453,6 +461,9 @@ class DeltaControlEnvV4(DeltaControlEnv):
             ok = adapter & (self._ls_xx > 1e-6) & (est > 0)
             self._g_hat = torch.where(ok, est.clamp(self._g_lo * 0.5, self._g_hi * 2), self._g_hat)
         self._cum_act = (self._cum_act + act).detach()
+        if self._loop is not None and self._loop.get("anti_windup", False):
+            self._cum_act = self._cum_act.clone()
+            self._cum_act[:, self._loop["i"]] = self._lp_target.detach()     # the setpoint budget tracks the target
         self._cum_obs = self._cum_obs + d_obs
         if self._blen:
             self._blen_obs = self._blen_read()
