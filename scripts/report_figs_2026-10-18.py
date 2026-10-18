@@ -24,8 +24,8 @@ POL = [("old blen_dlog (flow A)", EC / "base_S2blen_flowA", GREY),
        ("old direct-L1 + BLEN obs", EC / "base_S2l1blen_covB2", "#c9c6bd"),
        ("no-BLEN s0", EV / "real_covB2_screen_noblen_s0", BLUE), ("no-BLEN s1", EV / "real_covB2_screen_noblen_s1", BLUE),
        ("BC11 loop v1 s0", EV / "real_covB2_screen_bc11loop_s0", RED), ("BC11 loop v1 s1", EV / "real_covB2_screen_bc11loop_s1", RED),
-       ("BC11 loop v2 s0", EV / "real_covB2_screen_bc11loop_v2_s0", ORANGE),
-       ("BC11 loop v2 s1", EV / "real_covB2_screen_bc11loop_v2_s1", ORANGE)]
+       ("BC11 loop v3 s0", EV / "real_covB2_screen_bc11loop_v3_s0", ORANGE),
+       ("BC11 loop v3 s1", EV / "real_covB2_screen_bc11loop_v3_s1", ORANGE)]
 
 
 def jload(p):

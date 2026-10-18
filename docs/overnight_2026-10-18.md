@@ -2,15 +2,15 @@
 
 Ryan (18:30): add the deterministic centroid head; two RL directions, each constrained to realistic operation (drift rates, loop realism): (1) the best controller with **no BLEN at all** (both loops off; L1 via PREQ, L2 via multiknob; XTCAV + klystron readbacks only); (2) BLEN used realistically: **BC11 loop on for L1** (setpoint actuator, solved state-dependent loop), L2 via multiknob with BC14 off. Operating window = the controller box (L1 −26.5…−18.5, L2 −41…−33). Back ~09:00.
 
-## Status
+## Status (08:10)
 
-| Item | State |
+| Item | Result |
 |---|---|
-| Centroid head (model + train + tests) | done; fine-tunes D1 (w_pair 3, GPU0) / D2 (w_pair 10, GPU1) running, ETA ~21:30 |
-| DAQ realism analysis (timing, drift, jumps, loop gain) | agent running → `results/realism_2026-10-17/` |
-| Env realism (continuous operation, absolute window, jumps, solved BC11 loop, hold) | in progress |
-| RL direction 1 / 2 (S2, 2 seeds, 1200 it) | after the env changes + flow choice |
-| Validation (eval, stress, DAQ replay, closed-loop Bmad) | morning |
+| DAQ realism pass | done: step ≈ 20 s; L1 loop-off drift RW 0.035°/step (+ ramps rms 0.022, bounded over ~1 h); beam-side L2 drift ≈ 1° per 32 steps (invisible to readbacks); L2 readback jumps; BC11 loop τ 1–3 s; setpoint gain 3.4 deg/ln (state-dependent) |
+| Centroid head | 6-D fine-tuned head: slope passes but witness emittance collapses (rejected). **B2-cov + spacing head** (no flow retraining): pair gates pass on test (0.91 / 0.95 / 6.5 µm) and held-out (0.90 / 0.92 / 7.1), val p90 8.6 just misses; shape untouched; absolute spacing ~0.7 µm worse |
+| Direction 1, no BLEN (both loops off) | **works**: continuous operation settled 8.9–9.9 µm, 50–53% settled within 10 µm, 83–84% of setpoints reached (old blen_dlog 10.7 / 48% / 78%); closed-loop Bmad 9.7–10.3 µm / 46–54% (surrogate 7.6–8.7 / 54%); replay TEST 59–78% / E300 28% |
+| Direction 2, BC11 loop (L1) | v1 / v2 failed (readback noise random walk, setpoint budget, then integrator windup); **v3 with anti-windup works**: settled 10.1–10.3 µm, 49–50%, 83–85% reached (600 it); replay TEST 80% / E300 25–30%; closed-loop Bmad running (~11:30) |
+| Report figures | `results/report_2026-10-18/` |
 
 ## Log
 
@@ -39,3 +39,5 @@ Ryan (18:30): add the deterministic centroid head; two RL directions, each const
 - 05:15 **closed-loop Bmad, noblen s0** (24 episodes, 2e4, one setpoint, 32 steps): golden 10.3 µm / 46% within 10 µm (paired surrogate 7.6 / 54%), inj 9.7 / 54% (8.7 / 54%); σz rel 0.20–0.28 (surrogate 0.14–0.22). Transfers, ~1–3 µm worse on the median.
 - 05:20 **bc11loop v2 also failed, and got worse during training** (loss 1217 → 1554 → 1435; noblen 986 → 699). Rollout of its iteration-650 policy: the policy drives the loop into the knob window (beam L1 pinned at −18.5° in many episodes) and the setpoint target winds up to the −3 ln budget (25–52% of episodes by step 31–95), |a_L1| ≈ 0.8 (near bang-bang) — **integrator windup**: a saturated loop no longer responds, the readback stops moving, the policy keeps pushing, and unwinding takes many steps. v1's ±1 ln budget partly masked it; widening it made it worse. Fix: back-calculation anti-windup (a saturated loop's setpoint is reset to the BLEN reading it achieves at the window; the setpoint budget tracks it), test. v2 stopped at ~650 iterations (STOPPED.txt; its waiter and 07:30 deadline killed by PID). **bc11loop v3** (v2 + anti-windup, 600 iterations, 2 seeds) from 05:30, deadline 08:00, validation after (`scripts/validate_bc11loop_v3_2026-10-18.sh`).
 - 05:30 report figures `results/report_2026-10-18/` (`scripts/report_figs_2026-10-18.py`). noblen traces: the median error creeps from ~10 to ~13 µm after step ~100. Likely the drift model: the per-episode L1 ramp U(±0.04)°/step is sustained for the whole 128-step episode (up to ~5° of beam-side drift ≈ the knob window), whereas the DAQ L1 wander over ~1 h was only 0.3–0.4° rms (bounded); a mean-reverting (OU) drift would be the more realistic model.
+- 05:45 bc11loop v3 learns (rows 120–150 loss 853 / 891 from 1004 / 1080; v2 got worse, 1251 → 1503). Finished 600 iterations by ~07:10, validated 07:14: s0 standard 11.3 µm / 46%, continuous 10.1 / 50% / 85% reached, stress 16.8 / 34%, replay TEST 80% / E300 30%; s1 12.0 / 45%, 10.3 / 49% / 83%, 17.5 / 31%, 80% / 25%. noblen s1: standard 11.8 / 45%, continuous 9.9 / 50% / 83%, stress 17.8 / 33%, replay 59% / 28%. On B2-cov + spacing head all realistic policies are within ±1 µm of their own-flow standard eval. The two directions end up equivalent (v3 with half the iterations).
+- 08:05 closed-loop Bmad of bc11loop v3 s0 (golden + inj) started on the idle CPUs (`scripts/closed_loop_v3_2026-10-18.sh`, ~3.5 h); report figures regenerated.
