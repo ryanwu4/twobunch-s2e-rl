@@ -87,7 +87,7 @@ def wrap_observe(base, plant: ScanPlant):
     return observe
 
 
-def run(logdir, scan, k, out, device="cuda:0", policy="final", seed=777):
+def run(logdir, scan, k, out, device="cuda:0", policy="final", seed=777, blen_source="daq"):
     from ..artifacts import policy_flow_ckpt
     from ._train_utils import build_env_fn
     from .rollout import load_policy, rollout
@@ -119,7 +119,7 @@ def run(logdir, scan, k, out, device="cuda:0", policy="final", seed=777):
                                                        episode_length=10 ** 6, no_grad=True)
     plant = ScanPlant(scan, env._ks, shots, seed=seed)
     env._observe_fn = wrap_observe(env._observe_fn, plant)
-    blen_real = bool(getattr(env, "_blen", None))
+    blen_real = bool(getattr(env, "_blen", None)) and blen_source == "daq"
     if blen_real:
         # BLEN-obs policies: the REAL BC14 BLEN of the scan (ln of the step median, interpolated); BC11 = 0 (its
         # loop held it, and L1 is frozen); slope scale 1 (set after reset); the env's reading noise stays
@@ -178,9 +178,11 @@ def main():
     ap.add_argument("--k", type=int, default=64)
     ap.add_argument("--policy", default="final")
     ap.add_argument("--device", default="cuda:0")
+    ap.add_argument("--blen-source", choices=("daq", "model"), default="daq",
+                    help="BLEN-obs policies: the scan's real BC14 BLEN (daq) or the env's own model of the true L2 (model)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    run(a.logdir, a.scan, a.k, a.out, device=a.device, policy=a.policy)
+    run(a.logdir, a.scan, a.k, a.out, device=a.device, policy=a.policy, blen_source=a.blen_source)
 
 
 if __name__ == "__main__":
