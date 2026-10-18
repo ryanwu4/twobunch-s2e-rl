@@ -489,6 +489,8 @@ class DeltaControlEnvV4(DeltaControlEnv):
 
     def initialize_trajectory(self):
         self._true = self._true.detach()
+        if self._loop is not None:            # solved-loop state carries the graph across truncation windows
+            self._lp_target, self._lp_q = self._lp_target.detach(), self._lp_q.detach()
         if self._blen:
             self._blen_obs = self._blen_obs.detach()
         self._cum_obs = self._cum_obs.detach()
@@ -496,6 +498,8 @@ class DeltaControlEnvV4(DeltaControlEnv):
 
     def clear_grad(self):
         self._true = self._true.detach()
+        if self._loop is not None:            # solved-loop state carries the graph across truncation windows
+            self._lp_target, self._lp_q = self._lp_target.detach(), self._lp_q.detach()
         if self._blen:
             self._blen_obs = self._blen_obs.detach()
         self._cum_obs = self._cum_obs.detach()

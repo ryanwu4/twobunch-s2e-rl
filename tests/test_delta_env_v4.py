@@ -213,3 +213,18 @@ def test_window_goal_change_and_jumps():
     t0 = env3.true_controls().clone()
     env3.step(torch.zeros(16, 2))
     assert (env3.true_controls()[:, 1] - t0[:, 1]).abs().max() > 0.05
+
+
+def test_blen_loop_backprop_across_truncation_windows():
+    """BPTT: two consecutive windows, each with its own backward (2026-10-17 crash: loop state kept the graph)."""
+    env = _env(actuators=LOOP, drift_per_step={"L1PhaseSet": 0.05})
+    w = torch.zeros(1, 2, requires_grad=True)
+    for _ in range(2):
+        env.initialize_trajectory()
+        loss = 0.0
+        for _ in range(3):
+            _, r, _, _ = env.step(torch.tanh(w).expand(16, 2) + 0.1)
+            loss = loss - r.sum()
+        loss.backward()
+        env.clear_grad()
+    assert w.grad is not None and torch.isfinite(w.grad).all()
