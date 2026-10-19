@@ -31,7 +31,7 @@ New `closed_loop_bmad --mode test --points-json configs/rl/eval/heldout_injector
 
 ## E. Goal conditioning (built, untrained)
 - `DeltaControlEnvV4(goal_far_frac=…, spacing_only_frac=…, free_goal_keys=("drive_sigma_z",))`, off by default (RNG stream unchanged). Far setpoints: uniform over the start box. Spacing-only: σz target achieved := goal in the reward view (no penalty, no gradient), σz goal / error obs zeroed, mask bit appended; mask redrawn with every setpoint. `eval_continuous` reports free / constrained segments separately, σz metrics on constrained only. Tests: `test_far_goals_leave_the_goal_radius`, `test_spacing_only_goals_mask_sigma_z`.
-- Configs `configs/rl/gc_2026-10-19/gc_zs_screen_{noblen,bc11loop}_jit_fd.yaml` (0.5 / 0.5), smoke-trained. Rebase on the winning arm before training.
+- Configs `configs/rl/gc_2026-10-19/gc_zs_screen_{noblen,bc11loop}_jit.yaml` (0.5 / 0.5; rebased 09:00 on the plain arm, the `_fd` versions were smoke-trained and removed).
 - Large-move eval of the current policy (pre-check, noblen s0, nominal jitter, full-box setpoints): 13.2 µm settled / 36% within 10 µm / 78% reached vs 11.0 / 45% / 86% for local setpoints. The night chain repeats this for the best jitter-trained policies (radius ×2 and full box).
 
 ## Results
@@ -110,3 +110,26 @@ Common plant: all policies evaluated under nominal jitter on the **spacing-head 
 - On the common simulated plant, training on the spacing-head flow does **not** improve the policies (same or ~1–2 µm worse; seed spread is ~1–3 µm).
 - On **real data** (TEST_15668 replay) 3 of 4 spacing-head runs are better (0.84–0.88 vs 0.58–0.73). E300_15673 stays poor for all (0.14–0.34).
 - Failure detection: no visible effect yet on either plant (one seed per arm; wave 2 adds the other seed).
+
+### All 8 spacing-head trainings (done 08:56)
+Nominal / stress = continuous eval on the spacing-head flow (= the common plant above). Settled spacing µm / within 10 µm; replay = within 10 µm. Two seeds per arm (s0 · s1).
+
+| arm | nominal | stress | replay TEST_15668 | replay E300_15673 |
+|---|---|---|---|---|
+| noblen | 12.2 / 0.39 · 12.9 / 0.38 | 16.5 · 16.1 | 0.84 · 0.77 | 0.34 · 0.25 |
+| noblen + failure detection | 12.0 / 0.42 · 12.9 / 0.39 | 16.8 · 16.5 | 0.62 · 0.69 | 0.19 · 0.25 |
+| bc11loop | 13.7 / 0.34 · 13.0 / 0.37 | 17.8 · 17.0 | **0.88 · 0.88** | **0.34 · 0.42** |
+| bc11loop + failure detection | 12.4 / 0.38 · 14.2 / 0.33 | 17.5 · 17.5 | 0.78 · 0.88 | 0.20 · 0.14 |
+| (ref) B2-cov noblen_jit, common plant | 11.1 / 0.45 · 12.2 / 0.41 | — | 0.73 · 0.73 | 0.33 · 0.31 |
+| (ref) B2-cov bc11loop_v3_jit, common plant | 11.7 / 0.42 · 14.7 / 0.33 | — | 0.73 · 0.58 | 0.20 · 0.22 |
+
+- **Failure detection (observing `screen_cut_sens`) hurts on real data** (TEST −0.1 to −0.2, E300 −0.1 to −0.2 for 3 of 4 seeds) and is neutral in simulation. Likely a sim→real shift of the diagnostic itself: real E300 cut_sens median 4.3 µm vs 1.1 µm in Bmad, so the policy sees "untrustworthy" readings it was trained to treat differently. Not pursued further; the GC configs use the plain arm.
+- **Spacing-head flow, BC11 loop on is the best policy on real data so far** (TEST 0.88 both seeds, E300 0.34 / 0.42 — the first runs above ~0.33 on E300), though ~1–2 µm worse in simulation than both-loops-off. The replay freezes L1 (the scans are L2-only, BC11 loop on), so it scores L2 control specifically.
+- Simulated scores: no gain from the spacing-head flow (all arms within seed spread, 12–14 µm).
+
+## Summary for the morning
+1. Gradients: the surrogate's beam-level L1/L2 gradients match Bmad (spacing 1–3%, σz ~10%); the measured σz's L1 response does not (surrogate 0.23× Bmad) — a screen-measurement effect missing from the smooth surrogate beam.
+2. Jitter training: no gain. Spacing-head flow: no simulated gain, better TEST replay (0.84–0.88 vs ≤ 0.73).
+3. Failure-detection observation: hurts on real replays → dropped. Detection itself works (AUC 0.91 on Bmad), so a rule-based hold on high cut_sens / charge-fraction deviation remains an option, calibrated on real data.
+4. Held-out injectors in closed-loop Bmad: both loops off transfers (13.7 µm / 33%), BC11 loop on does not (21.5 / 29%); both are worse than at golden (~10 µm / ~50%) → injector generalization is the main sim-side gap.
+5. Goal conditioning: built + tested; large moves cost ~2 µm spacing and a lot of σz (0.15 → 0.25). Configs ready (plain arm, both directions).

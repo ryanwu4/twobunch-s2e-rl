@@ -1,5 +1,6 @@
-# goal conditioning (2026-10-19, not yet trained): zs_screen_noblen_jit_fd.yaml + half the setpoints anywhere in the start box
-# (goal_far_frac), half spacing-only (sigma_z free, mask bit in obs; spacing_only_frac). Rebase on the night's winning arm.
+# goal conditioning (2026-10-19, not yet trained): zs_screen_noblen_jit.yaml + half the setpoints anywhere in the start box
+# (goal_far_frac), half spacing-only (sigma_z free, mask bit in obs; spacing_only_frac). Base = the night's plain arm
+# (failure detection hurt the DAQ replay, docs/overnight_2026-10-19.md).
 params:
   diff_env:
     name: DeltaControlEnv
@@ -28,7 +29,6 @@ params:
         bunch_spacing: 2.7e-06
         drive_sigma_z: 6.0e-06
         drive_charge_fraction: 0.07
-        screen_cut_sens: 1.5e-06
       shots_per_step: 30
       step_noise_floor:
         bunch_spacing: 0.0
@@ -41,12 +41,11 @@ params:
       - drive_sigma_z
       scale_error_halfwidth: 0.2
     campaign_h5: processed/xtcav23_combined.h5
-    reward_norms_json: results/rl/_shared/norms/metric_norms_gc_zs_screen_noblen_jit_fd.json
+    reward_norms_json: results/rl/_shared/norms/metric_norms_gc_zs_screen_noblen_jit.json
     surv_T_min: 0.9
     surv_margin: 0.05
     observe:
     - drive_charge_fraction
-    - screen_cut_sens
     objectives:
     - key: bunch_spacing
       kind: target
@@ -167,7 +166,6 @@ params:
       edge_frac_max: 0.01
       edge_band_m: 0.0003
       pm_energy_axes: true
-      cut_sens_px: 2.0
     context_dist:
       GUNF:rf_field_scale:
         dist: normal
@@ -210,7 +208,7 @@ params:
     device: cuda:0
     render: false
     train: true
-    logdir: logs/2026-10-19/gc/gc_zs_screen_noblen_jit_fd
+    logdir: logs/2026-10-19/gc/gc_zs_screen_noblen_jit
   config:
     name: DeltaBPTT
     num_actors: 12
