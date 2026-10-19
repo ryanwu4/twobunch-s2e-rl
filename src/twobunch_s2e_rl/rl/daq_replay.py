@@ -40,6 +40,8 @@ class ScanPlant:
         self.sz = np.array([s["drive_sigma_z_um"] for s in st]) * 1e-6
         self.fq = np.array([s["drive_charge_fraction"] for s in st])
         self.valid = np.array([float(s["valid"]) for s in st])
+        # split-ambiguity diagnostic (deployed analysis, +-2 px cut shift); nan on invalid steps -> 0
+        self.cs = np.nan_to_num(np.array([s.get("cut_sens_um", np.nan) for s in st], float)) * 1e-6
         self.m = max(1, int(shots_per_step) // 2)
         self.ks, self.j2 = ks, (ks.index("L2PhaseSet") if ks is not None else None)
         self.rng = np.random.default_rng(seed)
@@ -58,12 +60,12 @@ class ScanPlant:
         x = float(l2) - L2_REF
         if x < self.mkb[0] - 1e-9 or x > self.mkb[-1] + 1e-9:
             i = 0 if x < self.mkb[0] else len(self.mkb) - 1
-            return self._spacing(i), self.sz[i], self.fq[i], 0.0, x
+            return self._spacing(i), self.sz[i], self.fq[i], 0.0, x, self.cs[i]
         k = int(np.clip(np.searchsorted(self.mkb, x) - 1, 0, len(self.mkb) - 2))
         t = (x - self.mkb[k]) / (self.mkb[k + 1] - self.mkb[k])
         sp = (1 - t) * self._spacing(k) + t * self._spacing(k + 1)
         n = k if t < 0.5 else k + 1
-        return sp, self.sz[n], self.fq[n], self.valid[n], x
+        return sp, self.sz[n], self.fq[n], self.valid[n], x, self.cs[n]
 
 
 def wrap_observe(base, plant: ScanPlant):
@@ -81,6 +83,8 @@ def wrap_observe(base, plant: ScanPlant):
         obs["screen_valid"] = ok
         obs["screen_valid_deployed"] = ok
         obs["screen_misassign"] = torch.zeros_like(ok)
+        if "screen_cut_sens" in obs:
+            obs["screen_cut_sens"] = t(5)
         plant.visits.append([(x[4], x[3]) for x in r])
         return obs
     observe.resample = getattr(base, "resample", None)

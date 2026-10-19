@@ -23,7 +23,8 @@ def _scan(tmp_path, monkeypatch):
 def test_scan_plant_maps_l2_to_the_scan_and_interpolates(tmp_path, monkeypatch):
     p = _scan(tmp_path, monkeypatch)
     assert p.valid_window() == (0.0, 1.5)
-    sp, sz, fq, ok, x = p.read(dr.L2_REF + 0.6)                 # between steps 0.5 and 0.75
+    sp, sz, fq, ok, x, cs = p.read(dr.L2_REF + 0.6)             # between steps 0.5 and 0.75
+    assert cs == 0.0                                            # no cut_sens_um in the scan -> 0
     assert x == pytest.approx(0.6) and ok == 1.0
     assert sp == pytest.approx((200 - 50 * 0.6) * 1e-6, abs=1.5e-6)
     assert sz == pytest.approx(40.5e-6)                         # nearest step (0.5)

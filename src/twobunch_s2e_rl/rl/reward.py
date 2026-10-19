@@ -61,6 +61,10 @@ _TRANSFORM = {
     **{k: "log10" for k in EMIT_KEYS},
 }
 
+# fixed z-scores for observe-only screen diagnostics that have no campaign twin (no cloud truth to
+# normalize from): screen_cut_sens ~0-10 um on the test rows (results/screen_failure_detect_2026-10-18)
+_FIXED_OBS_NORMS = {"screen_cut_sens": {"transform": "identity", "mean": 2e-6, "std": 3e-6}}
+
 # strictly-positive, right-skewed metric families that should be normalized in log10 (like the
 # emittances) so a target/minimize term isn't swamped by a tail-dominated std -- matters for the
 # BMAG / slice-BMAG matching+chromatic terms and sigma_z, whose campaign spread is heavy-tailed.
@@ -298,8 +302,8 @@ class TwoBunchRewardSpec:
         caller (env) -- the reward path is the only grad channel."""
         cols = []
         for k in self.obs_keys:
-            spec = self.obs_norms.get(k, {"transform": _TRANSFORM.get(k, "identity"),
-                                          "mean": 0.0, "std": 1.0})
+            spec = self.obs_norms.get(k, _FIXED_OBS_NORMS.get(k, {"transform": _TRANSFORM.get(k, "identity"),
+                                                                   "mean": 0.0, "std": 1.0}))
             tx = _t(obs[k], spec["transform"])
             cols.append((tx - spec["mean"]) / spec["std"])
         return torch.stack(cols, dim=-1)
