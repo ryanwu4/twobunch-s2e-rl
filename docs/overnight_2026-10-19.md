@@ -77,3 +77,18 @@ Settled spacing median µm / settled within 10 µm (continuous operation, 128 st
 
 ### Closed-loop at held-out injectors (surrogate run; Bmad running)
 24 held-out injector points, 1 episode each, final true error. noblen_jit s0: 14.5 µm median, 33% within 10 µm, σz 0.21. bc11loop_v3_jit s0: 15.4 µm, 38%, σz 0.13. (For comparison, 10-18 closed-loop Bmad of noblen s0 at the golden injector: 9.7–10.3 µm / 46–54%. Single episodes per point, so ±~10 pts noise.)
+
+### Closed-loop Bmad at held-out injectors (done 00:24) — `results/closed_loop_bmad_2026-10-19/`
+24 envs (12 DAQ-like, 11 full-box test-split injector points, 1 golden), one 32-step episode each, 20k macroparticles; final true spacing error (median µm / within 10 µm).
+
+| policy | plant | all 24 | DAQ-like (12) | full-box (11) | σz rel |
+|---|---|---|---|---|---|
+| noblen_jit s0 | surrogate | 14.5 / 0.33 | 12.9 / 0.42 | 18.2 / 0.27 | 0.21 |
+| noblen_jit s0 | **Bmad** | **13.7 / 0.33** | 13.2 / 0.33 | 13.5 / 0.36 | 0.22 |
+| bc11loop_v3_jit s0 | surrogate | 15.4 / 0.38 | 15.7 / 0.42 | 13.3 / 0.36 | 0.13 |
+| bc11loop_v3_jit s0 | **Bmad** | **21.5 / 0.29** | 27.0 / 0.17 | 14.0 / 0.45 | 0.21 |
+
+- Both loops off transfers from surrogate to Bmad at unseen injectors (14.5 → 13.7 µm); BC11 loop on loses 6 µm on Bmad, mostly at the DAQ-like points.
+- Held-out injectors are harder than golden (10-18 closed-loop Bmad at golden: 9.7–10.3 µm / 46–54%), consistent with the surrogate's own held-out run — a policy problem (injector generalization), not a surrogate-transfer one, for the noblen direction.
+- The single golden env failed in both bc11loop runs (~265 µm: goal on the other side of the split); 1 env, not interpreted.
+- 12 envs per group: ±~14 pts on the fractions.
