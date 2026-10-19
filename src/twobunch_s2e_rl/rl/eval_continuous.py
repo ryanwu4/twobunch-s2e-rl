@@ -24,7 +24,7 @@ TOL_SP, TOL_SZ = 10e-6, 0.10
 
 
 def run(logdir, out, sets=(), k=256, steps=128, policy="final", device="cuda:0", seed=97531, settle=8, tail=4,
-        de_yaml=None):
+        de_yaml=None, flow=None):
     from ..artifacts import policy_flow_ckpt
     from ._train_utils import build_env_fn
     from .rollout import load_policy, rollout
@@ -34,7 +34,7 @@ def run(logdir, out, sets=(), k=256, steps=128, policy="final", device="cuda:0",
     de = _apply_overrides(cfg["params"]["diff_env"], sets)
     if not (de.get("v4") or {}).get("goal_change"):
         raise SystemExit("needs v4.goal_change (set it with --set v4.goal_change=[16,48])")
-    env = build_env_fn(cfg, policy_flow_ckpt(logdir))(num_envs=k, device=device, seed=seed, episode_length=10 ** 6,
+    env = build_env_fn(cfg, flow or policy_flow_ckpt(logdir))(num_envs=k, device=device, seed=seed, episode_length=10 ** 6,
                                                        no_grad=True)
     actor, rms = load_policy(str(Path(logdir) / f"{policy}_policy.pt"), device)
     env.reset()
@@ -65,7 +65,7 @@ def run(logdir, out, sets=(), k=256, steps=128, policy="final", device="cuda:0",
             seg_free.append(bool(free[s1 - 1, b]))
     settled_sp, settled_sz, reach, seg_free = map(np.asarray, (settled_sp, settled_sz, reach, seg_free))
     sz_seg = settled_sz[~seg_free] if seg_free.any() else settled_sz
-    summ = {"logdir": str(logdir), "sets": list(sets), "de_yaml": de_yaml, "k": k, "steps": steps, "n_segments": int(len(settled_sp)),
+    summ = {"logdir": str(logdir), "sets": list(sets), "de_yaml": de_yaml, "flow": flow, "k": k, "steps": steps, "n_segments": int(len(settled_sp)),
             "settled_spacing_median_um": float(np.median(settled_sp) * 1e6),
             "settled_spacing_p90_um": float(np.percentile(settled_sp, 90) * 1e6),
             "settled_within_10um": float((settled_sp <= TOL_SP).mean()),
@@ -96,13 +96,14 @@ def main():
     ap.add_argument("--logdir", required=True)
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
     ap.add_argument("--de-yaml", default=None, help="diff_env fragment deep-merged into the policy's config")
+    ap.add_argument("--flow", default=None, help="evaluate on this flow checkpoint instead of the policy's own")
     ap.add_argument("--k", type=int, default=256)
     ap.add_argument("--steps", type=int, default=128)
     ap.add_argument("--policy", default="final")
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    run(a.logdir, a.out, sets=a.set, k=a.k, steps=a.steps, policy=a.policy, device=a.device, de_yaml=a.de_yaml)
+    run(a.logdir, a.out, sets=a.set, k=a.k, steps=a.steps, policy=a.policy, device=a.device, de_yaml=a.de_yaml, flow=a.flow)
 
 
 if __name__ == "__main__":
