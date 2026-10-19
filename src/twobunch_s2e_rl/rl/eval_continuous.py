@@ -51,7 +51,7 @@ def run(logdir, out, sets=(), k=256, steps=128, policy="final", device="cuda:0",
     free = tr["goal_free"].cpu().numpy() > 0.5 if "goal_free" in tr else np.zeros_like(chg)
     if "goal_free" in tr:
         chg = chg | np.vstack([np.zeros((1, k), bool), np.diff(free.astype(int), axis=0) != 0])
-    settled_sp, settled_sz, reach, inside, seg_free = [], [], [], [], []
+    settled_sp, settled_sz, reach, inside, seg_free, seg_goal = [], [], [], [], [], []
     for b in range(k):
         starts = list(np.flatnonzero(chg[:, b])) + [steps]
         for s0, s1 in zip(starts[:-1], starts[1:]):
@@ -63,6 +63,7 @@ def run(logdir, out, sets=(), k=256, steps=128, policy="final", device="cuda:0",
             reach.append(float(ok[0]) if len(ok) else np.inf)
             inside.append((e_sp[s0 + settle:s1, b] <= TOL_SP).mean())
             seg_free.append(bool(free[s1 - 1, b]))
+            seg_goal.append(float(gsp[s1 - 1, b]))
     settled_sp, settled_sz, reach, seg_free = map(np.asarray, (settled_sp, settled_sz, reach, seg_free))
     sz_seg = settled_sz[~seg_free] if seg_free.any() else settled_sz
     summ = {"logdir": str(logdir), "sets": list(sets), "de_yaml": de_yaml, "flow": flow, "k": k, "steps": steps, "n_segments": int(len(settled_sp)),
@@ -82,7 +83,8 @@ def run(logdir, out, sets=(), k=256, steps=128, policy="final", device="cuda:0",
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "summary.json").write_text(json.dumps(summ, indent=1))
-    np.savez(out / "errors.npz", e_sp=e_sp, e_sz=e_sz, chg=chg)
+    np.savez(out / "errors.npz", e_sp=e_sp, e_sz=e_sz, chg=chg, seg_settled_sp=settled_sp, seg_settled_sz=settled_sz,
+             seg_goal_sp=np.asarray(seg_goal), seg_reach=reach, seg_free=seg_free)
     print(f"[continuous] segments {summ['n_segments']}: settled spacing {summ['settled_spacing_median_um']:.1f} um "
           f"(p90 {summ['settled_spacing_p90_um']:.1f}), settled within 10 um {summ['settled_within_10um']:.2f}, "
           f"time within 10 um {summ['time_within_10um_after_settle']:.2f}, reached {summ['frac_segments_reached']:.2f} "
