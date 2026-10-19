@@ -76,4 +76,4 @@ Settled spacing median µm / settled within 10 µm (continuous operation, 128 st
 - Large moves degrade gracefully in spacing (+2 µm, −7 pts within 10 µm) but σz settles much worse (0.15 → 0.24–0.27 relative): target for the goal-conditioned training.
 
 ### Closed-loop at held-out injectors (surrogate run; Bmad running)
-24 held-out injector points, 1 episode each, final true error. noblen_jit s0: 14.5 µm median, 33% within 10 µm, σz 0.21. bc11loop_v3_jit s0: 15.4 µm, 38%, σz 0.13. (Golden-injector closed-loop on the surrogate was ~10 µm / ~50%; the held-out injectors are harder.)
+24 held-out injector points, 1 episode each, final true error. noblen_jit s0: 14.5 µm median, 33% within 10 µm, σz 0.21. bc11loop_v3_jit s0: 15.4 µm, 38%, σz 0.13. (For comparison, 10-18 closed-loop Bmad of noblen s0 at the golden injector: 9.7–10.3 µm / 46–54%. Single episodes per point, so ±~10 pts noise.)
