@@ -1,6 +1,6 @@
 # Clean-node COST BENCHMARK for injector_full.yaml (same physics/fidelity, same driver, 64 workers):
 # 63 LHS injector points (+ the golden reference beam) x 2 nested linac draws = 126 Bmad rows, 64
-# Impact-T runs. Run with nothing else on the CPUs; throughput -> results/injector_costbench_2026-10-14.
+# Impact-T runs. Run with nothing else on the CPUs; throughput -> results/1_datagen/injector_costbench_2026-10-14.
 name: injector_costbench_2026-10-14
 output_dir: data/injector_costbench_2026-10-14
 sweep_set: xtcav23_inj12

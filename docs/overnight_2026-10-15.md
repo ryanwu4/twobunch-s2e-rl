@@ -15,7 +15,7 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 | S1 cloud (env v4) | blen_dlog 4 seeds 4.6–5.0 µm true median / 80–83% within 10 µm; adapter 2 seeds same; robust to noise ×2 (6.5 µm), drift ×2, gain/scale misspec |
 | S2 screen v5 (crop-edge check + readable goals) | 600 iters, 3 seeds: 7.2–7.6 µm / 61–63%; measurement-limited (energy-gate misassignment), see `results/2_surrogate_screen/s2_screen_diag_2026-10-15/REPORT.md` |
 | `eval_delta` bug (problem 5) | fixed; all v4 evals redone |
-| Online features vs real DAQ | per-step shared +V cut (fix), crop-edge check; `results/online_replay_v{3,4,5}_2026-10-15/` |
+| Online features vs real DAQ | per-step shared +V cut (fix), crop-edge check; `results/4_daq_realism/online_replay_v{3,4,5}_2026-10-15/` |
 
 ## Decisions taken in Ryan's absence (numbered; each with the reason)
 

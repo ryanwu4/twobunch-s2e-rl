@@ -133,3 +133,30 @@ Nominal / stress = continuous eval on the spacing-head flow (= the common plant 
 3. Failure-detection observation: hurts on real replays → dropped. Detection itself works (AUC 0.91 on Bmad), so a rule-based hold on high cut_sens / charge-fraction deviation remains an option, calibrated on real data.
 4. Held-out injectors in closed-loop Bmad: both loops off transfers (13.7 µm / 33%), BC11 loop on does not (21.5 / 29%); both are worse than at golden (~10 µm / ~50%) → injector generalization is the main sim-side gap.
 5. Goal conditioning: built + tested; large moves cost ~2 µm spacing and a lot of σz (0.15 → 0.25). Configs ready (plain arm, both directions).
+
+## Day 10-19 additions
+
+### Validity band (`results/2_surrogate_screen/validity_band_2026-10-19/summary.json`)
+Bands = |true spacing|. Valid rate = deployed screen validity.
+
+| band [µm] | <60 | 60–100 | 100–150 | 150–250 | >250 |
+|---|---|---|---|---|---|
+| test rows valid, Bmad / surrogate (4096 parts) | 0.07 / 0.06 | 0.65 / 0.53 | 0.76 / 0.73 | 0.85 / 0.86 | 0.26 / 0.30 |
+| training goal candidates valid (1024 parts) | 0.01 | 0.61–0.63 | 0.95 | 0.91 | 0.28–0.29 |
+| share of accepted training goals | 1% | 10% | 23% | 44% | 22% |
+| continuous eval, within 10 µm (4 policies) | 0.08–0.25 | 0.40–0.49 | 0.46–0.50 | 0.41–0.46 | 0.25–0.32 |
+| E300_15673 replay, within 10 µm (zs plain arms) | — | **0.00–0.13** | 0.08–0.54 | 0.43–0.57 | — |
+| TEST_15668 replay, within 10 µm (zs plain arms) | — | 0.62–0.88 | 0.78–1.00 | 0.84–0.94 | — |
+
+- In simulation the compressed band is not a problem: band-level validity at training N matches Bmad (0.61 vs 0.65), the band gets ~10% of goals, and its error is like the 100–250 µm bands. The two compressed points of the particle-count study (σz ≈ 20 µm) are the extreme end of the band.
+- The weak simulated band is **> 250 µm** (22% of goals; screen valid only ~28% — crop-edge clipping): settled 14–20 µm, 25–32% within 10 µm.
+- On **real data** the compressed band is where E300_15673 fails: its 60–100 µm goals (23% of the replay goals) are within 10 µm in 0–13% of episodes vs 43–57% at 150–250 µm. TEST_15668's 60–100 µm goals are fine (62–88%). n = 15 goals per band per policy.
+
+### Gradient parity figure
+`results/2_surrogate_screen/gradient_check_2026-10-18/gradient_parity.png` (`scripts/gradient_check_figs_2026-10-19.py`). Breakdowns sit at the compressed linac point (~70 µm, σz ≈ 20 µm: beam σz d/dL1 0.14–0.18 Bmad vs −0.01–0.04 surrogate; screen spacing d/dL1 45 vs 20 µm/deg) and at the ~360 µm point (Bmad screen invalid, slope meaningless).
+
+### Other
+- σz vs particle count: `results/2_surrogate_screen/sigmaz_convergence_2026-10-19/` — no sampling bias; surrogate σz offsets are model error; validity at the compressed points falls with N in the surrogate.
+- DAQ settling: `XTCAV_analysis/sim2real/results/settling_2026-10-19/` + `scripts/xtcav_{settling_check,settling_null,tcav_flip_lag}_2026-10-19.py` — image lags the TCAV phase readback by ~1 s after a ±V flip; no resolvable beam transient after the 6.4–7.5 s L2-step gap except the BC11 loop's L1 readback (~3 s).
+- Slew GIFs: `results/5_reports/slew_gif_2026-10-19/slew_{good,median}.gif`.
+- `results/` sorted into `1_datagen/ 2_surrogate_screen/ 3_rl_eval/ 4_daq_realism/ 5_reports/` (`scripts/organize_results_2026-10-19.py`, index + old→new table in `results/README.md`); `results/jitter_mc_2026-10-18` left as a symlink for saved run configs.

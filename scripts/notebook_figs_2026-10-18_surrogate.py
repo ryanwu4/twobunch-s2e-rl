@@ -513,7 +513,7 @@ def fig_pairs(D):
 
 
 def fig_gates():
-    S = "results/surrogate_scorecard_2026-10-1"
+    S = "results/2_surrogate_screen/surrogate_scorecard_2026-10-1"
     ld = lambda p: json.loads(Path(S + p).read_text())["models"]     # noqa: E731
     b16, t17, t18, c17, c18 = (ld("6/B/scorecard.json"), ld("7/topup_table/scorecard.json"), ld("8/zs_topup_table/scorecard.json"),
                                ld("7/cov_table/scorecard.json"), ld("8/zs_cov_table/scorecard.json"))

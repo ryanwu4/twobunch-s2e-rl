@@ -6,7 +6,7 @@ matter for the controller?
      accepted goals, by |true spacing| band; plus the steps of a policy rollout (true spacing, measured validity).
      Reference validity by band: Bmad- vs surrogate-rendered test rows (results/2_surrogate_screen/screen_failure_detect_2026-10-18).
   2. error by goal band: continuous evals (results/2_surrogate_screen/validity_band_2026-10-19/eval/*/errors.npz, nominal jitter) and the
-     closed-loop Bmad runs (results/closed_loop_bmad_2026-10-1{8,9}).
+     closed-loop Bmad runs (results/3_rl_eval/closed_loop_bmad_2026-10-1{8,9}).
   3. where the DAQ scans' readings and replay goals sit (results/4_daq_realism/online_replay_v6_median_cut_2026-10-15).
 Outputs results/2_surrogate_screen/validity_band_2026-10-19/summary.json (+ printed tables).
 
@@ -99,7 +99,7 @@ def main():
     summ["continuous_by_goal_band"] = ev
     # 2b. closed-loop Bmad by goal band (all runs on disk)
     cl = {}
-    for f in sorted(glob.glob("results/closed_loop_bmad_2026-10-1[89]/*_bmad/traj.pt")):
+    for f in sorted(glob.glob("results/3_rl_eval/closed_loop_bmad_2026-10-1[89]/*_bmad/traj.pt")):
         t = torch.load(f)
         gk = "spacing_goal_cloud" if "spacing_goal_cloud" in t else None
         if gk is None:
