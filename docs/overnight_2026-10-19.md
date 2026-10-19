@@ -51,3 +51,29 @@ Ratio = surrogate / Bmad slope (Bmad FD at h = 0.3°; FD 0.3 vs 0.6° agree to 0
 - **Screen σz vs L1 is the gap.** Bmad's *measured* σz responds to L1 3–6× more than the beam's true σz (e.g. 0.29 vs 0.04 /deg at L1 −20, L2 −35, where the screen also reads 39 µm for a 25 µm beam). The surrogate's screen follows the true beam instead (0.10). At the compressed ~70 µm-spacing points (σz ~20 µm) the surrogate's screen σz slope has the wrong sign for both L1 and L2.
 - Reading: the extra L1 dependence is a measurement effect in Bmad's screen (the split / resolution term picks up L1 through the energy structure) that the smoothed surrogate beam does not reproduce. Consequence: the controller underestimates how much L1 moves the *measured* σz; plausible contributor to the flat σz errors. Not a spacing problem.
 - Figure: TODO (per-point slopes, Bmad vs surrogate, beam vs screen).
+
+### Jitter-trained policies (chain done 20:53) — `results/eval_jitter_2026-10-18/summary.txt`
+Settled spacing median µm / settled within 10 µm (continuous operation, 128 steps × 256 envs).
+
+| policy | nominal jitter | stress jitter | replay TEST_15668 (in10) | replay E300_15673 (in10) |
+|---|---|---|---|---|
+| noblen s0 / s1 (no jitter training) | 11.0 / 0.45 · 11.4 / 0.43 | 15.6 / 0.24 · 16.9 / 0.25 | — | — |
+| **noblen_jit** s0 / s1 | 11.5 / 0.44 · 12.4 / 0.40 | 15.9 / 0.25 · 16.6 / 0.23 | 0.73 · 0.73 | 0.33 · 0.31 |
+| bc11loop v3 s0 / s1 (no jitter training) | 12.3 / 0.38 · 12.6 / 0.39 | 18.2 / 0.21 · 17.7 / 0.23 | — | — |
+| **bc11loop_v3_jit** s0 / s1 | 12.6 / 0.39 · 14.0 / 0.36 | 16.6 / 0.26 · 17.3 / 0.22 | 0.73 · 0.58 | 0.20 · 0.22 |
+| old blen_dlog baseline | 12.3 / 0.39 | 17.6 / 0.21 | — | — |
+
+- **Training with the jitter model did not help**: nominal unchanged-to-slightly-worse, stress 0–1.6 µm better (BC11 loop only). The ~7 µm / 85% perfect-controller floor is far away, so the gap is not jitter-limited.
+- Both loops off stays ≥ 1 µm better than BC11 loop on under nominal jitter.
+
+### Large setpoint moves (best jitter-trained seed, nominal jitter; trained radius 2.0 / 2.5°)
+
+| policy | local (trained) | radius ×2 (4 / 5°) | full start box |
+|---|---|---|---|
+| noblen_jit s0 | 11.5 / 0.44 / reached 0.86 | 12.3 / 0.39 / 0.81 | 13.7 / 0.37 / 0.75 |
+| bc11loop_v3_jit s0 | 12.6 / 0.39 / 0.83 | 12.9 / 0.39 / 0.79 | 14.7 / 0.34 / 0.74 |
+
+- Large moves degrade gracefully in spacing (+2 µm, −7 pts within 10 µm) but σz settles much worse (0.15 → 0.24–0.27 relative): target for the goal-conditioned training.
+
+### Closed-loop at held-out injectors (surrogate run; Bmad running)
+24 held-out injector points, 1 episode each, final true error. noblen_jit s0: 14.5 µm median, 33% within 10 µm, σz 0.21. bc11loop_v3_jit s0: 15.4 µm, 38%, σz 0.13. (Golden-injector closed-loop on the surrogate was ~10 µm / ~50%; the held-out injectors are harder.)
