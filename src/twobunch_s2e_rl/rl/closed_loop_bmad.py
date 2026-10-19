@@ -9,6 +9,8 @@ measurement pipeline is the same code the policy was trained on.
       golden: every env at the golden injector (its cached Impact-T beam)
       inj:    env i at the i-th DAQ-distribution ('local') injector point of the coverage campaign
               (data/injector_cov_2026-10-16, cached Impact-T beams; context = that point's inj12 values)
+      test:   env i at the i-th HELD-OUT injector point (test split of the surrogate's group split; --points-json,
+              a list of injector_point tags of the coverage campaign, cycled if shorter than K)
       and redraw the goal control points under it (the surrogate picks goals the screen can read).
   phase 2 (Bmad): the goal readings at the goal points and the start readings are Bmad readings (an operator
       records a goal on the machine), then `episode_length` policy steps on Bmad.
@@ -178,6 +180,17 @@ def _local_points(k):
     return [(t, pts[t]) for t in tags]
 
 
+def _cov_points(k, tags):
+    rows = json.loads((repo_root() / "data/injector_cov_2026-10-16/manifest.json").read_text())
+    pts = {}
+    for r in rows:
+        pts.setdefault(r["injector_point"], r["injector"])
+    missing = [t for t in tags if t not in pts]
+    if missing:
+        raise SystemExit(f"injector points not in the coverage campaign: {missing}")
+    return [(tags[i % len(tags)], pts[tags[i % len(tags)]]) for i in range(k)]
+
+
 def _summary(env, traj):
     out = {}
     for key, g, _ in env._goal_terms:
@@ -200,7 +213,7 @@ def _summary(env, traj):
 
 
 def run(logdir, mode, k, num_macro, workers, out, plant="bmad", device="cuda:0", policy="final", seed=777,
-        campaign_cfg=COV_CFG, steps=None):
+        campaign_cfg=COV_CFG, steps=None, points_json=None):
     from ..artifacts import policy_flow_ckpt
     from ._train_utils import build_env_fn
     from .delta_env import DeltaControlEnv
@@ -226,6 +239,10 @@ def run(logdir, mode, k, num_macro, workers, out, plant="bmad", device="cuda:0",
         points = [("golden", golden)] * k
     elif mode == "inj":
         points = _local_points(k)
+    elif mode == "test":
+        if not points_json:
+            raise SystemExit("--mode test needs --points-json")
+        points = _cov_points(k, json.loads(Path(points_json).read_text()))
     else:
         raise SystemExit(f"mode {mode!r}")
     for i, (_, p) in enumerate(points):
@@ -279,7 +296,8 @@ def run(logdir, mode, k, num_macro, workers, out, plant="bmad", device="cuda:0",
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--logdir", required=True)
-    ap.add_argument("--mode", choices=("golden", "inj"), required=True)
+    ap.add_argument("--mode", choices=("golden", "inj", "test"), required=True)
+    ap.add_argument("--points-json", default=None, help="--mode test: json list of coverage-campaign injector_point tags")
     ap.add_argument("--plant", choices=("bmad", "flow"), default="bmad")
     ap.add_argument("--k", type=int, default=24)
     ap.add_argument("--num-macro", type=int, default=20000)
@@ -290,7 +308,7 @@ def main():
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     run(a.logdir, a.mode, a.k, a.num_macro, a.workers, a.out, plant=a.plant, device=a.device, policy=a.policy,
-        steps=a.steps)
+        steps=a.steps, points_json=a.points_json)
 
 
 if __name__ == "__main__":
