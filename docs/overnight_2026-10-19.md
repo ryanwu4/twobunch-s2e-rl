@@ -92,3 +92,21 @@ Settled spacing median µm / settled within 10 µm (continuous operation, 128 st
 - Held-out injectors are harder than golden (10-18 closed-loop Bmad at golden: 9.7–10.3 µm / 46–54%), consistent with the surrogate's own held-out run — a policy problem (injector generalization), not a surrogate-transfer one, for the noblen direction.
 - The single golden env failed in both bc11loop runs (~265 µm: goal on the other side of the split); 1 env, not interpreted.
 - 12 envs per group: ±~14 pts on the fractions.
+
+### Spacing-head trainings, wave 1 (trained 02:00; evals in `results/eval_night_2026-10-18/summary.txt`)
+Common plant: all policies evaluated under nominal jitter on the **spacing-head flow** (`eval_continuous --flow`, `results/eval_night_2026-10-18/cross_zs.txt`). Settled spacing µm / within 10 µm; replay = DAQ replay within 10 µm.
+
+| policy | flow trained on | nominal on zs flow | replay TEST_15668 | replay E300_15673 |
+|---|---|---|---|---|
+| noblen s0 / s1 | B2-cov, no jitter | 11.0 / 0.45 · 11.9 / 0.43 | — | — |
+| noblen_jit s0 / s1 | B2-cov | 11.1 / 0.45 · 12.2 / 0.41 | 0.73 · 0.73 | 0.33 · 0.31 |
+| **zs noblen_jit s0** | spacing head | 11.7 / 0.42 | **0.84** | 0.34 |
+| **zs noblen_jit_fd s1** | spacing head | 12.4 / 0.38 | 0.69 | 0.25 |
+| bc11loop v3 s0 / s1 | B2-cov, no jitter | 12.6 / 0.38 · 12.9 / 0.38 | — | — |
+| bc11loop_v3_jit s0 / s1 | B2-cov | 11.7 / 0.42 · 14.7 / 0.33 | 0.73 · 0.58 | 0.20 · 0.22 |
+| **zs bc11loop_jit s0** | spacing head | 14.2 / 0.32 | **0.88** | 0.34 |
+| **zs bc11loop_jit_fd s1** | spacing head | 14.4 / 0.35 | **0.88** | 0.14 |
+
+- On the common simulated plant, training on the spacing-head flow does **not** improve the policies (same or ~1–2 µm worse; seed spread is ~1–3 µm).
+- On **real data** (TEST_15668 replay) 3 of 4 spacing-head runs are better (0.84–0.88 vs 0.58–0.73). E300_15673 stays poor for all (0.14–0.34).
+- Failure detection: no visible effect yet on either plant (one seed per arm; wave 2 adds the other seed).
