@@ -1,5 +1,5 @@
 # S2 v6 = delta_xtcav23_screen_v5_blen.yaml + screen.pm_energy_axes (the -V image on its own energy axis: the TCAV's
-# Panofsky-Wenzel kick shifts/stretches/warps it opposite to +V; results/bunch_split_changes_2026-10-15/pm_asymmetry)
+# Panofsky-Wenzel kick shifts/stretches/warps it opposite to +V; results/2_surrogate_screen/bunch_split_changes_2026-10-15/pm_asymmetry)
 # + 600 iters (overnight: ~1.5 um better than 300).
 params:
   diff_env:

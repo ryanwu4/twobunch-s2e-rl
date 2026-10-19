@@ -4,7 +4,7 @@ beams and from the spacing-head surrogate, with the truth-free diagnostics on: `
 change for a +-2 px energy-cut shift) and the measured drive charge fraction (vs the injected drive fraction, which
 the machine knows from the laser). Failure = |screen spacing - own cloud spacing| > 30 um or misassign > 0.15.
 Reports per-diagnostic AUC for Bmad failures, and P(fail | diagnostic bin) for Bmad vs surrogate -- the calibration
-for the training-time failure injection. Outputs results/screen_failure_detect_2026-10-18/{rows.npz,summary.json}.
+for the training-time failure injection. Outputs results/2_surrogate_screen/screen_failure_detect_2026-10-18/{rows.npz,summary.json}.
 
   PYTHONPATH=src python scripts/screen_failure_detect_2026-10-18.py [--max-rows N]
 """
@@ -26,7 +26,7 @@ spec = importlib.util.spec_from_file_location("sfc", Path(__file__).with_name("s
 sfc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sfc)
 
-OUT = Path("results/screen_failure_detect_2026-10-18")
+OUT = Path("results/2_surrogate_screen/screen_failure_detect_2026-10-18")
 KEYS = sfc.KEYS + ("screen_cut_sens", "energy_difference")
 CUT_PX = 2.0
 FAIL_UM, FAIL_MIS = 30.0, 0.15

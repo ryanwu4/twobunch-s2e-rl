@@ -60,7 +60,7 @@ BASELINE_KNOBS = {k: SWEEP_PARAMS[k][2] for k in PARAM_KEYS}
 # Range provenance:
 # - FF quads (Q5FF..Q0FF, kG.m): symmetric about golden by the per-quad excursion from the
 #   2026-06-19 PENT beta-matching solve (golden beta*=0.5 m -> ~7.6 cm round-waist floor;
-#   results/ff_quad_range/), mirrored to both sides and clipped to the
+#   results/1_datagen/ff_quad_range/), mirrored to both sides and clipped to the
 #   EPICS bounds (none clip at present). baseline = golden. Dogleg Q0D/Q1D/Q2D excluded
 #   (downstream of PENT). NOTE: independent box-LHS over these lands mostly off the matched
 #   manifold -> mostly mismatched PENT beams; the pilot gates whether to switch to a
@@ -142,7 +142,7 @@ EXPANDED_ANCHORED_PARAMS = {**EXPANDED_PARAMS, **_ANCHORED_OVERRIDE}
 # ----------------------------------------------------------------------------------------
 # Tightened-box 26-D set: a plain box-LHS set (no manifold sampler) whose transverse-matching
 # knobs are tightened to the matched region found by the 2026-06-21 beam-based beta* scan
-# (analysis/2026-06-21_beam-based-matching-and-anchoring.md; curve = results/beam_matching/beam_matched_curve.csv,
+# (analysis/2026-06-21_beam-based-matching-and-anchoring.md; curve = results/1_datagen/beam_matching/beam_matched_curve.csv,
 # beta* 7.6-50 cm, witness BMAG ~1.0 throughout). This tests whether a simple tight box -- centered
 # on the MATCHED region, not golden (golden is a mismatched witness) -- gives acceptable near-matched
 # coverage, which would let us skip the anchoring machinery (the A/B vs `expanded_anchored`).
@@ -272,7 +272,7 @@ SWEEP_SETS = {
 
 
 # ----------------------------------------------------------------------------------------
-# Injector (Impact-T) knobs — phase 5 injector campaign (results/injector_pilot_2026-10-14/PLAN.md).
+# Injector (Impact-T) knobs — phase 5 injector campaign (results/1_datagen/injector_pilot_2026-10-14/PLAN.md).
 # Keys are sim/injector.py settings keys (native lume-impact / distgen keys, or its convenience /
 # derived keys), so a manifest row's injector dict goes straight into injector_beam(). They are
 # surrogate inputs and RL hidden context (randomized per episode), never RL controls.

@@ -1,5 +1,5 @@
 # INFORMATIONAL variant of delta_xtcav23_screen_v5_blen.yaml (for Ryan's box decision): L1 start box [-22, -19.5]
-# = the region where the energy-gate split is mostly < 10% misassigned (results/s2_screen_diag_2026-10-15).
+# = the region where the energy-gate split is mostly < 10% misassigned (results/2_surrogate_screen/s2_screen_diag_2026-10-15).
 # Excludes the sim operating point matched to 04-15 (L1 ~ -22.35). Not a replacement for the v5 box.
 params:
   diff_env:

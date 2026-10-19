@@ -18,8 +18,8 @@ plt.rcParams.update({"figure.facecolor": SURF, "axes.facecolor": SURF, "savefig.
 
 
 def surrogate():
-    cb = json.loads(Path("results/surrogate_scorecard_2026-10-16/B/scorecard.json").read_text())["models"]
-    cc = json.loads(Path("results/surrogate_scorecard_2026-10-16/C/scorecard.json").read_text())["models"]
+    cb = json.loads(Path("results/2_surrogate_screen/surrogate_scorecard_2026-10-16/B/scorecard.json").read_text())["models"]
+    cc = json.loads(Path("results/2_surrogate_screen/surrogate_scorecard_2026-10-16/C/scorecard.json").read_text())["models"]
     seq = [("ftc_s0\n(centroid)", cb["ftc_s0 best"]), ("A\n(+pair, T2)", cb["A best"]), ("B\n(+top-up)", cb["B (top-up, w_pair 1) best"]),
            ("B2\n(w_pair 3)", cb["B2 (top-up, w_pair 3) best"]), ("C\n(w_pair 6)", cc["C (w_pair 6) best"]),
            ("C2\n(w_pair 10)", cc["C2 (w_pair 10) best"])]
@@ -56,7 +56,7 @@ def surrogate():
 
 def cross_eval():
     rows = []
-    for line in Path("results/cross_eval_2026-10-16/flowA/TABLE.md").read_text().splitlines():
+    for line in Path("results/3_rl_eval/cross_eval_2026-10-16/flowA/TABLE.md").read_text().splitlines():
         m = re.match(r"\| (S[12] [^|]+?) \| ([\d.]+) / \d+%[^|]*\| (?:([\d.]+) / \d+%)? *\| (?:([\d.]+) / \d+%)? *\|", line)
         if m:
             rows.append((m.group(1), float(m.group(2)), float(m.group(3)) if m.group(3) else np.nan,

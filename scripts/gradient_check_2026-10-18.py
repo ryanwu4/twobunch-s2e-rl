@@ -13,7 +13,7 @@ Surrogate: autograd at the point and the same central differences, each averaged
       PYTHONPATH=src python scripts/gradient_check_2026-10-18.py bmad --workers 96
   phase surr (CPU or GPU) + comparison:
       PYTHONPATH=src python scripts/gradient_check_2026-10-18.py surr
-Outputs results/gradient_check_2026-10-18/{bmad.npz, surr.npz, summary.json}.
+Outputs results/2_surrogate_screen/gradient_check_2026-10-18/{bmad.npz, surr.npz, summary.json}.
 """
 import argparse
 import json
@@ -28,7 +28,7 @@ from twobunch_s2e_rl.datagen.sweep_params import INJECTOR_PARAMS, injector_golde
 from twobunch_s2e_rl.rl._train_utils import build_env_fn
 from twobunch_s2e_rl.surrogate.properties import inter_bunch, per_bunch
 
-OUT = Path("results/gradient_check_2026-10-18")
+OUT = Path("results/2_surrogate_screen/gradient_check_2026-10-18")
 CFG = "configs/rl/realistic_2026-10-17/real_covB2_screen_noblen.yaml"
 FLOWS = {"B2-cov": "trained/xtcav23e_inj_covB2_2026-10-17/checkpoints/best-epoch=034-val_paired_delta_rms_um=5.4293.ckpt",
          "spacing head": "trained/xtcav23e_inj_covB2zs_2026-10-18/checkpoints/best-step=09500-val_paired_delta_rms_um=4.6991.ckpt"}

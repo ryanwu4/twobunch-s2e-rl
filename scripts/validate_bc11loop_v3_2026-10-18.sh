@@ -4,7 +4,7 @@
 cd "$(dirname "$0")/.."
 PY=/home/rwu4/miniconda3/envs/slac-rl/bin/python
 R=logs/2026-10-18/realistic
-EV=results/eval_realistic_2026-10-18
+EV=results/3_rl_eval/eval_realistic_2026-10-18
 ZS=$(ls trained/xtcav23e_inj_covB2zs_2026-10-18/checkpoints/*.ckpt)
 STRESS=(--set v4.drift_per_step.L1PhaseSet=0.07 --set v4.drift_per_step.L2PhaseSet=0.10 --set v4.drift_ramp.L1PhaseSet=0.08
         --set v4.drift_ramp.L2PhaseSet=0.07 --set 'v4.jumps={"L2PhaseSet": [0.05, 0.6]}')

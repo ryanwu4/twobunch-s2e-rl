@@ -16,7 +16,7 @@ from twobunch_s2e_rl.surrogate.train import SCALER_KEYS
 T = "processed/xtcav23e_inj_cov_2026-10-17.h5"
 M = {"B2-cov": "trained/xtcav23e_inj_covB2_2026-10-17/checkpoints/best-epoch=034-val_paired_delta_rms_um=5.4293.ckpt",
      "B2-cov + spacing head": next(Path("trained/xtcav23e_inj_covB2zs_2026-10-18/checkpoints").glob("*.ckpt"))}
-OUT = Path("results/pair_cluster_bootstrap_2026-10-18"); OUT.mkdir(parents=True, exist_ok=True)
+OUT = Path("results/2_surrogate_screen/pair_cluster_bootstrap_2026-10-18"); OUT.mkdir(parents=True, exist_ok=True)
 torch.manual_seed(0)
 ck = torch.load(M["B2-cov"], map_location="cpu", weights_only=False)
 scaler = {k: ck["state_dict"][k].tolist() for k in SCALER_KEYS}

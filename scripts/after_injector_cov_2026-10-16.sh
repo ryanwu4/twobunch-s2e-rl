@@ -14,8 +14,8 @@ TABLE=processed/xtcav23e_inj_cov_2026-10-17.h5
 [ -e $TABLE ] || PYTHONPATH=$PWD/src OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 nice -n 10 $PY -m twobunch_s2e_rl.surrogate.preprocess \
   --subdir xtcav23_full,xtcav23_pilot,injector_full,injector_topup,injector_cov_2026-10-16 --sweep-set xtcav23e_l0b2_inj12 \
   --treaty-point XTCAVF --transmission per_sample --P 1024 --out $TABLE --allow-fixed-mismatch num_macro_particles \
-  --campaign-json xtcav23_full=results/injector_pilot_2026-10-14/campaign_backfill/xtcav23_full.json \
-  --campaign-json xtcav23_pilot=results/injector_pilot_2026-10-14/campaign_backfill/xtcav23_pilot.json > logs/surrogate/preprocess_cov_2026-10-17.log 2>&1
+  --campaign-json xtcav23_full=results/1_datagen/injector_pilot_2026-10-14/campaign_backfill/xtcav23_full.json \
+  --campaign-json xtcav23_pilot=results/1_datagen/injector_pilot_2026-10-14/campaign_backfill/xtcav23_pilot.json > logs/surrogate/preprocess_cov_2026-10-17.log 2>&1
 echo "[$(date +%H:%M)] preprocess: $(tail -n 2 logs/surrogate/preprocess_cov_2026-10-17.log | head -n 1)"
 PYTHONPATH=$PWD/src OMP_NUM_THREADS=4 $PY - <<'PY'
 import json, h5py, numpy as np
@@ -57,7 +57,7 @@ if [ ! -e $OUT ]; then
 fi
 BEST=$(ls $OUT/checkpoints/best-epoch=*.ckpt | sort -t= -k3 -g | head -n 1)
 echo "[$(date +%H:%M)] B2-cov best: $BEST"
-SC=results/surrogate_scorecard_2026-10-17
+SC=results/2_surrogate_screen/surrogate_scorecard_2026-10-17
 mkdir -p $SC
 cat > $SC/models_cov.json <<EOF
 {"B2 best": "trained/xtcav23e_inj_topupB2v2_2026-10-16/checkpoints/best-epoch=027-val_paired_delta_rms_um=5.9350.ckpt",

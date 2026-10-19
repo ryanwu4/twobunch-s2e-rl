@@ -1,12 +1,12 @@
 """sigma_z vs particle count (2026-10-19): does sampling shot noise bias / scatter the sigma_z the controller sees?
 
 Six settings = centre points of the gradient check (golden injector x 4 linac points, held-out lhs123 x 2), where the
-Bmad XTCAVF beams (50k macroparticles) are on disk (results/gradient_check_2026-10-18/bmad/beams). Per setting and
+Bmad XTCAVF beams (50k macroparticles) are on disk (results/2_surrogate_screen/gradient_check_2026-10-18/bmad/beams). Per setting and
 particle count N per bunch, R repeats of:
   surrogate   flow samples (spacing-head flow; B2-cov has the same sigma_z) -> beam sigma_z (std z) + screen sigma_z
   Bmad sub    a random N-subsample of the Bmad beam -> the same features (the sampling noise on the TRUE distribution)
 Screen = the env plant (golden optics, 22 MV, no jitter / measurement noise). Reference = the full Bmad beam.
-Outputs results/sigmaz_convergence_2026-10-19/{rows.npz, summary.json}.
+Outputs results/2_surrogate_screen/sigmaz_convergence_2026-10-19/{rows.npz, summary.json}.
 
   PYTHONPATH=src python scripts/sigmaz_convergence_2026-10-19.py [--reps 32] [--device cuda:0]
 """
@@ -24,7 +24,7 @@ spec = importlib.util.spec_from_file_location("gc", Path(__file__).with_name("gr
 gc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gc)
 
-OUT = Path("results/sigmaz_convergence_2026-10-19")
+OUT = Path("results/2_surrogate_screen/sigmaz_convergence_2026-10-19")
 NS = (128, 256, 512, 1024, 2048, 4096, 8192, 20000)
 SETTINGS = [(0, 0), (0, 1), (0, 2), (0, 3), (2, 1), (2, 3)]      # (injector idx, linac idx) into gc.INJ / gc.LIN
 FEATS = ("drive_sigma_z_cloud", "witness_sigma_z", "drive_sigma_z", "bunch_spacing", "screen_valid_deployed")

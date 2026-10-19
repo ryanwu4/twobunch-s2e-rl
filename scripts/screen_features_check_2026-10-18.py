@@ -3,7 +3,7 @@ from BMAD beams vs from the surrogate (B2-cov, B2-cov + spacing head) at identic
 Same plant as the env (configs/rl/realistic_2026-10-17/real_covB2_screen_noblen.yaml `screen:`: Cheetah XTCAVF ->
 DTOTR at +-V, energy split, valley threshold, row correction, ROI / edge check, deployed validity), with golden
 optics, the nominal 22 MV TCAV voltage, no arrival jitter and no measurement noise; 4096 particles per bunch for all
-sources (Bmad subsampled, seeded). Outputs results/screen_features_check_2026-10-18/rows.npz + summary.json and
+sources (Bmad subsampled, seeded). Outputs results/2_surrogate_screen/screen_features_check_2026-10-18/rows.npz + summary.json and
 figures in lab-notebook/images/2026-10-18_screen_*.png. CPU.
 
   PYTHONPATH=src python scripts/screen_features_check_2026-10-18.py [--max-rows N]
@@ -26,7 +26,7 @@ T = "processed/xtcav23e_inj_cov_2026-10-17.h5"
 CFG = "configs/rl/realistic_2026-10-17/real_covB2_screen_noblen.yaml"
 FLOWS = {"B2-cov": "trained/xtcav23e_inj_covB2_2026-10-17/checkpoints/best-epoch=034-val_paired_delta_rms_um=5.4293.ckpt",
          "spacing head": str(next(Path("trained/xtcav23e_inj_covB2zs_2026-10-18/checkpoints").glob("*.ckpt")))}
-OUT = Path("results/screen_features_check_2026-10-18")
+OUT = Path("results/2_surrogate_screen/screen_features_check_2026-10-18")
 KEYS = ("bunch_spacing", "drive_sigma_z", "drive_charge_fraction", "screen_valid_deployed", "screen_misassign",
         "bunch_spacing_cloud", "drive_sigma_z_cloud", "drive_charge_fraction_cloud")
 N = 4096

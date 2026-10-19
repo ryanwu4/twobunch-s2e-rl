@@ -1,7 +1,7 @@
 """Delta controller env v4: the real-machine actuator / measurement model on top of DeltaControlEnv.
 
 Separate subclass so v1-v3 envs (and every policy trained on them) stay byte-identical. Decisions it
-implements (results/plan_review_2026-10-14/, docs/overnight_2026-10-15.md):
+implements (results/5_reports/plan_review_2026-10-14/, docs/overnight_2026-10-15.md):
 
 Actuators (`actuators: {control: {...}}`), each with a hidden per-episode gain g:
   direct     true delta = g * a * step                      (L2 via the relative L2_PHASE.MKB; the
@@ -24,7 +24,7 @@ Actuators (`actuators: {control: {...}}`), each with a hidden per-episode gain g
   action's own units: deg, or ln for blen_dlog).
 Drift (`drift_per_step: {control: sigma}`): hidden random walk on the beam-effective control;
 `drift_ramp: {control: h}`: plus a hidden per-episode ramp rate ~ U(-h, h) per step (loop-off L1 drift
-is directional: the BC11 loop was cancelling ramps of this size, results/l1_direct_review_2026-10-16).
+is directional: the BC11 loop was cancelling ramps of this size, results/3_rl_eval/l1_direct_review_2026-10-16).
 Measurement (`measurement` block, on top of shot_noise / M and the streak scale error):
   step_noise_floor {feature: sigma}   per-step noise NOT reduced by M (the +/-V images are ~11 s apart)
   outlier_prob, outlier_scale         a step's features get an extra N(0, (scale*floor)^2)
@@ -38,7 +38,7 @@ noise: sigma}}`): each adds one obs column, the log-ratio of the monitor's signa
 reading, s * (P(true now) - P(true start)) + N(0, noise^2), with P a polynomial in the beam-effective
 controls (terms "A", "A^n", "A*B" of (control - center), physical units) and a hidden per-episode slope
 scale s ~ U(slope_scale). Injector / day offsets are constant within an episode and cancel in the ratio.
-BLEN model v1 (results/blen_model_2026-10-16): BC11 = witness-length monitor, a free beam-side L1 signal
+BLEN model v1 (results/4_daq_realism/blen_model_2026-10-16): BC11 = witness-length monitor, a free beam-side L1 signal
 only with the BC11 loop off (refused with a blen_dlog / adapter L1); BC14 = readback of the realised L2.
 Realistic operation (2026-10-18; all off by default):
   window {control: [lo, hi]}  absolute limits on the commanded KNOB (PREQ / multiknob position; ops limits are

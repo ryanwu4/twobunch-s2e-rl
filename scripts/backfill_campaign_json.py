@@ -12,7 +12,7 @@ compares anyway.
 Usage (bmad-qpad-dev env: needs FACET2_S2E.loadConfig):
   PYTHONPATH=$PWD/src /home/rwu4/miniconda3/envs/bmad-qpad-dev/bin/python \
       scripts/backfill_campaign_json.py configs/datagen/xtcav23_full.yaml [more.yaml ...] \
-      --out-dir results/injector_pilot_2026-10-14/campaign_backfill
+      --out-dir results/1_datagen/injector_pilot_2026-10-14/campaign_backfill
 """
 from __future__ import annotations
 

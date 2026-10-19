@@ -22,7 +22,7 @@ POL = {
 plt.rcParams.update({"figure.facecolor": SURF, "axes.facecolor": SURF, "savefig.facecolor": SURF, "font.size": 9,
                      "axes.labelcolor": INK2, "xtick.color": INK2, "ytick.color": INK2, "axes.edgecolor": GRID,
                      "axes.spines.top": False, "axes.spines.right": False, "axes.titlecolor": INK})
-CL = Path("results/closed_loop_bmad_2026-10-17")
+CL = Path("results/3_rl_eval/closed_loop_bmad_2026-10-17")
 CL_TAGS = [("S2blen_flowA", "blen"), ("S2l1blen_flowA", "l1blenA"), ("S2l1blen_covB2", "l1blenB")]
 RNG = np.random.default_rng(0)
 SHORT = {"blen": "blen_dlog\n(flow A)", "l1blenA": "direct-L1\n+BLEN\n(flow A)", "l1blenB": "direct-L1\n+BLEN\n(B2-cov)"}
@@ -48,9 +48,9 @@ def _parse_table(path):
 
 
 def surrogate_eval():
-    cov = _parse_summary("results/cross_eval_2026-10-17/covB2/summary.txt")
+    cov = _parse_summary("results/3_rl_eval/cross_eval_2026-10-17/covB2/summary.txt")
     l1b = _parse_summary("logs/2026-10-16/l1blen/summary.txt")
-    tab = _parse_table("results/cross_eval_2026-10-16/flowA/TABLE.md")
+    tab = _parse_table("results/3_rl_eval/cross_eval_2026-10-16/flowA/TABLE.md")
     # (policy family, eval plant, value) ; all on injector-varied (DAQ) context, 512 episodes
     data = {"S2": [], "S1": []}
     for s, scr in (("S2", "screen_v6"), ("S1", "cloud")):

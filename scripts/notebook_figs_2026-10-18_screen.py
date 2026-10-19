@@ -1,4 +1,4 @@
-"""Screen-feature figures for the 2026-10-18 surrogate notebook entry, from results/screen_features_check_2026-10-18
+"""Screen-feature figures for the 2026-10-18 surrogate notebook entry, from results/2_surrogate_screen/screen_features_check_2026-10-18
 (scripts/screen_features_check_2026-10-18.py): Bmad-rendered vs surrogate-rendered XTCAV features on the held-out test
 rows, plus example +V images (Bmad vs B2-cov + spacing head) rendered with the same segment / binning. CPU.
 
@@ -23,7 +23,7 @@ render = sim_screens.render
 from twobunch_s2e_rl.online.features import band_stats, step_cut, step_features  # noqa: E402
 
 OUT = Path("/home/rwu4/photoinjector-rl/lab-notebook/images")
-RES = REPO / "results/screen_features_check_2026-10-18"
+RES = REPO / "results/2_surrogate_screen/screen_features_check_2026-10-18"
 SURF, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 BLUE, ORANGE, RED = "#2a78d6", "#eb6834", "#e34948"
 plt.rcParams.update({"figure.facecolor": SURF, "axes.facecolor": SURF, "savefig.facecolor": SURF, "font.size": 9,

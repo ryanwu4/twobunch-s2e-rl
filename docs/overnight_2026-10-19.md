@@ -8,7 +8,7 @@ Plan agreed with Ryan 18:40 (back ~08:00). Chains: `scripts/gradient_check_2026-
 - Goal conditioning: σz "mixed + mask" (spacing-only setpoints with a mask bit), setpoints "mix local + random". Build + smoke tonight, train tomorrow.
 
 ## A. Screen failure detection (done)
-`scripts/screen_failure_detect_2026-10-18.py` → `results/screen_failure_detect_2026-10-18/summary.json`. 688 test rows, failure = |screen − own cloud spacing| > 30 µm or misassign > 0.15, among deployed-valid readings.
+`scripts/screen_failure_detect_2026-10-18.py` → `results/2_surrogate_screen/screen_failure_detect_2026-10-18/summary.json`. 688 test rows, failure = |screen − own cloud spacing| > 30 µm or misassign > 0.15, among deployed-valid readings.
 
 | source | valid | fail rate | AUC cut_sens | AUC charge-frac dev | AUC combined |
 |---|---|---|---|---|---|
@@ -20,7 +20,7 @@ Plan agreed with Ryan 18:40 (back ~08:00). Chains: `scripts/gradient_check_2026-
 - Real DAQ steps carry `cut_sens_um`; valid-step distributions match the sim (TEST_15668 median 1.0 µm, E300_15673 4.3 µm vs Bmad 1.1 µm). `daq_replay` now feeds it to the policy.
 
 ## B. Night trainings (queued)
-Configs `configs/rl/night_2026-10-18/zs_screen_{noblen,bc11loop}_jit[_fd].yaml` = the `*_jit` configs with the spacing-head flow (`covB2zs`), `_fd` + `screen_cut_sens`. Slots: GPU0 {noblen s0 → noblen_fd s0}, {noblen_fd s1 → noblen s1}; GPU1 same for bc11loop. Each run evaluated when done (nominal / stress jitter, DAQ replay TEST_15668 + E300_15673) → `results/eval_night_2026-10-18/summary.txt`.
+Configs `configs/rl/night_2026-10-18/zs_screen_{noblen,bc11loop}_jit[_fd].yaml` = the `*_jit` configs with the spacing-head flow (`covB2zs`), `_fd` + `screen_cut_sens`. Slots: GPU0 {noblen s0 → noblen_fd s0}, {noblen_fd s1 → noblen s1}; GPU1 same for bc11loop. Each run evaluated when done (nominal / stress jitter, DAQ replay TEST_15668 + E300_15673) → `results/3_rl_eval/eval_night_2026-10-18/summary.txt`.
 
 ## C. Gradient check (running)
 `scripts/gradient_check_2026-10-18.py`: 3 injector states (golden, held-out lhsloc102, lhs123) × 4 (L1, L2) points; Bmad central differences at h = 0.3 / 0.6° (108 runs, 50k macroparticles, same beam + Tao seed); surrogate autograd + FD (8 seeds, 20k particles) for B2-cov and the spacing head. Features: beam spacing / σz and screen spacing / σz.
@@ -36,7 +36,7 @@ New `closed_loop_bmad --mode test --points-json configs/rl/eval/heldout_injector
 
 ## Results
 
-### C. Gradient check (done 19:52) — `results/gradient_check_2026-10-18/summary.json`
+### C. Gradient check (done 19:52) — `results/2_surrogate_screen/gradient_check_2026-10-18/summary.json`
 Ratio = surrogate / Bmad slope (Bmad FD at h = 0.3°; FD 0.3 vs 0.6° agree to 0.1% for beam spacing, 3% beam σz, 21% screen σz). Median [p10, p90] over 12 points × 2 controls; spacing head (B2-cov the same except where noted).
 
 | feature | Bmad median \|slope\| L1 / L2 | ratio (autograd) | per control L1 / L2 | sign agree | corr |
@@ -52,7 +52,7 @@ Ratio = surrogate / Bmad slope (Bmad FD at h = 0.3°; FD 0.3 vs 0.6° agree to 0
 - Reading: the extra L1 dependence is a measurement effect in Bmad's screen (the split / resolution term picks up L1 through the energy structure) that the smoothed surrogate beam does not reproduce. Consequence: the controller underestimates how much L1 moves the *measured* σz; plausible contributor to the flat σz errors. Not a spacing problem.
 - Figure: TODO (per-point slopes, Bmad vs surrogate, beam vs screen).
 
-### Jitter-trained policies (chain done 20:53) — `results/eval_jitter_2026-10-18/summary.txt`
+### Jitter-trained policies (chain done 20:53) — `results/3_rl_eval/eval_jitter_2026-10-18/summary.txt`
 Settled spacing median µm / settled within 10 µm (continuous operation, 128 steps × 256 envs).
 
 | policy | nominal jitter | stress jitter | replay TEST_15668 (in10) | replay E300_15673 (in10) |
@@ -78,7 +78,7 @@ Settled spacing median µm / settled within 10 µm (continuous operation, 128 st
 ### Closed-loop at held-out injectors (surrogate run; Bmad running)
 24 held-out injector points, 1 episode each, final true error. noblen_jit s0: 14.5 µm median, 33% within 10 µm, σz 0.21. bc11loop_v3_jit s0: 15.4 µm, 38%, σz 0.13. (For comparison, 10-18 closed-loop Bmad of noblen s0 at the golden injector: 9.7–10.3 µm / 46–54%. Single episodes per point, so ±~10 pts noise.)
 
-### Closed-loop Bmad at held-out injectors (done 00:24) — `results/closed_loop_bmad_2026-10-19/`
+### Closed-loop Bmad at held-out injectors (done 00:24) — `results/3_rl_eval/closed_loop_bmad_2026-10-19/`
 24 envs (12 DAQ-like, 11 full-box test-split injector points, 1 golden), one 32-step episode each, 20k macroparticles; final true spacing error (median µm / within 10 µm).
 
 | policy | plant | all 24 | DAQ-like (12) | full-box (11) | σz rel |
@@ -93,8 +93,8 @@ Settled spacing median µm / settled within 10 µm (continuous operation, 128 st
 - The single golden env failed in both bc11loop runs (~265 µm: goal on the other side of the split); 1 env, not interpreted.
 - 12 envs per group: ±~14 pts on the fractions.
 
-### Spacing-head trainings, wave 1 (trained 02:00; evals in `results/eval_night_2026-10-18/summary.txt`)
-Common plant: all policies evaluated under nominal jitter on the **spacing-head flow** (`eval_continuous --flow`, `results/eval_night_2026-10-18/cross_zs.txt`). Settled spacing µm / within 10 µm; replay = DAQ replay within 10 µm.
+### Spacing-head trainings, wave 1 (trained 02:00; evals in `results/3_rl_eval/eval_night_2026-10-18/summary.txt`)
+Common plant: all policies evaluated under nominal jitter on the **spacing-head flow** (`eval_continuous --flow`, `results/3_rl_eval/eval_night_2026-10-18/cross_zs.txt`). Settled spacing µm / within 10 µm; replay = DAQ replay within 10 µm.
 
 | policy | flow trained on | nominal on zs flow | replay TEST_15668 | replay E300_15673 |
 |---|---|---|---|---|

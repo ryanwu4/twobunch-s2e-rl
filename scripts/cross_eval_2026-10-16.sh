@@ -5,7 +5,7 @@
 #   bash scripts/cross_eval_2026-10-16.sh <eval_flow_ckpt> <flow_tag> <gpu>
 cd "$(dirname "$0")/.."
 FLOW=$1; TAG=$2; GPU=${3:-0}
-OUT=results/cross_eval_2026-10-16/$TAG; mkdir -p $OUT
+OUT=results/3_rl_eval/cross_eval_2026-10-16/$TAG; mkdir -p $OUT
 R=logs/2026-10-15; S=$R/seeds; A=$R/ablation; N=logs/2026-10-16
 POL=(
  "S1 blen s0|$R/delta_xtcav23_cloud_v4r_blen_s0" "S1 blen s1|$S/delta_xtcav23_cloud_v4_blen_s1" "S1 blen s2|$S/delta_xtcav23_cloud_v4_blen_s2"

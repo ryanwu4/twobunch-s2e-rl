@@ -3,7 +3,7 @@ real images.
 
 The 04-15 DAQ scans step L2_PHASE.MKB in 0.25 deg steps with the BC11 loop on (L1 held), so the plant is the scan
 itself: the policy's L2 (beam-effective, physical) maps to a multiknob position mkb = L2 - L2_ref and the reading is
-the online-replay features of that scan step (results/online_replay_v6_median_cut_2026-10-15, the deployed chain):
+the online-replay features of that scan step (results/4_daq_realism/online_replay_v6_median_cut_2026-10-15, the deployed chain):
 spacing re-drawn per visit from the step's own per-image +/-V offsets (bootstrap of M = shots_per_step / 2 images
 per sign, median, half-difference), linearly interpolated between the neighbouring steps; drive sigma_z and the
 drive charge fraction from the step values, nearest step; validity = the step's deployed validity (outside the scan:
@@ -13,7 +13,7 @@ goal points inside the scan's valid window. Goals are the scan's readings at the
 machine). There is no truth on real data: metrics are |mkb_final - mkb_goal| (did it return to the goal's L2
 setting) and the measured spacing error at the end vs the goal reading.
 
-  python -m twobunch_s2e_rl.rl.daq_replay --logdir <S2 run> --scan TEST_15668 --k 64 --out results/daq_replay_2026-10-17/<tag>
+  python -m twobunch_s2e_rl.rl.daq_replay --logdir <S2 run> --scan TEST_15668 --k 64 --out results/3_rl_eval/daq_replay_2026-10-17/<tag>
 """
 from __future__ import annotations
 
@@ -25,8 +25,8 @@ import numpy as np
 import torch
 import yaml
 
-REPLAY = "results/online_replay_v6_median_cut_2026-10-15"
-BLEN14 = "results/daq_replay_2026-10-17/blen14_steps.json"   # per-step BLEN_LI14_888_BRAW medians of the same scans
+REPLAY = "results/4_daq_realism/online_replay_v6_median_cut_2026-10-15"
+BLEN14 = "results/3_rl_eval/daq_replay_2026-10-17/blen14_steps.json"   # per-step BLEN_LI14_888_BRAW medians of the same scans
 L2_REF = -41.0          # sim L2 of mkb = 0 (the policy sees no absolute L2; keeps the scan inside the knob box)
 
 

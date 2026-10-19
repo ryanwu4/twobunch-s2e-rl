@@ -2,7 +2,7 @@
 # L2-only DAQ replay (TEST_15668, E300_15673; 64 episodes) of each S2 policy as soon as its final policy exists.
 cd "$(dirname "$0")/.."
 PY=/home/rwu4/miniconda3/envs/slac-rl/bin/python
-OUT=results/daq_replay_2026-10-17
+OUT=results/3_rl_eval/daq_replay_2026-10-17
 mkdir -p $OUT
 RUNS=(logs/2026-10-16/injflow/injflow_flowA_screen_v6_blen_s0 logs/2026-10-16/delta_xtcav23_screen_v6_blen_s0
       logs/2026-10-16/l1blen/injflow_flowA_screen_v6_l1blen_s0

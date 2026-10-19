@@ -9,7 +9,7 @@ PY=/home/rwu4/miniconda3/envs/slac-rl/bin/python
 R=logs/2026-10-18/realistic
 N=configs/rl/realistic_2026-10-17/real_covB2_screen_noblen.yaml
 B=configs/rl/realistic_2026-10-17/real_covB2_screen_bc11loop.yaml
-EV=results/eval_realistic_2026-10-18; CL=results/closed_loop_bmad_2026-10-18; mkdir -p $EV $CL
+EV=results/3_rl_eval/eval_realistic_2026-10-18; CL=results/3_rl_eval/closed_loop_bmad_2026-10-18; mkdir -p $EV $CL
 STRESS=(--set v4.drift_per_step.L1PhaseSet=0.07 --set v4.drift_per_step.L2PhaseSet=0.10 --set v4.drift_ramp.L1PhaseSet=0.08
         --set v4.drift_ramp.L2PhaseSet=0.07 --set 'v4.jumps={"L2PhaseSet": [0.05, 0.6]}')
 log() { echo "[$(date +%H:%M)] $*"; }
@@ -42,7 +42,7 @@ for n in D1 D2; do
   until [ -e trained/xtcav23e_inj_centroid${n}_2026-10-17/checkpoints/final.ckpt ]; do sleep 120; done
 done
 log "centroid fine-tunes done"
-SC=results/surrogate_scorecard_2026-10-18; mkdir -p $SC
+SC=results/2_surrogate_screen/surrogate_scorecard_2026-10-18; mkdir -p $SC
 b() { ls trained/xtcav23e_inj_centroid$1_2026-10-17/checkpoints/best-epoch=*.ckpt | sort -t= -k3 -g | head -n 1; }
 cat > $SC/models.json <<J
 {"B2-cov best": "trained/xtcav23e_inj_covB2_2026-10-17/checkpoints/best-epoch=034-val_paired_delta_rms_um=5.4293.ckpt",

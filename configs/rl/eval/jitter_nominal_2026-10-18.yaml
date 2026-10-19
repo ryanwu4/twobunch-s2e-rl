@@ -1,7 +1,7 @@
-# Eval condition: DAQ-calibrated jitter (results/jitter_mc_2026-10-18): per-image jitter map, camera 2.7 um/image, beam-side
+# Eval condition: DAQ-calibrated jitter (results/4_daq_realism/jitter_mc_2026-10-18): per-image jitter map, camera 2.7 um/image, beam-side
 # per-step phase wander L1 0.10 / L2 0.15 deg replacing the 6 um floor, 2.5% outlier steps.
 v4:
-  jitter_map: results/jitter_mc_2026-10-18/jitter_map_DAQcal.npz
+  jitter_map: results/4_daq_realism/jitter_mc_2026-10-18/jitter_map_DAQcal.npz
   phase_wander: {L1PhaseSet: 0.10, L2PhaseSet: 0.15}
 measurement:
   shot_noise: {bunch_spacing: 2.7e-6}

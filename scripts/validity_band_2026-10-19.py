@@ -4,11 +4,11 @@ matter for the controller?
   1. training exposure: in the training env (zs_screen_noblen_jit / zs_screen_bc11loop_jit configs) the raw goal
      candidates (start + U(+-goal_radius)), their noise-free screen validity (N = 1024, as goals are screened) and the
      accepted goals, by |true spacing| band; plus the steps of a policy rollout (true spacing, measured validity).
-     Reference validity by band: Bmad- vs surrogate-rendered test rows (results/screen_failure_detect_2026-10-18).
-  2. error by goal band: continuous evals (results/validity_band_2026-10-19/eval/*/errors.npz, nominal jitter) and the
+     Reference validity by band: Bmad- vs surrogate-rendered test rows (results/2_surrogate_screen/screen_failure_detect_2026-10-18).
+  2. error by goal band: continuous evals (results/2_surrogate_screen/validity_band_2026-10-19/eval/*/errors.npz, nominal jitter) and the
      closed-loop Bmad runs (results/closed_loop_bmad_2026-10-1{8,9}).
-  3. where the DAQ scans' readings and replay goals sit (results/online_replay_v6_median_cut_2026-10-15).
-Outputs results/validity_band_2026-10-19/summary.json (+ printed tables).
+  3. where the DAQ scans' readings and replay goals sit (results/4_daq_realism/online_replay_v6_median_cut_2026-10-15).
+Outputs results/2_surrogate_screen/validity_band_2026-10-19/summary.json (+ printed tables).
 
   PYTHONPATH=src python scripts/validity_band_2026-10-19.py [--device cuda:0]
 """
@@ -25,7 +25,7 @@ from twobunch_s2e_rl.artifacts import policy_flow_ckpt
 from twobunch_s2e_rl.rl._train_utils import build_env_fn
 from twobunch_s2e_rl.rl.rollout import load_policy, rollout
 
-OUT = Path("results/validity_band_2026-10-19")
+OUT = Path("results/2_surrogate_screen/validity_band_2026-10-19")
 EDGES = [0, 60, 100, 150, 250, 1e9]                       # |spacing| bands [um]
 LABELS = ["<60", "60-100", "100-150", "150-250", ">250"]
 RUNS = {"noblen": "logs/2026-10-18/night/zs_screen_noblen_jit_s0", "bc11loop": "logs/2026-10-18/night/zs_screen_bc11loop_jit_s1"}
@@ -81,7 +81,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     summ = {"bands_um": LABELS}
     # reference validity by band, test rows (4096 particles)
-    r = np.load("results/screen_failure_detect_2026-10-18/rows.npz")
+    r = np.load("results/2_surrogate_screen/screen_failure_detect_2026-10-18/rows.npz")
     summ["test_rows_valid_rate_by_band"] = {s: by_band(r["Bmad|bunch_spacing_cloud"], r[f"{s}|screen_valid_deployed"] > 0.5)
                                             for s in ("Bmad", "spacing head")}
     # 1. training exposure
@@ -112,13 +112,13 @@ def main():
     # 3. DAQ scans: readings / validity by band, replay goals by band
     daq = {}
     for scan in ("TEST_15668", "E300_15673", "E300_15671"):
-        st = list(json.loads(Path(f"results/online_replay_v6_median_cut_2026-10-15/{scan}.json").read_text())["steps"].values())
+        st = list(json.loads(Path(f"results/4_daq_realism/online_replay_v6_median_cut_2026-10-15/{scan}.json").read_text())["steps"].values())
         sp = np.array([s.get("spacing_um", np.nan) for s in st]) * 1e-6
         ok = np.array([s["valid"] for s in st]) > 0.5
         daq[scan] = {"readings_by_band": {LABELS[i]: int((band(sp) == i).sum()) for i in range(len(LABELS))},
                      "valid_rate_by_band": by_band(sp, ok),
                      "valid_spacing_range_um": [float(np.nanmin(np.abs(sp[ok])) * 1e6), float(np.nanmax(np.abs(sp[ok])) * 1e6)] if ok.any() else None}
-    for f in sorted(glob.glob("results/eval_night_2026-10-18/*_replay_*/traj.npz")):
+    for f in sorted(glob.glob("results/3_rl_eval/eval_night_2026-10-18/*_replay_*/traj.npz")):
         z = np.load(f)
         g = z["goal_spacing"][0] if z["goal_spacing"].ndim > 1 else z["goal_spacing"]
         daq.setdefault("replay_goals", {})[Path(f).parent.name] = {

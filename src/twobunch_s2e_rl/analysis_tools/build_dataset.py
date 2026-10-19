@@ -4,8 +4,8 @@ Usage:
   PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.analysis_tools.build_dataset [data_subdir]
     data_subdir defaults to "full" -> reads data/full/sample_*.json
 
-Output: results/tables/dataset.pkl  (pandas DataFrame, one row per sample)
-        results/tables/dataset.csv  (same, human-inspectable)
+Output: results/1_datagen/tables/dataset.pkl  (pandas DataFrame, one row per sample)
+        results/1_datagen/tables/dataset.csv  (same, human-inspectable)
 
 Columns:
   meta:   idx, success, is_baseline_repeat, num_macro_particles, csrTF,

@@ -222,10 +222,10 @@ def growth(role):
 # ---------------------------------------------------------------------------------------- 3. surrogate progression
 def progression():
     J = lambda p: json.loads(Path(p).read_text())["models"]
-    b, c, tu = (J("results/surrogate_scorecard_2026-10-16/B/scorecard.json"),
-                J("results/surrogate_scorecard_2026-10-16/C/scorecard.json"),
-                J("results/surrogate_scorecard_2026-10-17/topup_table/scorecard.json"))
-    cov = J("results/surrogate_scorecard_2026-10-17/cov_table/scorecard.json")
+    b, c, tu = (J("results/2_surrogate_screen/surrogate_scorecard_2026-10-16/B/scorecard.json"),
+                J("results/2_surrogate_screen/surrogate_scorecard_2026-10-16/C/scorecard.json"),
+                J("results/2_surrogate_screen/surrogate_scorecard_2026-10-17/topup_table/scorecard.json"))
+    cov = J("results/2_surrogate_screen/surrogate_scorecard_2026-10-17/cov_table/scorecard.json")
     # all five on the 10-16 top-up table (same 93 val pairs, same old-val rows)
     seq = [("ftc_s0", b["ftc_s0 best"], INK2), ("A", b["A best"], INK2),
            ("B2", b["B2 (top-up, w_pair 3) best"], BLUE),
@@ -302,7 +302,7 @@ def pair_predictions(n=2048, cache=None):
     from twobunch_s2e_rl.artifacts import resolve_ckpt
     from twobunch_s2e_rl.surrogate.model import TwoBunchFlow
     from twobunch_s2e_rl.surrogate.properties import inter_bunch
-    models = json.loads(Path("results/surrogate_scorecard_2026-10-17/models_cov.json").read_text())
+    models = json.loads(Path("results/2_surrogate_screen/surrogate_scorecard_2026-10-17/models_cov.json").read_text())
     models = {k: models[k] for k in ("B2 best", "B2-cov best")}
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     ref = TwoBunchFlow.load_from_checkpoint(str(resolve_ckpt(next(iter(models.values())))), map_location="cpu")

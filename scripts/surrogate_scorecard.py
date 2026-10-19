@@ -7,7 +7,7 @@ group split with the old flow's split roles):
   injector effect (analyze_injector_flow.py): cross (golden linac) and pairs R2 / slope on held-out points, + train pairs.
 CRN (one frozen base sample) for every prediction. Writes <out>/scorecard.json and scorecard.md.
 
-  PYTHONPATH=src:scripts python scripts/surrogate_scorecard.py --out results/surrogate_scorecard_2026-10-15
+  PYTHONPATH=src:scripts python scripts/surrogate_scorecard.py --out results/2_surrogate_screen/surrogate_scorecard_2026-10-15
 """
 from __future__ import annotations
 

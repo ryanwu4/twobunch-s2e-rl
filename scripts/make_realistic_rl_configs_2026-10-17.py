@@ -1,5 +1,5 @@
 """Realistic-operation RL configs (Ryan 10-17): two directions on an injector-aware flow, constrained by the DAQ
-realism pass (results/realism_2026-10-17/REPORT.md; one controller step ~ 20 s):
+realism pass (results/4_daq_realism/realism_2026-10-17/REPORT.md; one controller step ~ 20 s):
 
   noblen   direction 1, NO BLEN anywhere: BC11 + BC14 loops off; L1 via PREQ (direct_rb: hidden beam gain
            U(0.7, 1.3), klystron readback g_rf U(0.95, 1.05), noise 0.02 deg), L2 via the multiknob; the policy sees
@@ -66,7 +66,7 @@ def main():
         p = out / f"{stem}.yaml"
         if p.exists():
             raise SystemExit(f"{p} exists")
-        p.write_text(f"# {kind}: realistic operation (scripts/make_realistic_rl_configs_2026-10-17.py, results/realism_2026-10-17)\n"
+        p.write_text(f"# {kind}: realistic operation (scripts/make_realistic_rl_configs_2026-10-17.py, results/4_daq_realism/realism_2026-10-17)\n"
                      + yaml.safe_dump(c, sort_keys=False))
         print(p)
 

@@ -2,7 +2,7 @@
 screen readings the crop-edge check (S2 v5) affects, over noise-free readings of the S2 v5 env (random goal
 points, hidden context / optics / TCAV voltage varied).
 
-  PYTHONPATH=src python scripts/fig_bunch_split_changes_sim.py --out results/bunch_split_changes_2026-10-15
+  PYTHONPATH=src python scripts/fig_bunch_split_changes_sim.py --out results/2_surrogate_screen/bunch_split_changes_2026-10-15
 """
 from __future__ import annotations
 

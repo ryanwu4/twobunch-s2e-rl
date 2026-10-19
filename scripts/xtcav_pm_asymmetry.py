@@ -12,7 +12,7 @@ Per step:
      y+(z) - y-(z) = 2 theta S z + const
 
   PYTHONPATH=$PWD/src OMP_NUM_THREADS=1 MPLBACKEND=Agg /home/rwu4/miniconda3/envs/bmad-qpad-dev/bin/python \
-      scripts/xtcav_pm_asymmetry.py --out results/bunch_split_changes_2026-10-15/pm_asymmetry
+      scripts/xtcav_pm_asymmetry.py --out results/2_surrogate_screen/bunch_split_changes_2026-10-15/pm_asymmetry
 """
 from __future__ import annotations
 

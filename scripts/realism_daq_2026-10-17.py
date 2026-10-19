@@ -1,6 +1,6 @@
 """DAQ realism constraints for the delta-RL env (2026-10-17). Read-only on the DAQ .mat files.
 
-Run: OMP_NUM_THREADS=1 /home/rwu4/miniconda3/envs/slac-rl/bin/python results/realism_2026-10-17/realism.py
+Run: OMP_NUM_THREADS=1 /home/rwu4/miniconda3/envs/slac-rl/bin/python results/4_daq_realism/realism_2026-10-17/realism.py
 Writes summary.json, recommended_params.json, fig*.png in this directory.
 """
 import json
@@ -477,7 +477,7 @@ S["aggregate"] = agg
 step = lambda v: round(float(v) * mps, 4)
 rstep = lambda v: round(float(v) * np.sqrt(mps), 4)
 rec = {
-    "_meta": dict(source="results/realism_2026-10-17/realism.py", ctrl_step_s=ctrl_s,
+    "_meta": dict(source="results/4_daq_realism/realism_2026-10-17/realism.py", ctrl_step_s=ctrl_s,
                   note="per-step = per controller step of ~20 s (6.5 s settle + ~130 shots at 10 Hz for 30 valid images per TCAV sign). deg = physical RF degrees."),
     "drift_per_step": {"L1PhaseSet": dict(current=0.025, daq=rstep(agg["L1_rw_deg_per_sqrtmin"]["median"]),
                                           daq_range=[rstep(agg["L1_rw_deg_per_sqrtmin"]["p16"]), rstep(agg["L1_rw_deg_per_sqrtmin"]["p84"])],

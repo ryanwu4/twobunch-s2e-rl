@@ -13,7 +13,7 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 | Eval-set campaign `injector_evalset` (456 rows) | running since 07:57, ETA ~10:15 |
 | Post-campaign chain | preprocess done (`processed/xtcav23e_inj_2026-10-15.h5`: 8554 rows, 37 knobs, 325 holdout, 2775 paired), widen done; fine-tunes ft_s0/ft_s1 running since 08:05, then ft_s2 + scratch_s0 |
 | S1 cloud (env v4) | blen_dlog 4 seeds 4.6–5.0 µm true median / 80–83% within 10 µm; adapter 2 seeds same; robust to noise ×2 (6.5 µm), drift ×2, gain/scale misspec |
-| S2 screen v5 (crop-edge check + readable goals) | 600 iters, 3 seeds: 7.2–7.6 µm / 61–63%; measurement-limited (energy-gate misassignment), see `results/s2_screen_diag_2026-10-15/REPORT.md` |
+| S2 screen v5 (crop-edge check + readable goals) | 600 iters, 3 seeds: 7.2–7.6 µm / 61–63%; measurement-limited (energy-gate misassignment), see `results/2_surrogate_screen/s2_screen_diag_2026-10-15/REPORT.md` |
 | `eval_delta` bug (problem 5) | fixed; all v4 evals redone |
 | Online features vs real DAQ | per-step shared +V cut (fix), crop-edge check; `results/online_replay_v{3,4,5}_2026-10-15/` |
 
@@ -160,21 +160,21 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 - 20:10 online features: per-image `band_stats` + per-step `step_features` (median per sign, then the ±V
   half-difference; on the machine +V and −V images are ~11 s apart, not the same beam). Test: reduces exactly
   to the pair function. `scripts/xtcav_online_replay.py` replays it on the real E300 L2 scans with the deployed
-  preprocessing + Tier-0 calibration → `results/online_replay_2026-10-15/` (running, CPU 1 thread nice 10).
+  preprocessing + Tier-0 calibration → `results/4_daq_realism/online_replay_2026-10-15/` (running, CPU 1 thread nice 10).
   Smoke (30 shots/sign/step, E300_15671): step 1 spacing 99.8 µm with +V/−V single-sign estimates 98 / 101 µm
   (consistent); single-image robust σ 3–6 µm on clean steps, ~55–80 µm on the near-full-compression steps
   where the energy gate often fails (10–21 of 30 images).
-- 21:20 real-DAQ replay done (`results/online_replay_v3_2026-10-15/REPORT.md`). Fix found: the energy cut must
+- 21:20 real-DAQ replay done (`results/4_daq_realism/online_replay_v3_2026-10-15/REPORT.md`). Fix found: the energy cut must
   be one per step from the +V images and shared with −V (D2). A per-image −V valley locks onto another dip because
   the TCAV's energy kick flips with V, which wrecked E300_15673 steps 9–18 (fixed: smooth 240 → 143 µm). Noise vs
   env: per-image robust σ 6–15 µm (env 15), per-step ~1–2.6 µm at M = 30 (env floor 6 µm: conservative).
   Unsolved: valley-jump misassignment at TEST_15668 steps 25/26/29 that the deployed rule calls valid (drive
   fraction jumps; candidate truth-free check).
 - 23:40 crop-edge check added to the online features too and replayed on the real data
-  (`results/online_replay_v4_2026-10-15/REPORT.md`): it flags only E300_15673 steps 1–6 (277–304 µm; the real
+  (`results/4_daq_realism/online_replay_v4_2026-10-15/REPORT.md`): it flags only E300_15673 steps 1–6 (277–304 µm; the real
   images touch the auto-crop edge there too) and nothing else. The sim's and the real data's large-spacing
   clipping agree.
-- 23:40 S1 robustness with the corrected eval (`results/rl_robustness_2026-10-15/`; final policies, seed 0, incl. 20%
+- 23:40 S1 robustness with the corrected eval (`results/3_rl_eval/rl_robustness_2026-10-15/`; final policies, seed 0, incl. 20%
   off-context goals). True median spacing error / within 10 µm: nominal blen 5.0 µm / 80%, adapter 5.0 / 80%;
   noise ×2 6.5 / 70%; drift ×2 6.0 / 72%; gains widened (L1 1–5, L2 0.25–1.4) 5.4 / 78% (adapter 4.9 / 79%);
   scale error ±30% 5.1 / 80%; 64-step episodes 5.1 / 80%. The 8192-particle CRN check agrees with the per-step
@@ -183,7 +183,7 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 - 00:40 S2 v5 trained (seed 0): 8.7 µm true median / 57% within 10 µm (v4r policy in the v5 env: 10.6 / 48%). On
   truth-valid goals 6.1 µm / 72% (≈ S1); on misassigned goals 10.8 µm, p90 60 µm. A misassignment map over the box
   puts the bad region at L1 ≤ −22 (deep compression, problem 3) and at the clipped large-spacing corner;
-  `results/s2_screen_diag_2026-10-15/REPORT.md`. S2 is measurement-limited. Box restriction is Ryan's call (it would
+  `results/2_surrogate_screen/s2_screen_diag_2026-10-15/REPORT.md`. S2 is measurement-limited. Box restriction is Ryan's call (it would
   exclude the matched operating point L1 ≈ −22.35). S2 v5 seeds 1–2 launched on GPU0.
 - 00:50 S1 seeds (corrected eval, final policies, incl. off-context goals): blen_dlog s0–s3 5.0 / 4.6 / 5.0 / 4.9 µm
   true median (80–83% within 10 µm); adapter s0–s1 5.0 / 4.9 µm (80–82%). Seed spread is small, and the two
@@ -196,7 +196,7 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
 - 02:30 split-ambiguity diagnostic `cut_sens` (spacing change when the energy cut moves ±2 px; sim + online, off by
   default). Sim: AUC 0.875 for bias > 10 µm; a 3.3 µm threshold keeps 70% and cuts the bias p90 40 → 12 µm. Real
   replay: it does NOT catch the TEST_15668 valley jumps (2.8 / 2.8 / 1.4 µm vs clean 0.1–2.2) and would flag most of
-  E300_15673's large-spacing steps → not adopted (`results/online_replay_v5_2026-10-15/REPORT.md`).
+  E300_15673's large-spacing steps → not adopted (`results/4_daq_realism/online_replay_v5_2026-10-15/REPORT.md`).
 - 02:30 S2 v5 seeds (blen_dlog): s0 8.7 / s1 9.2 / s2 8.3 µm true median spacing error, 57 / 53 / 59% within 10 µm.
 - 02:45 S2 v5 adapter s0: 8.8 µm / 55%, equal to blen_dlog in screen mode too. Launched two S2 ablations: 600 iters
   (GPU0; the 300-iter curve is still drifting down) and spacing-only goal (GPU1; σz goal removed, since the blurred
@@ -210,7 +210,7 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
   measurement-limited tail). GPUs now idle, left for the post-campaign fine-tunes.
 - 08:20 fine-tunes ft_s0/ft_s1 running (≈1.8 min/epoch → 150 epochs done ~12:40; then ft_s2 + scratch_s0, whose
   500 epochs take ~15 h). After 6 epochs: val_paired_delta_rms 13.8 → 11.8 µm (signal 14.3 µm), old-val spacing MAE
-  flat at ~9 µm. Gate baseline on the widened (= old) flow (`results/surrogate_gates_2026-10-15/widened_base/`):
+  flat at ~9 µm. Gate baseline on the widened (= old) flow (`results/2_surrogate_screen/surrogate_gates_2026-10-15/widened_base/`):
   old-val spacing MAE 9.1 µm (CRN 2048 particles; the 7.4 µm smoke value used another metric), σz rel 10.7%;
   test pairs n=48, R² −0.03 (signal 15.7 µm) → paired-Δ gate FAIL, T-calibration 0.021 → FAIL (by 0.001). As
   expected, the old flow has no injector dependence.
@@ -230,7 +230,7 @@ CPUs belong to the campaign (64 workers, nice 10) — other CPU work kept light;
    (c) blen_dlog vs adapter: equal in S1 and S2, keep blen_dlog (Ryan's choice)?
    (d) the screen σz goal (blurred; ~38% within 10%) is cheap to keep (spacing-only is no better).
 3. The scratch_s0 control (500 epochs) takes ~15 h after the fine-tunes; stop it if the GPUs are needed.
-- 10:40 (Ryan back) bunch-split figures (`results/bunch_split_changes_2026-10-15/`). While making them, found that the
+- 10:40 (Ryan back) bunch-split figures (`results/2_surrogate_screen/bunch_split_changes_2026-10-15/`). While making them, found that the
   v3 summed-+V step cut caused 3 valley jumps on TEST_15668 (steps 25/26/29) that the per-image cuts did not have.
   The online default is now the median of the per-image +V cuts (replay v6): E300_15673 stays fixed, the TEST jumps
   are gone, and all 33 TEST steps are kept.

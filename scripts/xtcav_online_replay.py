@@ -9,7 +9,7 @@ separations, their shot-to-shot scatter (-> the env's per-image shot noise), and
 step-level estimate at M images per sign (-> the env's per-step noise).
 
   PYTHONPATH=$PWD/src OMP_NUM_THREADS=1 nice -n 10 /home/rwu4/miniconda3/envs/bmad-qpad-dev/bin/python \
-      scripts/xtcav_online_replay.py E300_15671 --out results/online_replay_2026-10-15
+      scripts/xtcav_online_replay.py E300_15671 --out results/4_daq_realism/online_replay_2026-10-15
 """
 from __future__ import annotations
 

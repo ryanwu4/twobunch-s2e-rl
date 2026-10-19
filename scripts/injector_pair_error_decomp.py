@@ -2,7 +2,7 @@
 golden-injector reference row at the same linac knobs (e_ref), their correlation (the cancellation in the
 difference), and the flow's absolute error on the OLD xtcav23 rows (golden injector, 1e5) by train / val role.
 
-  PYTHONPATH=src python scripts/injector_pair_error_decomp.py --out results/injector_flow_analysis_2026-10-15
+  PYTHONPATH=src python scripts/injector_pair_error_decomp.py --out results/2_surrogate_screen/injector_flow_analysis_2026-10-15
 """
 from __future__ import annotations
 

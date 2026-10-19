@@ -14,7 +14,7 @@ inputs, run in a subprocess because two cheetahs cannot share one process):
              exist), plus a secondary getBeamSpecs-style check on data/xtcav23_full (XTCAVF beams +
              the campaign's PENT getBeamSpecs in each sample json; no PENT beams were saved).
 
-Outputs: results/segment_validation_084/*.json (assumptions in NOTES.md there).
+Outputs: results/2_surrogate_screen/segment_validation_084/*.json (assumptions in NOTES.md there).
 
 Run (slac-rl env, cheetah-accelerator==0.8.4):
   cd twobunch-s2e-rl

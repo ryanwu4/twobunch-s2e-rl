@@ -6,7 +6,7 @@
 # Then, once the B2-cov RL chain is done: the B2-cov direct-L1 + BLEN S2 s0 policy, golden + inj.
 cd "$(dirname "$0")/.."
 PY=/home/rwu4/miniconda3/envs/slac-rl/bin/python
-OUT=results/closed_loop_bmad_2026-10-17
+OUT=results/3_rl_eval/closed_loop_bmad_2026-10-17
 mkdir -p $OUT
 until grep -q "^Done:" logs/injector_cov_2026-10-16/run.log; do
   kill -0 $(cat logs/injector_cov_2026-10-16/run.pid) 2>/dev/null || { echo "campaign gone without Done"; break; }; sleep 120; done

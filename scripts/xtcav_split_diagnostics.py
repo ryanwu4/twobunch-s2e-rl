@@ -12,7 +12,7 @@ and compares three ways of placing the split on each axis against the macroparti
 for the energy axis y (energy gate) and the streak axis x (z-lobe split). Misassignment = fraction
 of total charge put in the wrong bunch.
 
-  PYTHONPATH=$PWD/src python scripts/xtcav_split_diagnostics.py --out results/xtcav_split_2026-10-14
+  PYTHONPATH=$PWD/src python scripts/xtcav_split_diagnostics.py --out results/2_surrogate_screen/xtcav_split_2026-10-14
 """
 from __future__ import annotations
 

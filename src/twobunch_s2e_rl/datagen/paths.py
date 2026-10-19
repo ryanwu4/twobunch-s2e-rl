@@ -39,7 +39,7 @@ def results_dir() -> Path:
 
 
 def campaign_dir(name: str) -> Path:
-    """Per-campaign output folder, e.g. results/tightbox_v2_full/."""
+    """Per-campaign output folder, e.g. results/1_datagen/tightbox_v2_full/."""
     d = results_dir() / name
     d.mkdir(parents=True, exist_ok=True)
     return d

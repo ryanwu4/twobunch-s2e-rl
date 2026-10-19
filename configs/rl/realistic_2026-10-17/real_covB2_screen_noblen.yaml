@@ -1,4 +1,4 @@
-# noblen: realistic operation (scripts/make_realistic_rl_configs_2026-10-17.py, results/realism_2026-10-17)
+# noblen: realistic operation (scripts/make_realistic_rl_configs_2026-10-17.py, results/4_daq_realism/realism_2026-10-17)
 params:
   diff_env:
     name: DeltaControlEnv

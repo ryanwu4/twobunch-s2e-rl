@@ -9,7 +9,7 @@ R=logs/2026-10-18/realistic
 until grep -q "realistic RL done" logs/2026-10-18/realistic_chain.log 2>/dev/null; do
   kill -0 $(cat logs/2026-10-18/realistic_chain.pid) 2>/dev/null || { echo "RL chain gone"; break; }; sleep 300; done
 echo "[$(date +%H:%M)] RL done"
-EV=results/eval_realistic_2026-10-18; mkdir -p $EV
+EV=results/3_rl_eval/eval_realistic_2026-10-18; mkdir -p $EV
 STRESS=(--set v4.drift_per_step.L1PhaseSet=0.07 --set v4.drift_per_step.L2PhaseSet=0.10 --set v4.drift_ramp.L1PhaseSet=0.08
         --set v4.drift_ramp.L2PhaseSet=0.07 --set 'v4.jumps={"L2PhaseSet": [0.05, 0.6]}')
 one() {  # run gpu
@@ -30,11 +30,11 @@ best() {  # kind -> best seed run name
   $PY - "$1" <<'PY'
 import json, sys, glob
 k = sys.argv[1]
-c = [(json.load(open(f))["settled_within_10um"], f.split("/")[-2][:-5]) for f in glob.glob(f"results/eval_realistic_2026-10-18/real_covB2_screen_{k}_s*_cont/summary.json")]
+c = [(json.load(open(f))["settled_within_10um"], f.split("/")[-2][:-5]) for f in glob.glob(f"results/3_rl_eval/eval_realistic_2026-10-18/real_covB2_screen_{k}_s*_cont/summary.json")]
 print(max(c)[1] if c else "")
 PY
 }
-OUT=results/closed_loop_bmad_2026-10-18; mkdir -p $OUT
+OUT=results/3_rl_eval/closed_loop_bmad_2026-10-18; mkdir -p $OUT
 cl() {  # run mode
   local L=$R/$1
   PYTHONPATH=$PWD/src OMP_NUM_THREADS=2 $PY -m twobunch_s2e_rl.rl.closed_loop_bmad --logdir $L --mode $2 --plant flow --k 24 --device cuda:1 --out $OUT/$1_$2_flow > $OUT/$1_$2_flow.log 2>&1

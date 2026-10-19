@@ -572,8 +572,8 @@ def fig_gates():
 
 
 def fig_jitter():
-    rows = json.loads(Path("results/jitter_mc_2026-10-18/bmad/bmad_rows.json").read_text())
-    summ = json.loads(Path("results/jitter_mc_2026-10-18/bmad/bmad_summary.json").read_text())
+    rows = json.loads(Path("results/4_daq_realism/jitter_mc_2026-10-18/bmad/bmad_rows.json").read_text())
+    summ = json.loads(Path("results/4_daq_realism/jitter_mc_2026-10-18/bmad/bmad_summary.json").read_text())
     pts = sorted({r["point"] for r in rows})
     mk = ["o", "s", "^"]
     fig, axes = plt.subplots(1, 3, figsize=(16, 5.2))

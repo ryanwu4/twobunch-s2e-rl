@@ -11,8 +11,8 @@ OUT=processed/xtcav23e_inj_topup_2026-10-16.h5
 [ -e $OUT ] || PYTHONPATH=$PWD/src OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 nice -n 10 /home/rwu4/miniconda3/envs/slac-rl/bin/python -m twobunch_s2e_rl.surrogate.preprocess \
   --subdir xtcav23_full,xtcav23_pilot,injector_full,injector_topup --sweep-set xtcav23e_l0b2_inj12 --treaty-point XTCAVF \
   --transmission per_sample --P 1024 --out $OUT --allow-fixed-mismatch num_macro_particles \
-  --campaign-json xtcav23_full=results/injector_pilot_2026-10-14/campaign_backfill/xtcav23_full.json \
-  --campaign-json xtcav23_pilot=results/injector_pilot_2026-10-14/campaign_backfill/xtcav23_pilot.json > logs/surrogate/preprocess_topup_2026-10-16.log 2>&1
+  --campaign-json xtcav23_full=results/1_datagen/injector_pilot_2026-10-14/campaign_backfill/xtcav23_full.json \
+  --campaign-json xtcav23_pilot=results/1_datagen/injector_pilot_2026-10-14/campaign_backfill/xtcav23_pilot.json > logs/surrogate/preprocess_topup_2026-10-16.log 2>&1
 echo "[$(date +%H:%M)] preprocess: $(tail -2 logs/surrogate/preprocess_topup_2026-10-16.log | head -1)"
 PYTHONPATH=$PWD/src OMP_NUM_THREADS=4 /home/rwu4/miniconda3/envs/slac-rl/bin/python - <<'PY'
 import json, numpy as np

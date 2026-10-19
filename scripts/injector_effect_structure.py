@@ -4,7 +4,7 @@ the same injector point, scaled by the linac's compression? Fits Delta_pair ~ a 
 Delta_pair ~ a * Delta_cross * (s_ref / s_golden), and a linear model in the injector knobs with linac-dependent
 coefficients (inj x linac interactions), to say what kind of model / data the interaction needs.
 
-  PYTHONPATH=src python scripts/injector_effect_structure.py --out results/injector_flow_analysis_2026-10-15
+  PYTHONPATH=src python scripts/injector_effect_structure.py --out results/2_surrogate_screen/injector_flow_analysis_2026-10-15
 """
 from __future__ import annotations
 

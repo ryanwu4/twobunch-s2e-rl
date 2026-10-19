@@ -16,7 +16,7 @@ params:
     screen:
       spec: configs/segment/segment_baseline.json
       tdc_voltage_V: 22.0e6
-      split: energy              # valley-threshold energy gate (deployed rule); see results/xtcav_split_2026-10-14
+      split: energy              # valley-threshold energy gate (deployed rule); see results/2_surrogate_screen/xtcav_split_2026-10-14
       threshold: valley
       row_correct: true          # deployed off-shot row-distortion correction
       extra_resolution_m: 15.0e-6   # real drive sigma_eff 17-21 um vs ~9-10 um sim after row correction

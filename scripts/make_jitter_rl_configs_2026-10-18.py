@@ -1,8 +1,8 @@
 """Jitter-aware realistic RL configs: the realistic noblen / bc11loop v3 configs + beam-side per-step phase wander +
-the Monte-Carlo jitter map (results/jitter_mc_2026-10-18), with the constant per-image spacing shot noise reduced to the
+the Monte-Carlo jitter map (results/4_daq_realism/jitter_mc_2026-10-18), with the constant per-image spacing shot noise reduced to the
 camera / analysis part (the map carries the jitter part).
 
-  python scripts/make_jitter_rl_configs_2026-10-18.py --map results/jitter_mc_2026-10-18/<map>.npz --camera-sigma-um 8 \
+  python scripts/make_jitter_rl_configs_2026-10-18.py --map results/4_daq_realism/jitter_mc_2026-10-18/<map>.npz --camera-sigma-um 8 \
       --wander-deg 0.1 --tag jit
 """
 import argparse

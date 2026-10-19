@@ -49,10 +49,10 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
 - 22:30 fine-tunes A (centroid + pair + two-part T) and A2 (centroid + pair) running on GPU0.
 - 21:47 scratch control stopped; `direct_rb` actuator + test; direct-L1 configs (S1 cloud, S2 v6).
 - 22:40 A / A2 restarted at 40 epochs (`trained/xtcav23e_inj_pair{A,A2}40_2026-10-16`; 80 epochs was ~5 min/epoch with two runs on GPU0, ETA 04:50). The partial 80-epoch dirs are marked ABORTED.
-- 22:45 L1 review (agent; `results/l1_direct_review_2026-10-16/REPORT.md`): no L1 multiknob in any DAQ run (all scan L2_PHASE.MKB); the BC11 energy loop appears to act on KLYS_LI11_21 amplitude; FAST_PACT is the klystron phase, so it must not reveal the beam-side gain; loop-off drift is a ramp invisible to PACT; recommends a BC11 BLEN observation. The v1 `direct_rb` leaked the hidden gain: S2 v6 l1direct v1 stopped (ABORTED); the S1 v1 run is kept for reference only. v2 actuator (klystron-side readback gain U(0.95, 1.05), RW 0.025 + ramp U(±0.05)°/step) queued on GPU1 after S2 v6 blen_dlog.
+- 22:45 L1 review (agent; `results/3_rl_eval/l1_direct_review_2026-10-16/REPORT.md`): no L1 multiknob in any DAQ run (all scan L2_PHASE.MKB); the BC11 energy loop appears to act on KLYS_LI11_21 amplitude; FAST_PACT is the klystron phase, so it must not reveal the beam-side gain; loop-off drift is a ramp invisible to PACT; recommends a BC11 BLEN observation. The v1 `direct_rb` leaked the hidden gain: S2 v6 l1direct v1 stopped (ABORTED); the S1 v1 run is kept for reference only. v2 actuator (klystron-side readback gain U(0.95, 1.05), RW 0.025 + ramp U(±0.05)°/step) queued on GPU1 after S2 v6 blen_dlog.
 - Cross-flow eval tooling (`eval_delta --flow-ckpt --de-yaml`); injector context fragment `configs/rl/eval/injector_ctx_2026-10-16.yaml` (decision 2). Smoke: the S1 blen_dlog s0 old-flow policy on ftc_s0 + injector context gets 5.6 µm (own env 5.0).
 - Scorecard made campaign-aware, with bootstrap CIs; ftc_s0 test-pair R² 0.76, CI [0.57, 0.86] (n = 48).
-- 23:00 BLEN model v1 (agent; `results/blen_model_2026-10-16/REPORT.md`):
+- 23:00 BLEN model v1 (agent; `results/4_daq_realism/blen_model_2026-10-16/REPORT.md`):
   - The BC11 BLEN is a **witness-length** monitor above ~0.3 THz.
   - DAQ-consistent detector band ≲ 1 THz; there g ≈ 3.7–4.6 deg/ln at the operating point and 2.8–3.7 at −22 to −24° (upper end of the env's U(1.5, 4), state-dependent ~1.7×).
   - Drive fraction ±0.07 → ∓1° L1 through a closed BC11 loop.
@@ -66,7 +66,7 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
   - S2 v6 blen_dlog 600 it s0: 7.0 µm / 63% (v5 600 it: 7.2–7.6 / 61–63%), so the −V energy axis is neutral;
   - S1 direct-L1 v1 s0: 5.1 µm / 77% (leaky readback, reference only; blen_dlog 4.6–5.0).
   - Direct-L1 v2 S1 running, then S2 v6 v2.
-- 01:40 scorecard (`results/surrogate_scorecard_2026-10-16/A/scorecard.md`, v2 table, frozen split), ftc_s0 → A best:
+- 01:40 scorecard (`results/2_surrogate_screen/surrogate_scorecard_2026-10-16/A/scorecard.md`, v2 table, frozen split), ftc_s0 → A best:
   - val pairs (selection, n = 31) R² 0.68 → 0.73, slope 0.61 → 0.64;
   - test pairs (n = 48, quoted once) R² 0.76 [0.56, 0.87] → 0.84 [0.70, 0.90], slope 0.68 → 0.72, p90 12.7 → 10.3 µm;
   - train pairs R² 0.74 → 0.85, slope 0.72 → 0.81;
@@ -77,7 +77,7 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
   Gates: old-val ✓, T ✓, pairs ✗ (slope < 0.85, p90 > 8 µm). A2 (pair loss only) matches A on everything but T.
 - 01:30 top-up done (1000 ok, 0 failed, 3.7 h). Bmad tracking of the golden-injector check started 01:34.
 - 01:55 B / B2 relaunched on `processed/xtcav23e_inj_topup_v2_2026-10-16.h5`; cross-eval of all policies on flow A started (GPU0).
-- 02:25 direct-L1 v2 (old flow, seed 0, true median / within 10 µm): S1 6.0 µm / 73% (blen_dlog 4.6–5.0 / 80–83%); S2 v6 8.1 µm / 58% (blen_dlog 7.0 / 63%). About 1 µm worse than blen_dlog: the beam-side gain is hidden from the readback and the hidden drift ramps (no BC11 loop). The BC11 BLEN observation the L1 review recommends (now modellable, `results/blen_model_2026-10-16`) is the natural next step for this variant. GPU1 → exploratory injector-flow S1 / S2 on flow A.
+- 02:25 direct-L1 v2 (old flow, seed 0, true median / within 10 µm): S1 6.0 µm / 73% (blen_dlog 4.6–5.0 / 80–83%); S2 v6 8.1 µm / 58% (blen_dlog 7.0 / 63%). About 1 µm worse than blen_dlog: the beam-side gain is hidden from the readback and the hidden drift ramps (no BC11 loop). The BC11 BLEN observation the L1 review recommends (now modellable, `results/4_daq_realism/blen_model_2026-10-16`) is the natural next step for this variant. GPU1 → exploratory injector-flow S1 / S2 on flow A.
 - 03:05 **golden-injector Bmad check** (open loop, 24 final settings per policy, 1e5 particles, CPU; `results/rl/<run>/bmad_check_2026-10-16/compare.json`). Bmad |spacing − goal| median / drive σz rel error vs goal; surrogate-vs-Bmad spacing rel error:
 
   | policy | spacing vs goal | σz vs goal | surrogate vs Bmad |
@@ -93,9 +93,9 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
   - S2 v6 blen_dlog: 8.1 / 57% (golden 8.1).
 
   No gain over the old-flow policies evaluated on flow A (S1 4.9–5.9). Note: flow A's two-part T head predicts T ≈ 1.000 across the controller box, so the T hinge is effectively inactive there (it no longer reports the small mean losses the MSE head did). Seed 1 of both is running on GPU1.
-- 04:30 **cross-eval complete** (`results/cross_eval_2026-10-16/flowA/TABLE.md`): S1 policies are robust to DAQ-level injector variation on flow A (≤ +0.5 µm); S2 loses 1–2 µm (600-it 7.2–7.4 → 7.9–9.2 µm; v6 7.3 → 8.7; direct-L1 v2 S2 8.0 → 11.2). The flow-A-trained exploratory S2 (8.1 µm) is in the same range: no gain yet from training on the injector-aware flow (seed 1 running).
+- 04:30 **cross-eval complete** (`results/3_rl_eval/cross_eval_2026-10-16/flowA/TABLE.md`): S1 policies are robust to DAQ-level injector variation on flow A (≤ +0.5 µm); S2 loses 1–2 µm (600-it 7.2–7.4 → 7.9–9.2 µm; v6 7.3 → 8.7; direct-L1 v2 S2 8.0 → 11.2). The flow-A-trained exploratory S2 (8.1 µm) is in the same range: no gain yet from training on the injector-aware flow (seed 1 running).
 - 05:40 exploratory injflow seed 1: S1 4.7 µm / 81%, S2 v6 8.5 / 57%. Two seeds: S1 4.7–5.2 µm, S2 8.1–8.5 µm, in line with the old-flow policies evaluated on flow A + injector context (S1 4.9–5.9, S2 7.9–9.2). GPU1 idle now; B / B2 on GPU0 until ~07:15.
-- 06:30 **B / B2 scorecard** (`results/surrogate_scorecard_2026-10-16/B/scorecard.md`; top-up v2 table, frozen split; val 93 pairs = selection, test 117, original-48 subset):
+- 06:30 **B / B2 scorecard** (`results/2_surrogate_screen/surrogate_scorecard_2026-10-16/B/scorecard.md`; top-up v2 table, frozen split; val 93 pairs = selection, test 117, original-48 subset):
 
   | pairs | ftc_s0 | A | B (w_pair 1) | **B2 (w_pair 3)** | gate |
   |---|---|---|---|---|---|
@@ -108,7 +108,7 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
   B2: old-val spacing 4.33 µm ✓, σz 0.109 ≤ 0.112 ✓, T calibration 0.0035 ✓, other observables unchanged. Both the top-up data (A → B) and the pair weight (B → B2) help.
 - 06:35 decision 5: time-boxed pair-weight push from B2 (C = w_pair 6, C2 = w_pair 10; 25 epochs; GPU0; ETA ~09:45) to try the slope gate. B2 is the current best flow regardless.
 - 07:10 direct-L1 v2 on flow A + injector context (seed 0): S1 5.4 µm / 78% (blen_dlog 4.7–5.2); **S2 v6 12.8 / 43%** (blen_dlog 8.1–8.5). Training completed (600 it); the loss was ~5% above blen_dlog's. In screen mode the direct-L1 variant has no beam-side L1 signal (the beam gain is hidden from FAST_PACT and the drift ramp is invisible), and injector variation adds L1-like shifts; the BC11 BLEN observation is the missing piece.
-- 08:45 **C / C2 (pair weight 6 / 10, from B2)** (`results/surrogate_scorecard_2026-10-16/C/scorecard.md`):
+- 08:45 **C / C2 (pair weight 6 / 10, from B2)** (`results/2_surrogate_screen/surrogate_scorecard_2026-10-16/C/scorecard.md`):
   - val pairs: C 0.85 / 0.82 / 8.2 µm; C2 0.87 [0.80, 0.91] / 0.83 / 7.7 µm (R² / slope / p90);
   - test: C 0.90 / 0.85 / 7.7; C2 0.90 / 0.85 / 7.6;
   - train pairs: C2 0.94 / 0.92.
@@ -122,4 +122,4 @@ Ground rules as before: `dev/2026-10-13`, commit per step, never push; new outpu
 - 12:58 **injector coverage campaign launched** (Ryan: option (c)): `configs/datagen/injector_cov_2026-10-16.yaml`, 125 full-box + 125 DAQ-context injector points (new `design.injector.local`: LHS + inverse CDF of `configs/rl/eval/injector_ctx_2026-10-16.yaml`, clipped to the box) × 8 nested (50% controller) + 25% golden pairs; 2751 Bmad / 251 Impact-T, 5e4 / grid 64, 64 workers, ~12 h. Out `data/injector_cov_2026-10-16`, logs `logs/injector_cov_2026-10-16`, worktree `.worktrees/injector_cov_3aa2158238`, launcher `scripts/launch_injector_cov_2026-10-16.sh` (resumable).
   - Note: the inj12 box already spans ≈ ±2–3σ of the DAQ spread on 7 of 12 knobs, so the local stratum changes the density (centre-weighted), and is tighter only on the passive knobs (σ_xy, truncation, MTE, σ_t).
   - For training: the new campaign's groups are not in the frozen role map; extend it (pre-registered holdout = test, split the rest by injector point) before preprocessing.
-- 17:30 Ryan: flow = **B2, trained on the expanded dataset**. `scripts/after_injector_cov_2026-10-16.sh` waits for the campaign, then: preprocess old + injector_full + topup + cov → `processed/xtcav23e_inj_cov_2026-10-17.h5`; split check (frozen old roles reproduced; new rows group-split by injector point within the campaign, holdout → test; new pairs grouped with their nested row); fine-tune **B2-cov** = B2's recipe exactly (warm from A best, w_pair 3, 40 ep cosine, lr 3e-5) on the new table → `trained/xtcav23e_inj_covB2_2026-10-17` (GPU0); scorecards vs B2 on the 10-16 table (same val / test rows) and on the new table → `results/surrogate_scorecard_2026-10-17/`. Dry run on the partial campaign (462 new rows): preprocess, split check (new rows 383 / 43 / 36) and scorecard all pass. Scorecard fix: crossed injector rows now pair with their own campaign's golden crossed row (was always injector_full's: a different Tao seed for new campaigns).
+- 17:30 Ryan: flow = **B2, trained on the expanded dataset**. `scripts/after_injector_cov_2026-10-16.sh` waits for the campaign, then: preprocess old + injector_full + topup + cov → `processed/xtcav23e_inj_cov_2026-10-17.h5`; split check (frozen old roles reproduced; new rows group-split by injector point within the campaign, holdout → test; new pairs grouped with their nested row); fine-tune **B2-cov** = B2's recipe exactly (warm from A best, w_pair 3, 40 ep cosine, lr 3e-5) on the new table → `trained/xtcav23e_inj_covB2_2026-10-17` (GPU0); scorecards vs B2 on the 10-16 table (same val / test rows) and on the new table → `results/2_surrogate_screen/surrogate_scorecard_2026-10-17/`. Dry run on the partial campaign (462 new rows): preprocess, split check (new rows 383 / 43 / 36) and scorecard all pass. Scorecard fix: crossed injector rows now pair with their own campaign's golden crossed row (was always injector_full's: a different Tao seed for new campaigns).

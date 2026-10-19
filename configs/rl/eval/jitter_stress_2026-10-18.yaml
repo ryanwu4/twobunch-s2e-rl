@@ -1,7 +1,7 @@
 # Eval condition (stress): 2024 jitter-sheet map (1.5-2x the DAQ-consistent per-image scatter), camera 2.7 um/image,
 # 2x the DAQ step wander (L1 0.20 / L2 0.30 deg), 5% outlier steps.
 v4:
-  jitter_map: results/jitter_mc_2026-10-18/jitter_map_2024u.npz
+  jitter_map: results/4_daq_realism/jitter_mc_2026-10-18/jitter_map_2024u.npz
   phase_wander: {L1PhaseSet: 0.20, L2PhaseSet: 0.30}
 measurement:
   shot_noise: {bunch_spacing: 2.7e-6}

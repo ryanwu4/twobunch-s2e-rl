@@ -36,4 +36,4 @@ for L1 in (-24.0,-22.0,-20.3):
         res.append(row)
 for r in res:
     print(f"L1 {r['L1']:6.1f} L2 {r['L2']:6.1f}: spacing {r['spacing_um']:6.1f} um | per-shot sigma 2024 {r['sigma_2024_um']:5.1f} um, 2025 {r['sigma_2025_um']:5.1f} um | top 2024: " + ", ".join(f"{k.split(':')[-1][:14]} {v:.1f}" for k,v in r['top_2024']))
-json.dump(res, open("results/jitter_sheet_check_2026-10-18/res.json","w"), indent=1, default=float)
+json.dump(res, open("results/4_daq_realism/jitter_sheet_check_2026-10-18/res.json","w"), indent=1, default=float)

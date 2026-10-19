@@ -133,7 +133,7 @@ def screen_features(xp_d, xm_d, y_d, xp_w, xm_w, y_w, q_d, q_w, *, streak: float
                   change when the cut moves by +-cut_sens_px pixels.
       ym_d, ym_w (None = off): the -V image's own energy axis. The TCAV's Panofsky-Wenzel energy kick
                   (dE ~ +-eVk x in the cavity) shifts / stretches / warps the energy axis with opposite signs
-                  for +V and -V (results/bunch_split_changes_2026-10-15/pm_asymmetry). With them, the -V image
+                  for +V and -V (results/2_surrogate_screen/bunch_split_changes_2026-10-15/pm_asymmetry). With them, the -V image
                   uses its own y: the energy cut found on the +V image is applied to -V relative to each
                   image's charge centroid (as the deployed auto-crop aligns the frames), the ROI / row
                   correction use each image's own rows, and the energy quantities average the two images.

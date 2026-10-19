@@ -23,7 +23,7 @@ S1=configs/rl/l1blen_2026-10-16/injflow_covB2_cloud_l1blen.yaml
 (SEED=1 bash scripts/run_queue.sh 1 $R $S2 $S1) > $R/gpu1.log 2>&1 &
 wait
 echo "[$(date +%H:%M)] training done"
-EV=results/cross_eval_2026-10-17/covB2; mkdir -p $EV
+EV=results/3_rl_eval/cross_eval_2026-10-17/covB2; mkdir -p $EV
 for L in $R/injflow_covB2_screen_v6_l1blen_s0 $R/injflow_covB2_screen_v6_l1blen_s1 $R/injflow_covB2_cloud_l1blen_s0 \
          $R/injflow_covB2_cloud_l1blen_s1 logs/2026-10-16/injflow/injflow_flowA_screen_v6_blen_s0 \
          logs/2026-10-16/injflow/injflow_flowA_cloud_blen_s1 logs/2026-10-16/l1blen/injflow_flowA_screen_v6_l1blen_s0 \

@@ -5,7 +5,7 @@ noise, beam-side phase wander, 2.5% outlier steps) with the setpoint radius doub
 real slews. 64 episodes are rolled out; the shown one is the episode with >= 3 setpoints and >= 1 slew > 80 um whose
 median settled error is closest to the median over those episodes (representative, not the best).
 Panels: spacing vs step (true, readings, goal +-10 um), the beam's longitudinal phase space at XTCAVF (surrogate
-sample at the true controls), the L1/L2 path. Output results/slew_gif_2026-10-19/slew.gif (+ a final-frame png).
+sample at the true controls), the L1/L2 path. Output results/5_reports/slew_gif_2026-10-19/slew.gif (+ a final-frame png).
 
   PYTHONPATH=src python scripts/slew_gif_2026-10-19.py [--device cuda:0]
 """
@@ -28,7 +28,7 @@ from twobunch_s2e_rl.surrogate.model import TwoBunchFlow  # noqa: E402
 
 LOGDIR = "logs/2026-10-18/night/zs_screen_noblen_jit_s0"
 NOM = "configs/rl/eval/jitter_nominal_2026-10-18.yaml"
-OUT = Path("results/slew_gif_2026-10-19")
+OUT = Path("results/5_reports/slew_gif_2026-10-19")
 K, STEPS = 64, 96
 STEP_S = 20.0                                    # one controller step ~ 20 s (DAQ realism)
 C_TRUE, C_MEAS, C_GOAL, C_DRV, C_WIT = "#4dabf7", "#ffa94d", "#e9ecef", "#4dabf7", "#ffa94d"

@@ -4,7 +4,7 @@ and the golden-h5 (old campaigns) vs Impact-T-golden bridge offset.
 Usage (bmad-qpad-dev env: torch + pmd_beamphysics; repo root):
   PYTHONPATH=$PWD/src MPLBACKEND=Agg /home/rwu4/miniconda3/envs/bmad-qpad-dev/bin/python \
       scripts/injector_pilot_analysis.py [--data data/injector_pilot_2026-10-14] \
-      [--out results/injector_pilot_2026-10-14] [--study data/injector_sensitivity_2026-10-14]
+      [--out results/1_datagen/injector_pilot_2026-10-14] [--study data/injector_sensitivity_2026-10-14]
 
 Observables at XTCAVF are computed from the saved clouds with the SAME function as the
 sensitivity study (scripts/injector_sensitivity.py::observables; surrogate/properties.py kernels,
@@ -158,7 +158,7 @@ def plot(P: pd.DataFrame, out: Path):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data", default="data/injector_pilot_2026-10-14")
-    ap.add_argument("--out", default="results/injector_pilot_2026-10-14")
+    ap.add_argument("--out", default="results/1_datagen/injector_pilot_2026-10-14")
     ap.add_argument("--study", default="data/injector_sensitivity_2026-10-14")
     a = ap.parse_args()
     data, out, study = Path(a.data), Path(a.out), Path(a.study)

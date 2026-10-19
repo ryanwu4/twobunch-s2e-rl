@@ -138,7 +138,7 @@ params:
       phase_wander:
         L1PhaseSet: 0.15
         L2PhaseSet: 0.22
-      jitter_map: results/jitter_mc_2026-10-18/jitter_map_2024u.npz
+      jitter_map: results/4_daq_realism/jitter_mc_2026-10-18/jitter_map_2024u.npz
     screen:
       spec: configs/segment/segment_baseline.json
       tdc_voltage_V: 22000000.0

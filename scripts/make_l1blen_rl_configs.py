@@ -1,7 +1,7 @@
 """Direct-L1 + BLEN-observation RL configs (2026-10-16, Ryan: the beamtime design after the ops notes): ops tune L1 by
 hand with KLYS:LI11:{11,21}:PREQ (common mode) with the BC11 BLEN loop off and then re-lock the loop, so the controller
 moves L1 directly (direct_rb, as direct-L1 v2) and OBSERVES the free BC11 BLEN plus the BC14 BLEN (readback of the
-realised L2; BC14 loop off with the L2 multiknob). BLEN model v1 (results/blen_model_2026-10-16):
+realised L2; BC14 loop off with the L2 multiknob). BLEN model v1 (results/4_daq_realism/blen_model_2026-10-16):
   BC11 (DAQ-band fit, golden-injector rows): ln S = -0.218 d + 0.0246 d^2 + 0.00233 d^3, d = L1 + 20.29 deg; hidden
        per-episode slope scale U(0.8, 1.3); noise 0.025 ln per log-ratio (shot rms ~5% / sqrt(30), 0.015 model floor,
        x sqrt 2 for the start reading)

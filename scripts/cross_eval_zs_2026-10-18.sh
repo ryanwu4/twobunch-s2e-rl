@@ -3,7 +3,7 @@
 # each after its own validation (orchestrator) has run, so it never competes with training for GPU memory.
 cd "$(dirname "$0")/.."
 ZS=trained/xtcav23e_inj_covB2zs_2026-10-18/checkpoints/best-step=09500-val_paired_delta_rms_um=4.6991.ckpt
-EV=results/eval_realistic_2026-10-18
+EV=results/3_rl_eval/eval_realistic_2026-10-18
 for spec in "real_covB2_screen_noblen_s0:0" "real_covB2_screen_bc11loop_s0:1" "real_covB2_screen_noblen_s1:0" "real_covB2_screen_bc11loop_s1:1"; do
   n=${spec%%:*}; g=${spec#*:}
   until grep -q "validated $n" logs/2026-10-18/orchestrate.log 2>/dev/null; do sleep 300; done

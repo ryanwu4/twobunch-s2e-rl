@@ -86,7 +86,7 @@ B5D36 field convention, readback-offset semantics, v1 checkpoint, xtcav-gpsr-tun
     +V image gave spacing with the wrong sign (transverse offsets read as time).
 12. **[SUPERSEDED 2026-10-14: decision D2 = valley energy gate; the ~13% "misassignment everywhere" came from the
     centroid-midpoint threshold. With the valley rule the energy gate beats z-lobe over the start box (53% vs 31% of
-    cells < 10% misassigned; `results/s2_screen_diag_2026-10-15/REPORT.md`).]**
+    cells < 10% misassigned; `results/2_surrogate_screen/s2_screen_diag_2026-10-15/REPORT.md`).]**
     **Bunch split = z-lobe, not energy gate, for screen training.** In sim the bunches overlap in
     energy at DTOTR: the energy gate misassigns ~13 % of charge everywhere in the start box (0 %
     valid). The z-lobe split (gate on each image's streak axis) gives 67 % valid over the start box,
@@ -125,7 +125,7 @@ B5D36 field convention, readback-offset semantics, v1 checkpoint, xtcav-gpsr-tun
 | 01:53–01:56 | 2 | sim/bmad.py, run_sweep on it (`ab33c02`); validate_delta export/track/compare (`53c7c31`), smoke-tested end to end at 5k particles. |
 
 | 02:03 | 3 | Cloud seed 0 finished (300 iters, 30 min); screen seed 1 started on GPU 0. |
-| 02:05 | 2 | **PENT gate passes**: Cheetah XTCAVF→PENT vs Bmad on all 56 finished valgate samples, every observable ≤ 8e-7 relative (`results/segment_validation_084/pent_valgate.json`). |
+| 02:05 | 2 | **PENT gate passes**: Cheetah XTCAVF→PENT vs Bmad on all 56 finished valgate samples, every observable ≤ 8e-7 relative (`results/2_surrogate_screen/segment_validation_084/pent_valgate.json`). |
 | 02:10 | 4 | Surrogate YAML config + knob_keys/treaty_point hparams (`ae68b63`); campaign.json writer for new campaigns (`6ece2ae`). |
 | 02:19 | 3 | **Cloud delta controller Bmad check**: 24/24 setpoints tracked (20k particles), see Results. |
 

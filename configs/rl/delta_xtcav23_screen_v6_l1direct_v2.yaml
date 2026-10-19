@@ -1,4 +1,4 @@
-# Direct-L1 v2 (overnight 2026-10-16, after results/l1_direct_review_2026-10-16): L1 PDES moved directly, BC11 BLEN
+# Direct-L1 v2 (overnight 2026-10-16, after results/3_rl_eval/l1_direct_review_2026-10-16): L1 PDES moved directly, BC11 BLEN
 # loop OFF, energy feedbacks on. Beam-side gain g ~ U(0.7, 1.3) hidden; FAST_PACT readback = klystron phase:
 # a * step * g_rf + noise 0.02 deg, g_rf ~ U(0.95, 1.05) (v1 leaked g through the readback). Hidden L1 drift: RW
 # 0.025 deg/step + per-episode ramp U(+-0.05) deg/step (loop-off drift is directional). Otherwise = delta_xtcav23_screen_v6_blen.yaml.

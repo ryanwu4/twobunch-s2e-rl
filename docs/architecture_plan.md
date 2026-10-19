@@ -4,7 +4,7 @@ Status: **phases 0–3 implemented; phase 5 (injector campaign) piloted** (branc
 plan revised after two review rounds and a lab-notebook pass). **First priority: the delta controller
 on L1/L2 phase (see below).** Decisions made after 2026-10-14 morning (screen v2/v3, injector
 campaign design, actuators via BC11 BLEN / L2 MKB, review fixes) are recorded in
-`results/plan_review_2026-10-14/` and `results/injector_pilot_2026-10-14/PLAN.md` and supersede this
+`results/5_reports/plan_review_2026-10-14/` and `results/1_datagen/injector_pilot_2026-10-14/PLAN.md` and supersede this
 document where they differ.
 
 ## Implementation status (overnight 2026-10-14; details in `docs/overnight_2026-10-14.md`)

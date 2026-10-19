@@ -15,7 +15,7 @@ Tests:
      that only sees these data predict held-out points, and is it still improving at full size? (data-limited)
   3. failure modes: attenuation (pred vs true), per-knob sensitivities, residual vs region / spacing, T calibration
 
-  PYTHONPATH=src python scripts/analyze_injector_flow.py --out results/injector_flow_analysis_2026-10-15
+  PYTHONPATH=src python scripts/analyze_injector_flow.py --out results/2_surrogate_screen/injector_flow_analysis_2026-10-15
 """
 from __future__ import annotations
 

@@ -5,7 +5,7 @@
 cd "$(dirname "$0")/.."
 PY=/home/rwu4/miniconda3/envs/slac-rl/bin/python
 R=logs/2026-10-18/realistic
-EV=results/eval_jitter_2026-10-18; mkdir -p $EV
+EV=results/3_rl_eval/eval_jitter_2026-10-18; mkdir -p $EV
 NOM=configs/rl/eval/jitter_nominal_2026-10-18.yaml; STR=configs/rl/eval/jitter_stress_2026-10-18.yaml
 JN=configs/rl/realistic_2026-10-17/real_covB2_screen_noblen_jit.yaml
 JB=configs/rl/realistic_2026-10-17/real_covB2_screen_bc11loop_v3_jit.yaml

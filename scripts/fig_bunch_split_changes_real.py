@@ -6,7 +6,7 @@ and plots, per step: the +V and -V median images with the per-image valley cuts 
 scan-curve, per-image-offset, dropped-step and crop-edge panels.
 
   PYTHONPATH=$PWD/src OMP_NUM_THREADS=1 MPLBACKEND=Agg /home/rwu4/miniconda3/envs/bmad-qpad-dev/bin/python \
-      scripts/fig_bunch_split_changes_real.py --out results/bunch_split_changes_2026-10-15
+      scripts/fig_bunch_split_changes_real.py --out results/2_surrogate_screen/bunch_split_changes_2026-10-15
 """
 from __future__ import annotations
 

@@ -62,7 +62,7 @@ _TRANSFORM = {
 }
 
 # fixed z-scores for observe-only screen diagnostics that have no campaign twin (no cloud truth to
-# normalize from): screen_cut_sens ~0-10 um on the test rows (results/screen_failure_detect_2026-10-18)
+# normalize from): screen_cut_sens ~0-10 um on the test rows (results/2_surrogate_screen/screen_failure_detect_2026-10-18)
 _FIXED_OBS_NORMS = {"screen_cut_sens": {"transform": "identity", "mean": 2e-6, "std": 3e-6}}
 
 # strictly-positive, right-skewed metric families that should be normalized in log10 (like the

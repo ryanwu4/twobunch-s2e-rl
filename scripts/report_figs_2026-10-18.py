@@ -1,4 +1,4 @@
-"""Morning-report figures for overnight 2026-10-17 -> 18 (results/report_2026-10-18/*.png). Skips missing inputs.
+"""Morning-report figures for overnight 2026-10-17 -> 18 (results/5_reports/report_2026-10-18/*.png). Skips missing inputs.
 
   /home/rwu4/miniconda3/envs/slac-rl/bin/python scripts/report_figs_2026-10-18.py
 """
@@ -10,15 +10,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-OUT = Path("results/report_2026-10-18")
+OUT = Path("results/5_reports/report_2026-10-18")
 OUT.mkdir(parents=True, exist_ok=True)
 SURF, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 BLUE, ORANGE, AQUA, VIOLET, RED, GREY = "#2a78d6", "#eb6834", "#1baf7a", "#6250d6", "#e34948", "#9a9892"
 plt.rcParams.update({"figure.facecolor": SURF, "axes.facecolor": SURF, "savefig.facecolor": SURF, "text.color": INK,
                      "axes.labelcolor": INK2, "xtick.color": INK2, "ytick.color": INK2, "axes.edgecolor": GRID,
                      "font.size": 9, "axes.spines.top": False, "axes.spines.right": False})
-EV = Path("results/eval_realistic_2026-10-18")
-EC = Path("results/eval_continuous_2026-10-18")
+EV = Path("results/3_rl_eval/eval_realistic_2026-10-18")
+EC = Path("results/3_rl_eval/eval_continuous_2026-10-18")
 # one fixed colour per controller design
 POL = [("old blen_dlog (flow A)", EC / "base_S2blen_flowA", GREY),
        ("old direct-L1 + BLEN obs", EC / "base_S2l1blen_covB2", "#c9c6bd"),
@@ -37,8 +37,8 @@ def jload(p):
 
 def surrogate():
     rows = []
-    a = jload("results/surrogate_scorecard_2026-10-18/cov_table/scorecard.json")
-    b = jload("results/surrogate_scorecard_2026-10-18/zs_cov_table/scorecard.json")
+    a = jload("results/2_surrogate_screen/surrogate_scorecard_2026-10-18/cov_table/scorecard.json")
+    b = jload("results/2_surrogate_screen/surrogate_scorecard_2026-10-18/zs_cov_table/scorecard.json")
     if not (a and b):
         return
     for name, src, key in (("B2-cov", b, "B2-cov best"), ("6-D head, fine-tuned (w_pair 3)", a, "D1 centroid (w_pair 3) best"),
@@ -128,7 +128,7 @@ def trace():
 
 
 def closed_loop():
-    CL = Path("results/closed_loop_bmad_2026-10-18")
+    CL = Path("results/3_rl_eval/closed_loop_bmad_2026-10-18")
     tags = sorted({p.name.rsplit("_", 2)[0] for p in CL.glob("*_bmad") if (p / "summary.json").exists()})
     if not tags:
         return
@@ -161,7 +161,7 @@ def closed_loop():
 
 
 def replay():
-    old = Path("results/daq_replay_2026-10-17")
+    old = Path("results/3_rl_eval/daq_replay_2026-10-17")
     pols = [("old blen_dlog (flow A)", old / "injflow_flowA_screen_v6_blen_s0", GREY),
             ("old direct-L1 + BLEN (B2-cov s0)", old / "injflow_covB2_screen_v6_l1blen_s0", "#c9c6bd")]
     pols += [(n, p, c) for n, p, c in POL if p.parent == EV]

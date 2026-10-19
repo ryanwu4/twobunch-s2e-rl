@@ -4,14 +4,14 @@
 #  2. closed-loop Bmad (CPU) of the same two policies at 24 held-out injector points (test split), + paired flow run
 #  3. 8 trainings, 900 it, 2 per GPU: {noblen, bc11loop} x {spacing head, + failure detection} x seeds {0, 1} on the
 #     spacing-head flow (configs/rl/night_2026-10-18), each evaluated (nominal / stress jitter, DAQ replay) when done.
-# Log logs/2026-10-18/night.log; results/eval_night_2026-10-18/summary.txt, results/closed_loop_bmad_2026-10-19/.
+# Log logs/2026-10-18/night.log; results/3_rl_eval/eval_night_2026-10-18/summary.txt, results/3_rl_eval/closed_loop_bmad_2026-10-19/.
 cd "$(dirname "$0")/.."
 PY=/home/rwu4/miniconda3/envs/slac-rl/bin/python
 export PYTHONPATH=$PWD/src
 R=logs/2026-10-18/realistic
 N=logs/2026-10-18/night
-EV=results/eval_night_2026-10-18
-CL=results/closed_loop_bmad_2026-10-19
+EV=results/3_rl_eval/eval_night_2026-10-18
+CL=results/3_rl_eval/closed_loop_bmad_2026-10-19
 NOM=configs/rl/eval/jitter_nominal_2026-10-18.yaml; STR=configs/rl/eval/jitter_stress_2026-10-18.yaml
 C=configs/rl/night_2026-10-18
 mkdir -p $N $EV $CL
@@ -21,9 +21,9 @@ until grep -qs "jitter robustness chain done" logs/2026-10-18/jitter_chain.log; 
 while kill -0 2793403 2>/dev/null; do sleep 60; done          # old-baseline eval (jitter_baseline_eval_2026-10-18.sh)
 log "jitter chain + baseline eval done"
 
-# best seed per direction by nominal settled spacing (results/eval_jitter_2026-10-18/summary.txt)
+# best seed per direction by nominal settled spacing (results/3_rl_eval/eval_jitter_2026-10-18/summary.txt)
 best() {
-  grep "^real_covB2_screen_$1_jit_s[01] | nominal |" results/eval_jitter_2026-10-18/summary.txt \
+  grep "^real_covB2_screen_$1_jit_s[01] | nominal |" results/3_rl_eval/eval_jitter_2026-10-18/summary.txt \
     | sed -E 's/^([^ ]+) .*settled spacing ([0-9.]+) um.*/\2 \1/' | sort -n | head -1 | cut -d' ' -f2
 }
 BN=$(best noblen); BB=$(best bc11loop_v3)

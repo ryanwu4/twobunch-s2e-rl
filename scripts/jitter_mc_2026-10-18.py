@@ -29,10 +29,10 @@ import numpy as np
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "results/jitter_mc_2026-10-18"
+OUT = ROOT / "results/4_daq_realism/jitter_mc_2026-10-18"
 CKPT = ROOT / "trained/xtcav23e_inj_covB2_2026-10-17/checkpoints/best-epoch=034-val_paired_delta_rms_um=5.4293.ckpt"
 CFG = ROOT / "configs/rl/realistic_2026-10-17/real_covB2_screen_noblen.yaml"
-REPLAY = ROOT / "results/online_replay_v6_median_cut_2026-10-15"
+REPLAY = ROOT / "results/4_daq_realism/online_replay_v6_median_cut_2026-10-15"
 SCANS = {"TEST_15668": -23.7, "E300_15671": -26.0, "E300_15673": -20.0}
 M_IMG = 30                 # images per sign per controller step (env shots_per_step)
 FLOOR = 60e-6              # deployed |spacing| floor
@@ -730,7 +730,7 @@ def write_maps(grid, c_cam, sg):
             "p_keep_valid_step": "P(step deployed-valid | jitter) / P(step valid | no jitter) where the noiseless step is valid (>= 0.5), capped at 1; 1 elsewhere. The env cannot make a noiseless-invalid step valid.",
         },
         "env_settings": {
-            "jitter_map": "results/jitter_mc_2026-10-18/jitter_map_DAQcal.npz (2024 sheet: jitter_map_2024u.npz)",
+            "jitter_map": "results/4_daq_realism/jitter_mc_2026-10-18/jitter_map_DAQcal.npz (2024 sheet: jitter_map_2024u.npz)",
             "measurement.shot_noise.bunch_spacing_m": 0.886 * c_cam * 1e-6,
             "measurement.shot_noise.note": "camera / analysis part only (fit c per image per sign; step = 0.5 (med+ + med-) -> sigma_step = 0.886 c / sqrt(30); the env adds shot_noise / sqrt(30))",
             "phase_wander_deg": {"L1PhaseSet": 0.10, "L2PhaseSet": None},

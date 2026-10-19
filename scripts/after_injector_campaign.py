@@ -104,7 +104,7 @@ def preprocess():
            "--subdir", "xtcav23_full,xtcav23_pilot,injector_full", "--sweep-set", "xtcav23e_l0b2_inj12",
            "--treaty-point", "XTCAVF", "--transmission", "per_sample", "--P", "1024", "--out", str(PROC),
            # 5e4 (injector_full) vs 1e5 (old campaigns) Bmad macroparticles: the convergence pass rules
-           # measured <= 0.11 um spacing / 0.06% sigma_z (results/injector_convergence_2026-10-14)
+           # measured <= 0.11 um spacing / 0.06% sigma_z (results/1_datagen/injector_convergence_2026-10-14)
            "--allow-fixed-mismatch", "num_macro_particles",
            "--campaign-json", f"xtcav23_full={BACKFILL / 'xtcav23_full.json'}",
            "--campaign-json", f"xtcav23_pilot={BACKFILL / 'xtcav23_pilot.json'}"]
