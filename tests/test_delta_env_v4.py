@@ -281,3 +281,33 @@ def test_jitter_map_adds_state_dependent_noise(tmp_path):
     if e is not None:
         e0 = (o0["bunch_spacing"] - o0["bunch_spacing_true"]).std()
         assert float(e) > float(e0)
+
+
+def test_far_goals_leave_the_goal_radius():
+    """goal_far_frac = 1: every goal control point uniform over the start box, not within goal_radius of the start."""
+    rad = {"L1PhaseSet": 0.1, "L2PhaseSet": 0.1}
+    near = _env(num_envs=64, goal_radius=rad)
+    far = _env(num_envs=64, goal_radius=rad, goal_far_frac=1.0)
+    assert ((near._goal_ctrl - near._start).abs() <= 0.1 + 1e-5).all()
+    assert ((far._goal_ctrl - far._start).abs() > 0.1).any()
+    assert ((far._goal_ctrl >= far._start_lo - 1e-5) & (far._goal_ctrl <= far._start_hi + 1e-5)).all()
+
+
+def test_spacing_only_goals_mask_sigma_z():
+    """spacing_only_frac: masked envs get no sigma_z penalty, zeroed sigma_z goal error, and a mask bit in the obs."""
+    rad = {"L1PhaseSet": 1.0, "L2PhaseSet": 1.0}
+    base = _env(num_envs=64, goal_radius=rad)
+    env = _env(num_envs=64, goal_radius=rad, spacing_only_frac=0.5, goal_change=[2, 2], episode_length=20)
+    assert env.num_obs == base.num_obs + 1
+    obs, _, _, info = env.step(torch.zeros(64, 2))
+    m = env._free
+    assert 0 < int(m.sum()) < 64
+    assert torch.equal(obs[:, -1], m.float())
+    j = env._free_j[0]
+    assert (env._err[m, j] == 0).all() and (env._err[~m, j] != 0).any()
+    pen = info["achieved"]["pen_drive_sigma_z_target"]
+    assert (pen[m] == 0).all() and (pen[~m] > 0).any()
+    assert torch.equal(info["achieved"]["goal_free"], m.float())
+    for _ in range(4):                                  # the mask is redrawn with every new setpoint
+        env.step(torch.zeros(64, 2))
+    assert not torch.equal(env._free, m)

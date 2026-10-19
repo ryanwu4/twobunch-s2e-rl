@@ -285,6 +285,9 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
                          drift_ramp=v4.get("drift_ramp"), blen_obs=v4.get("blen_obs"),
                          window=v4.get("window"), goal_change=v4.get("goal_change"), jumps=v4.get("jumps"),
                          phase_wander=v4.get("phase_wander"),
+                         goal_far_frac=float(v4.get("goal_far_frac", 0.0)),
+                         spacing_only_frac=float(v4.get("spacing_only_frac", 0.0)),
+                         free_goal_keys=tuple(v4.get("free_goal_keys", ("drive_sigma_z",))),
                          jitter_map=(str(repo_root() / v4["jitter_map"]) if v4.get("jitter_map") else None))
         return cls(
             num_envs, **extra, device=device, seed=seed, episode_length=episode_length, no_grad=no_grad,

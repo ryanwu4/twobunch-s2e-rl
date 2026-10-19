@@ -83,7 +83,9 @@ class DeltaControlEnvV4(DeltaControlEnv):
                  offcontext_goal_frac: float = 0.0, history: int = 1, goal_radius: dict | None = None,
                  goal_valid_retries: int = 0, drift_ramp: dict | None = None,
                  blen_obs: dict | None = None, window: dict | None = None, goal_change=None,
-                 jumps: dict | None = None, phase_wander: dict | None = None, jitter_map: str | None = None, **kw):
+                 jumps: dict | None = None, phase_wander: dict | None = None, jitter_map: str | None = None,
+                 goal_far_frac: float = 0.0, spacing_only_frac: float = 0.0,
+                 free_goal_keys: tuple[str, ...] = ("drive_sigma_z",), **kw):
         if reward_on not in ("true", "measured"):
             raise ValueError(f"reward_on must be 'true' or 'measured', got {reward_on!r}")
         self._v4_ready = False
@@ -160,6 +162,11 @@ class DeltaControlEnvV4(DeltaControlEnv):
         self._goal_radius = (torch.tensor([float(goal_radius[c]) for c in controls], **f)
                              if goal_radius else None)
         self._goal_retries = int(goal_valid_retries)
+        # goal conditioning (off by default): a fraction of setpoints anywhere in the start box instead of within
+        # goal_radius; a fraction of setpoints with the free_goal_keys (default sigma_z) unconstrained -- no reward,
+        # their goal / error obs zeroed, a mask bit appended to the obs
+        self._far_frac, self._free_frac = float(goal_far_frac), float(spacing_only_frac)
+        self._free_keys = tuple(free_goal_keys)
         self._k = max(int(history), 1)
         self._blen = []                                       # (name, [(coef, [(ctrl idx, power)])], centers, lo, hi, noise)
         for name, b in (blen_obs or {}).items():
@@ -208,6 +215,14 @@ class DeltaControlEnvV4(DeltaControlEnv):
         self._blen_ref = z(B, nb)
         self._blen_obs = z(B, nb)
         self.num_obs = (n + self._spec.n_obs_extra + 2 * n_goal + n) + n + (self._k - 1) * self._frame_dim + nb
+        self._free = torch.zeros(B, dtype=torch.bool, device=self.device)
+        self._free_j = [j for j, (key, _, _) in enumerate(self._goal_terms) if key in self._free_keys]
+        self._free_cols = [list(self._spec.obs_keys).index(g) for key, g, _ in self._goal_terms
+                           if key in self._free_keys and g in self._spec.obs_keys]
+        if self._free_frac > 0:
+            if not self._free_j:
+                raise ValueError(f"spacing_only_frac > 0 but no goal term among free_goal_keys {self._free_keys}")
+            self.num_obs += 1
         self._v4_ready = True
 
     def _compute_obs(self) -> torch.Tensor:
@@ -219,6 +234,8 @@ class DeltaControlEnvV4(DeltaControlEnv):
             parts.append(self._hist.flatten(1))
         if self._blen:
             parts.append(self._blen_obs)
+        if self._free_frac > 0:
+            parts.append(self._free.float().unsqueeze(-1))
         return torch.cat(parts, -1)
 
     def _blen_poly(self, ctrl):
@@ -308,12 +325,29 @@ class DeltaControlEnvV4(DeltaControlEnv):
 
     def _reward_view(self, obs):
         if self._reward_on == "measured" or not self._v4_ready:
-            return super()._reward_view(obs)
-        view = dict(obs)
-        for key, g, _ in self._goal_terms:                    # privileged truth vs the true goal
-            view[key] = obs.get(f"{key}_cloud", obs.get(f"{key}_true", obs[key]))
-            view[g] = self._goals_cloud[g]
+            view = super()._reward_view(obs)
+        else:
+            view = dict(obs)
+            for key, g, _ in self._goal_terms:                # privileged truth vs the true goal
+                view[key] = obs.get(f"{key}_cloud", obs.get(f"{key}_true", obs[key]))
+                view[g] = self._goals_cloud[g]
+        if self._v4_ready and self._free_frac > 0:            # free goals: achieved = goal -> no penalty, no grad
+            for key, g, _ in self._goal_terms:
+                if key in self._free_keys:
+                    view[key] = torch.where(self._free, view[g].detach(), view[key])
         return view
+
+    def _evaluate(self, cmd):
+        reward, extra, err, achieved = super()._evaluate(cmd)
+        if self._v4_ready and self._free_frac > 0:
+            m = self._free.unsqueeze(-1)
+            if self._free_cols:
+                extra = extra.clone()
+                extra[:, self._free_cols] = torch.where(m, 0.0, extra[:, self._free_cols])
+            err = err.clone()
+            err[:, self._free_j] = torch.where(m, 0.0, err[:, self._free_j])
+            achieved["goal_free"] = self._free.float()
+        return reward, extra, err, achieved
 
     # ----- episode ----------------------------------------------------------------------------
     def reset(self, env_ids=None):
@@ -394,8 +428,16 @@ class DeltaControlEnvV4(DeltaControlEnv):
         """Redraw the reset envs' goal control points within goal_radius of the start, then the goals
         (noise-free measured value + the true value there, as the base reset does)."""
         B, n = self.num_envs, len(self.controls)
-        draw = lambda: torch.minimum(torch.maximum(self._start + (2 * self._rand(B, n) - 1) * self._goal_radius,
-                                                   self._start_lo), self._start_hi)
+        if self._v4_ready and self._free_frac > 0:            # extra draws only then (RNG stream)
+            self._free = torch.where(m, self._rand(B) < self._free_frac, self._free)
+        far = (self._rand(B) < self._far_frac).unsqueeze(-1) if self._far_frac > 0 else None
+
+        def draw():
+            local = torch.minimum(torch.maximum(self._start + (2 * self._rand(B, n) - 1) * self._goal_radius,
+                                                self._start_lo), self._start_hi)
+            if far is None:
+                return local
+            return torch.where(far, self._start_lo + self._rand(B, n) * (self._start_hi - self._start_lo), local)
         self._goal_ctrl = torch.where(m.unsqueeze(-1), draw(), self._goal_ctrl)
         g_obs = self._plant(self._goal_ctrl, noise=False)
         # goals the deployed screen analysis can read (an operator picks a measurable goal): redraw the

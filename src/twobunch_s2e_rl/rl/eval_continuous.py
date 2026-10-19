@@ -47,7 +47,11 @@ def run(logdir, out, sets=(), k=256, steps=128, policy="final", device="cuda:0",
     e_sp, e_sz = np.abs(sp - gsp), np.abs(sz - gsz) / np.abs(gsz)
     # segment boundaries: the goal (cloud) value changes between consecutive recorded steps
     chg = np.vstack([np.ones((1, k), bool), np.abs(np.diff(gsp, axis=0)) > 1e-9])
-    settled_sp, settled_sz, reach, inside = [], [], [], []
+    # spacing-only setpoints (env spacing_only_frac): sigma_z unconstrained there -> excluded from the sigma_z metrics
+    free = tr["goal_free"].cpu().numpy() > 0.5 if "goal_free" in tr else np.zeros_like(chg)
+    if "goal_free" in tr:
+        chg = chg | np.vstack([np.zeros((1, k), bool), np.diff(free.astype(int), axis=0) != 0])
+    settled_sp, settled_sz, reach, inside, seg_free = [], [], [], [], []
     for b in range(k):
         starts = list(np.flatnonzero(chg[:, b])) + [steps]
         for s0, s1 in zip(starts[:-1], starts[1:]):
@@ -58,7 +62,9 @@ def run(logdir, out, sets=(), k=256, steps=128, policy="final", device="cuda:0",
             ok = np.flatnonzero(e_sp[s0:s1, b] <= TOL_SP)
             reach.append(float(ok[0]) if len(ok) else np.inf)
             inside.append((e_sp[s0 + settle:s1, b] <= TOL_SP).mean())
-    settled_sp, settled_sz, reach = map(np.asarray, (settled_sp, settled_sz, reach))
+            seg_free.append(bool(free[s1 - 1, b]))
+    settled_sp, settled_sz, reach, seg_free = map(np.asarray, (settled_sp, settled_sz, reach, seg_free))
+    sz_seg = settled_sz[~seg_free] if seg_free.any() else settled_sz
     summ = {"logdir": str(logdir), "sets": list(sets), "de_yaml": de_yaml, "k": k, "steps": steps, "n_segments": int(len(settled_sp)),
             "settled_spacing_median_um": float(np.median(settled_sp) * 1e6),
             "settled_spacing_p90_um": float(np.percentile(settled_sp, 90) * 1e6),
@@ -66,8 +72,13 @@ def run(logdir, out, sets=(), k=256, steps=128, policy="final", device="cuda:0",
             "time_within_10um_after_settle": float(np.mean(inside)),
             "steps_to_reach_median": float(np.median(reach)) if np.isfinite(np.median(reach)) else None,
             "frac_segments_reached": float(np.isfinite(reach).mean()),
-            "settled_sigma_z_rel_median": float(np.median(settled_sz)),
-            "settled_sigma_z_within_10pct": float((settled_sz <= TOL_SZ).mean())}
+            "settled_sigma_z_rel_median": float(np.median(sz_seg)),
+            "settled_sigma_z_within_10pct": float((sz_seg <= TOL_SZ).mean())}
+    if seg_free.any():
+        for tag, sel in (("free", seg_free), ("constrained", ~seg_free)):
+            summ[f"settled_spacing_median_um_{tag}"] = float(np.median(settled_sp[sel]) * 1e6)
+            summ[f"settled_within_10um_{tag}"] = float((settled_sp[sel] <= TOL_SP).mean())
+            summ[f"n_segments_{tag}"] = int(sel.sum())
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "summary.json").write_text(json.dumps(summ, indent=1))
