@@ -35,4 +35,19 @@ New `closed_loop_bmad --mode test --points-json configs/rl/eval/heldout_injector
 - Large-move eval of the current policy (pre-check, noblen s0, nominal jitter, full-box setpoints): 13.2 µm settled / 36% within 10 µm / 78% reached vs 11.0 / 45% / 86% for local setpoints. The night chain repeats this for the best jitter-trained policies (radius ×2 and full box).
 
 ## Results
-(filled in as chains finish)
+
+### C. Gradient check (done 19:52) — `results/gradient_check_2026-10-18/summary.json`
+Ratio = surrogate / Bmad slope (Bmad FD at h = 0.3°; FD 0.3 vs 0.6° agree to 0.1% for beam spacing, 3% beam σz, 21% screen σz). Median [p10, p90] over 12 points × 2 controls; spacing head (B2-cov the same except where noted).
+
+| feature | Bmad median \|slope\| L1 / L2 | ratio (autograd) | per control L1 / L2 | sign agree | corr |
+|---|---|---|---|---|---|
+| beam spacing | 49 / 41 µm/deg | 0.99 [0.90, 1.01] | 0.97 / 0.99 | 1.00 | 1.000 |
+| beam σz (d ln σz) | 0.07 / 0.23 /deg | 0.96 [0.27, 1.11] | 0.88 / 0.96 | 0.96 | 0.95 |
+| screen spacing | 45 / 39 µm/deg | 1.00 [0.43, 4.2] | 1.00 / 1.00 | 0.92 | 0.82 |
+| screen σz | 0.21 / 0.19 /deg | 0.59 [−0.4, 4.4] | **0.23** / 1.08 | 0.79 | 0.65 |
+
+- **Beam level: the surrogate's gradients are right.** Spacing slopes within 1–3%, every sign right; σz within ~10%. The spacing head changes the spacing ratio from 0.98 / 1.01 (B2-cov) to 0.97 / 0.99 and screen spacing from 0.94 / 1.01 to 1.00 / 1.00.
+- **Screen spacing:** right at the median, but with a tail (p90 ratio 4) at a few points near the split / validity edge.
+- **Screen σz vs L1 is the gap.** Bmad's *measured* σz responds to L1 3–6× more than the beam's true σz (e.g. 0.29 vs 0.04 /deg at L1 −20, L2 −35, where the screen also reads 39 µm for a 25 µm beam). The surrogate's screen follows the true beam instead (0.10). At the compressed ~70 µm-spacing points (σz ~20 µm) the surrogate's screen σz slope has the wrong sign for both L1 and L2.
+- Reading: the extra L1 dependence is a measurement effect in Bmad's screen (the split / resolution term picks up L1 through the energy structure) that the smoothed surrogate beam does not reproduce. Consequence: the controller underestimates how much L1 moves the *measured* σz; plausible contributor to the flat σz errors. Not a spacing problem.
+- Figure: TODO (per-point slopes, Bmad vs surrogate, beam vs screen).
