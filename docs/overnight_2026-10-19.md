@@ -160,3 +160,21 @@ Bands = |true spacing|. Valid rate = deployed screen validity.
 - DAQ settling: `XTCAV_analysis/sim2real/results/settling_2026-10-19/` + `scripts/xtcav_{settling_check,settling_null,tcav_flip_lag}_2026-10-19.py` — image lags the TCAV phase readback by ~1 s after a ±V flip; no resolvable beam transient after the 6.4–7.5 s L2-step gap except the BC11 loop's L1 readback (~3 s).
 - Slew GIFs: `results/5_reports/slew_gif_2026-10-19/slew_{good,median}.gif`.
 - `results/` sorted into `1_datagen/ 2_surrogate_screen/ 3_rl_eval/ 4_daq_realism/ 5_reports/` (`scripts/organize_results_2026-10-19.py`, index + old→new table in `results/README.md`); `results/jitter_mc_2026-10-18` left as a symlink for saved run configs.
+
+## Night 10-19 → 20 (plan agreed 18:45; Ryan back ~12:00)
+- GC training: `scripts/gc_night_2026-10-19.sh` (log `logs/2026-10-19/gc_night.log`): `gc_zs_screen_{noblen,bc11loop}_jit` × s0/s1, 1200 it, then nominal / far1 / local / stress / replay evals (`results/3_rl_eval/eval_gc_2026-10-19/summary.txt`), baselines zs noblen s0 + zs bc11loop s1 under far1 / local; best GC (far1 settled within 10 µm) → noise-free Bmad slew eval.
+- Noise-free Bmad slew eval: new `closed_loop_bmad --slew N --seg-steps S --ideal <yaml>` (ideal machine = `_idealize`: no measurement noise / outliers / calibration error / drift / wander / jumps / jitter map; nominal gains and readbacks; golden optics; nominal TCAV). 48 golden-injector episodes × 3 setpoints anywhere in the start box × 16 steps. zs noblen s0 launched 19:05 (`scripts/slew_ideal_noblen_2026-10-19.sh`, ~5 h). Surrogate pair: setpoints reached 90–96%, final 3.7–5.4 µm median, 69–77% within 10 µm (an earlier identical smoke gave 5.7–7.2 µm: closed_loop_bmad does not seed the flow's sampling).
+
+### Crop window (`results/2_surrogate_screen/crop_window_2026-10-19/`, `scripts/crop_window_check_2026-10-19.py`)
+The env crop (±4.6 × ±2.44 mm) is the deployed auto-crop (150 px); the DAQ camera window is ~±7.8 × ±3.9 mm (≈ ×1.7). 688 test rows, Bmad vs surrogate (spacing head), noise-free.
+
+| crop | valid Bmad / surr | > 250 µm valid | > 250 µm Bmad screen within 10 µm of beam | 100–150 µm valid | surr vs Bmad reading within 10 µm |
+|---|---|---|---|---|---|
+| ×1 (deployed) | 0.52 / 0.51 | 0.26 / 0.31 | 0.55 (median 9 µm) | 0.76 / 0.76 | 0.72 |
+| ×1.5 | 0.67 / 0.64 | 0.77 / 0.76 | 0.36 (12 µm) | 0.93 / 0.91 | 0.71 |
+| ×2 | 0.69 / 0.67 | 0.91 / 0.95 | 0.31 (13 µm) | 0.93 / 0.91 | 0.71 |
+| none | 0.70 / 0.67 | 0.92 / 0.95 | 0.30 (13 µm) | 0.92 / 0.91 | 0.71 |
+
+- Widening the crop recovers most of the large-spacing (and 100–150 µm) readings: ×1.5 gets nearly all of the gain, ×2 ≈ no crop.
+- The surrogate keeps tracking Bmad equally well (validity agreement 0.91 → 0.93; > 250 µm reading agreement 0.79 → 0.86): crop size does not hurt surrogate fidelity.
+- But the newly admitted readings are less accurate against the true beam (> 250 µm: 55% → 31–36% within 10 µm), and the same in both sources. The crop was removing fragile readings. A wider crop trades availability for accuracy at large spacing; needs a matched validity rule (e.g. cut_sens / charge fraction) to be a net win.

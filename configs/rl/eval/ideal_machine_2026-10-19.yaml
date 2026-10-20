@@ -1,0 +1,3 @@
+# Ideal-machine eval (closed_loop_bmad --ideal): the noise / hidden-variation switch-off is done in code
+# (closed_loop_bmad._idealize); this file holds extra diff_env overrides (none).
+{}

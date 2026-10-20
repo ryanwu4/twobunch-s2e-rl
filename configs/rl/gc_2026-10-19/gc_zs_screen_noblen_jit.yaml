@@ -213,7 +213,7 @@ params:
     name: DeltaBPTT
     num_actors: 12
     steps_num: 32
-    max_epochs: 900
+    max_epochs: 1200
     actor_learning_rate: 5e-4
     lr_schedule: linear
     gamma: 0.99

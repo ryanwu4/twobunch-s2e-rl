@@ -15,6 +15,12 @@ measurement pipeline is the same code the policy was trained on.
   phase 2 (Bmad): the goal readings at the goal points and the start readings are Bmad readings (an operator
       records a goal on the machine), then `episode_length` policy steps on Bmad.
   --plant flow: the same episodes (same seeds, contexts, goal points) on the surrogate, for a paired comparison.
+  --slew N --seg-steps S: N setpoints per episode, each drawn anywhere in the start box (surrogate-readable), S policy
+      steps each; every goal reading is taken on the active plant (Bmad: one extra call per setpoint) before the
+      episode, and the policy sees the new goal after each segment (one re-read per switch).
+  --ideal [yaml]: ideal machine -- no measurement noise, outliers, calibration error, drift, wander, jumps or jitter
+      map; nominal actuator gains / readbacks, golden optics, nominal TCAV voltage and arrival; the yaml (may be {})
+      is deep-merged afterwards for extra overrides.
 
 Tao seed fixed per episode (common random numbers across its steps); each injector beam downsampled ONCE (seeded) to
 --num-macro. Outputs in --out: traj.pt (per-step achieved dict, actions, true controls), summary.json (final true
@@ -212,8 +218,67 @@ def _summary(env, traj):
     return out
 
 
+def _idealize(de):
+    """In place: the policy's diff_env with every noise / hidden-variation source off (see --ideal)."""
+    ms = de.setdefault("measurement", {})
+    for key in ("shot_noise", "step_noise_floor", "feature_offset_sigma"):
+        if ms.get(key):
+            ms[key] = {k: 0.0 for k in ms[key]}
+    ms["outlier_prob"] = 0.0
+    ms["scale_error_halfwidth"] = 0.0
+    de["gain_halfwidth"] = 0.0
+    if de.get("offset_sigma"):
+        de["offset_sigma"] = {k: 0.0 for k in de["offset_sigma"]}
+    sc = de.get("screen")
+    if sc is not None:
+        sc.update(quad_jitter=None, optics_choices=[{}], tdc_voltage_range=None, arrival_jitter_s=0.0)
+    v4 = de.get("v4")
+    if v4:
+        v4.update(drift_per_step=None, drift_ramp=None, jumps=None, phase_wander=None, jitter_map=None,
+                  offcontext_goal_frac=0.0, goal_change=None)
+        for a in (v4.get("actuators") or {}).values():
+            a["gain_range"] = [1.0, 1.0]
+            a.pop("log_uniform", None)
+            a.pop("readback_gain_range", None)
+            for key in ("readback_noise", "readback_drift", "loop_noise", "charge_rw"):
+                if key in a:
+                    a[key] = 0.0
+            if "charge_sens" in a:
+                a["charge_sens"] = [0.0, 0.0]
+            if "slope_scale" in a:
+                a["slope_scale"] = [1.0, 1.0]
+            if "settle" in a:
+                a["settle"] = 1.0
+        for b in (v4.get("blen_obs") or {}).values():
+            b["noise"] = 0.0
+            b["slope_scale"] = [1.0, 1.0]
+    return de
+
+
+def _segments(env, traj, bounds):
+    """Per setpoint segment (true beam vs true goal): final error, median of the last 4 steps, reached (any step within
+    tolerance), steps to reach."""
+    out = {}
+    for key, g, _ in env._goal_terms:
+        kind, tol = TOL.get(key, ("rel", 0.1))
+        true = (traj[f"{key}_cloud"] if f"{key}_cloud" in traj else traj[f"{key}_true"]).cpu().numpy()
+        goal = traj[f"{g}_cloud"].cpu().numpy()
+        e = np.abs(true - goal) if kind == "abs" else np.abs(true - goal) / np.abs(goal)
+        segs = []
+        for s0, s1 in bounds:
+            es = e[s0:s1]
+            hit = es <= tol
+            first = np.where(hit.any(0), hit.argmax(0), -1)
+            segs.append({"final": es[-1].tolist(), "last4_median": np.median(es[-4:], 0).tolist(),
+                         "reached": hit.any(0).tolist(), "steps_to_reach": first.tolist(),
+                         "final_median": float(np.median(es[-1])), "final_within_tol": float((es[-1] <= tol).mean()),
+                         "reached_frac": float(hit.any(0).mean())})
+        out[key] = {"tolerance": [kind, tol], "segments": segs}
+    return out
+
+
 def run(logdir, mode, k, num_macro, workers, out, plant="bmad", device="cuda:0", policy="final", seed=777,
-        campaign_cfg=COV_CFG, steps=None, points_json=None):
+        campaign_cfg=COV_CFG, steps=None, points_json=None, slew=0, seg_steps=16, ideal=None):
     from ..artifacts import policy_flow_ckpt
     from ._train_utils import build_env_fn
     from .delta_env import DeltaControlEnv
@@ -228,6 +293,14 @@ def run(logdir, mode, k, num_macro, workers, out, plant="bmad", device="cuda:0",
     if de.get("v4"):
         de["v4"]["offcontext_goal_frac"] = 0.0
         de["v4"]["goal_change"] = None              # one setpoint per Bmad episode (continuous-op configs)
+    if ideal is not None:
+        from .eval_delta import _deep_merge
+        _idealize(de)
+        extra_yaml = yaml.safe_load(Path(ideal).read_text()) if ideal not in ("", "1", "true") else None
+        if extra_yaml:
+            cfg["params"]["diff_env"] = de = _deep_merge(de, extra_yaml)
+    if slew:
+        n_steps = int(slew) * int(seg_steps)
     env = build_env_fn(cfg, policy_flow_ckpt(logdir))(num_envs=k, device=device, seed=seed,
                                                        episode_length=10 ** 6, no_grad=True)
     actor, rms = load_policy(str(Path(logdir) / f"{policy}_policy.pt"), device)
@@ -250,11 +323,25 @@ def run(logdir, mode, k, num_macro, workers, out, plant="bmad", device="cuda:0",
             env._context[i, env._ks.index(key)] = float(p[key])
     env._goal_context = env._context.clone()
     allm = torch.ones(k, dtype=torch.bool, device=env.device)
-    if getattr(env, "_goal_radius", None) is not None:
+    goal_sets = []
+    if slew:
+        # N goal sets anywhere in the start box (the surrogate screens them for readability); constrained goals
+        saved_far = getattr(env, "_far_frac", 0.0)
+        env._far_frac = 1.0
+        for _ in range(int(slew)):
+            env._reachable_goals(allm)
+            if hasattr(env, "_free"):
+                env._free.zero_()
+            goal_sets.append(env._goal_ctrl.clone())
+        env._far_frac = saved_far
+        env._goal_ctrl = goal_sets[0].clone()
+    elif getattr(env, "_goal_radius", None) is not None:
         env._reachable_goals(allm)                    # goal points under the set context (surrogate validity)
     meta = {"logdir": str(logdir), "mode": mode, "k": k, "plant": plant, "num_macro": num_macro, "policy": policy,
             "seed": seed, "injector_points": [t for t, _ in points], "n_steps": n_steps, "inj_keys_in_frame": inj_keys,
-            "start_true": env.true_controls().tolist(), "goal_ctrl": env._goal_ctrl.tolist()}
+            "start_true": env.true_controls().tolist(), "goal_ctrl": env._goal_ctrl.tolist(),
+            "slew": int(slew), "seg_steps": int(seg_steps), "ideal": ideal is not None,
+            "goal_sets": [gs.tolist() for gs in goal_sets]}
     (out / "meta.json").write_text(json.dumps(meta, indent=1))
     server = None
     if plant == "bmad":
@@ -267,7 +354,8 @@ def run(logdir, mode, k, num_macro, workers, out, plant="bmad", device="cuda:0",
         src = BmadSource(server, env._ks, [paths[t] for t, _ in points], [1000 + i for i in range(k)], scratch / "beams",
                          env.device, log=log)
         env._observe_fn.set_cloud_source(src)
-        # Bmad goal readings at the goal points, then the start reading
+    if plant == "bmad" and not slew:
+        # Bmad goal readings at the goal points, then the start reading (slew: per setpoint, below)
         with torch.no_grad():
             g_obs = env._plant(env._goal_ctrl, noise=False)
             g_view = DeltaControlEnv._reward_view(env, g_obs)
@@ -277,20 +365,49 @@ def run(logdir, mode, k, num_macro, workers, out, plant="bmad", device="cuda:0",
             _, extra, err, achieved = env._evaluate(env._cmd.detach())
         env._last_extra, env._err, env._err_prev, env._last_achieved = extra, err, err, achieved
     try:
-        traj = rollout(env, actor, rms, n_steps=n_steps)
+        if slew:
+            # goal readings of every setpoint on the active plant (Bmad: one call each), then the segments
+            readings = []
+            with torch.no_grad():
+                for gs in goal_sets:
+                    g_obs = env._plant(gs, noise=False)
+                    g_view = DeltaControlEnv._reward_view(env, g_obs)
+                    readings.append({g: (g_view[key].clone(), g_obs.get(f"{key}_cloud", g_obs.get(f"{key}_true")).clone())
+                                     for key, g, _ in env._goal_terms})
+            parts, bounds = [], []
+            for j, gs in enumerate(goal_sets):
+                env._goal_ctrl = gs.clone()
+                for key, g, _ in env._goal_terms:
+                    env._goals[g], env._goals_cloud[g] = readings[j][g]
+                if hasattr(env, "_free"):
+                    env._free.zero_()
+                with torch.no_grad():                 # the policy sees the new goal against the current reading
+                    _, extra, err, achieved = env._evaluate(env._cmd.detach())
+                env._last_extra, env._err, env._err_prev, env._last_achieved = extra, err, err, achieved
+                parts.append(rollout(env, actor, rms, n_steps=int(seg_steps)))
+                bounds.append((j * int(seg_steps), (j + 1) * int(seg_steps)))
+            traj = {k_: torch.cat([p[k_] for p in parts]) for k_ in parts[0]}
+        else:
+            traj = rollout(env, actor, rms, n_steps=n_steps)
         traj["true_controls_end"] = env.true_controls().clone()
     finally:
         if server is not None:
             server.close()
     torch.save({k_: v.cpu() for k_, v in traj.items()}, out / "traj.pt")
-    summ = {"meta": {k_: v for k_, v in meta.items() if k_ not in ("start_true", "goal_ctrl")},
+    summ = {"meta": {k_: v for k_, v in meta.items() if k_ not in ("start_true", "goal_ctrl", "goal_sets")},
             "targets": _summary(env, traj)}
+    if slew:
+        summ["segments"] = _segments(env, traj, bounds)
     (out / "summary.json").write_text(json.dumps(summ, indent=1))
     t = summ["targets"]
     print(f"[{mode}/{plant}] spacing final true median {t['bunch_spacing']['err_final_true_median'] * 1e6:.1f} um, "
           f"p90 {t['bunch_spacing']['err_final_true_p90'] * 1e6:.1f}, within 10 um "
           f"{t['bunch_spacing']['frac_within_tol_final_true']:.2f}; sigma_z rel "
           f"{t['drive_sigma_z']['err_final_true_median']:.3f}", flush=True)
+    for j, sg in enumerate(summ.get("segments", {}).get("bunch_spacing", {}).get("segments", [])):
+        sz = summ["segments"]["drive_sigma_z"]["segments"][j]
+        print(f"[slew {j}] spacing final median {sg['final_median'] * 1e6:.1f} um, within 10 um {sg['final_within_tol']:.2f}, "
+              f"reached {sg['reached_frac']:.2f}; sigma_z final rel {sz['final_median']:.3f}", flush=True)
 
 
 def main():
@@ -305,10 +422,14 @@ def main():
     ap.add_argument("--policy", default="final")
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--steps", type=int, default=None, help="override the episode length (smoke tests)")
+    ap.add_argument("--slew", type=int, default=0, help="setpoints per episode (0 = one setpoint, the default)")
+    ap.add_argument("--seg-steps", type=int, default=16, help="--slew: policy steps per setpoint")
+    ap.add_argument("--ideal", default=None, help="ideal machine (no noise / drift / hidden variation); yaml of extra "
+                                                  "overrides, or 1")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     run(a.logdir, a.mode, a.k, a.num_macro, a.workers, a.out, plant=a.plant, device=a.device, policy=a.policy,
-        steps=a.steps, points_json=a.points_json)
+        steps=a.steps, points_json=a.points_json, slew=a.slew, seg_steps=a.seg_steps, ideal=a.ideal)
 
 
 if __name__ == "__main__":
