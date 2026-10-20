@@ -199,3 +199,14 @@ Deployed online analysis (replay v6 settings) on TEST_15668 / E300_15671 / E300_
 - `scripts/nocrop_night_2026-10-19.sh` (log `logs/2026-10-19/nocrop_night.log`): one mixed wave, then seeds 1. GC s0 (1000 it, ~05:15) + plain s0 (900 it, ~04:40) per direction; s1 runs follow in each slot (~10:00 plain, ~11:00 GC). Best s0 per family (far1 within 10 µm) → noise-free Bmad slew eval (plain ~05:15 → ~10:20, GC ~05:45 → ~10:50). Plus: current policies and the cropped GC best checkpoints under the new window (eval-only).
 - The cropped zs noblen s0 noise-free slew eval keeps running (crop baseline, ~00:20).
 - Cropped baselines on the far1 / local conditions (before the re-plan): zs noblen s0 13.4 µm / 0.36 within 10 µm / reached 0.79 (far1) vs 11.6 / 0.43 / 0.85 (local); zs bc11loop s1 13.5 / 0.35 / 0.80 vs 13.0 / 0.37 / 0.85; σz settles much worse on far setpoints (0.24–0.28 vs 0.15).
+
+### Noise-free Bmad slew eval, crop baseline zs noblen s0 (done 23:30; `results/3_rl_eval/slew_ideal_bmad_2026-10-19/zs_screen_noblen_jit_s0_{flow,bmad}`)
+48 golden-injector episodes, 3 setpoints anywhere in the start box (median jump 72 µm), 16 steps each, ideal machine. Final true error vs true goal per setpoint.
+
+| setpoint | Bmad: final median / within 10 µm / reached | surrogate (same episodes) | σz final rel (Bmad) |
+|---|---|---|---|
+| 1 | 3.4 µm / 0.90 / 0.98 | 5.4 µm / 0.69 / 0.92 | 0.27 |
+| 2 | 4.6 µm / 0.81 / 0.98 | 3.7 µm / 0.77 / 0.90 | 0.18 |
+| 3 | 6.2 µm / 0.71 / 0.98 | 3.8 µm / 0.75 / 0.96 | 0.29 |
+
+- On an ideal Bmad machine the controller reaches 98% of slew targets and settles at 3–6 µm median spacing error; as good as or better than on its own surrogate. σz is the weak target (17–29% final error).
