@@ -25,7 +25,8 @@ import numpy as np
 import torch
 import yaml
 
-REPLAY = "results/4_daq_realism/online_replay_v6_median_cut_2026-10-15"
+REPLAY = "results/4_daq_realism/online_replay_v7_noauto_2026-10-19"     # deployed analysis, auto-crop off (10-19)
+REPLAY_V6 = "results/4_daq_realism/online_replay_v6_median_cut_2026-10-15"   # with the auto-crop (policies before 10-19)
 BLEN14 = "results/3_rl_eval/daq_replay_2026-10-17/blen14_steps.json"   # per-step BLEN_LI14_888_BRAW medians of the same scans
 L2_REF = -41.0          # sim L2 of mkb = 0 (the policy sees no absolute L2; keeps the scan inside the knob box)
 
@@ -91,7 +92,7 @@ def wrap_observe(base, plant: ScanPlant):
     return observe
 
 
-def run(logdir, scan, k, out, device="cuda:0", policy="final", seed=777, blen_source="daq"):
+def run(logdir, scan, k, out, device="cuda:0", policy="final", seed=777, blen_source="daq", replay_dir=None):
     from ..artifacts import policy_flow_ckpt
     from ._train_utils import build_env_fn
     from .rollout import load_policy, rollout
@@ -101,6 +102,12 @@ def run(logdir, scan, k, out, device="cuda:0", policy="final", seed=777, blen_so
     de = cfg["params"]["diff_env"]
     if de.get("plant") != "xtcav_screen":
         raise SystemExit("DAQ replay needs a screen-mode (S2) policy")
+    # real readings from the analysis the policy's screen model matches: auto-crop (env roi x 4.6 mm) -> replay v6,
+    # wider window -> v7 (auto-crop off); --replay-dir overrides
+    global REPLAY
+    roi = (de.get("screen") or {}).get("roi") or {}
+    REPLAY = replay_dir or (REPLAY_V6 if roi and float(roi.get("x", 1.0)) <= 4.7e-3 else REPLAY)
+    print(f"[replay] readings from {REPLAY}", flush=True)
     v4 = de["v4"]
     v4["offcontext_goal_frac"] = 0.0
     v4["actuators"]["L1PhaseSet"]["cum_limit"] = 0.0
@@ -188,9 +195,11 @@ def main():
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--blen-source", choices=("daq", "model"), default="daq",
                     help="BLEN-obs policies: the scan's real BC14 BLEN (daq) or the env's own model of the true L2 (model)")
+    ap.add_argument("--replay-dir", default=None, help="online-replay results dir (default: matched to the policy's window)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    run(a.logdir, a.scan, a.k, a.out, device=a.device, policy=a.policy, blen_source=a.blen_source)
+    run(a.logdir, a.scan, a.k, a.out, device=a.device, policy=a.policy, blen_source=a.blen_source,
+        replay_dir=a.replay_dir)
 
 
 if __name__ == "__main__":
