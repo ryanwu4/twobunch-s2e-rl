@@ -197,6 +197,12 @@ class TwoBunchFlow(L.LightningModule):
         # output = the bunch SPACING in units of spacing_scale_m (witness z = drive z - spacing), so the spacing is a
         # single regression output (as the offline MLP that passed the pair gates); centroid_act: relu | silu
         centroid_param="per_bunch", centroid_act="relu",
+        # chirp-curve head (False = before 2026-10-20): a per-bunch MLP gives, from the knobs, smooth functions
+        # g_d(pz) (Chebyshev series of tanh(pz_std / curve_scale), orders 1..curve_order) for each coordinate d in
+        # curve_dims; the density path removes them (x_d -> x_d - g_d(pz), an exact shear with log-det 0) BEFORE the
+        # whitening, so the flow models the thin residual around the beam's energy-vs-position backbone at unit
+        # width; samples add them back. Zero-initialized: identical to the plain flow at init (warm-startable).
+        curve_head=False, curve_dims=(2, 0), curve_order=8, curve_scale=3.0, curve_head_lr=None,
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
 
@@ -250,6 +256,18 @@ class TwoBunchFlow(L.LightningModule):
                               nn.Linear(hidden_dim, latent_dim)) for _ in range(2)])
             g = torch.Generator().manual_seed(20261017)
             self.register_buffer("_z_center", torch.randn(int(centroid_buffer), latent_dim, generator=g))
+
+        if curve_head:
+            if 5 in tuple(curve_dims):
+                raise ValueError("curve_dims must not include pz (5): the shear is a function of pz")
+            nd = len(curve_dims) * int(curve_order)
+            self.curve_heads = nn.ModuleList()
+            for _ in range(2):
+                last = nn.Linear(hidden_dim, nd)
+                nn.init.zeros_(last.weight)
+                nn.init.zeros_(last.bias)
+                self.curve_heads.append(nn.Sequential(nn.Linear(condition_dim, hidden_dim), nn.SiLU(),
+                                                      nn.Linear(hidden_dim, hidden_dim), nn.SiLU(), last))
 
         tril = torch.tril_indices(latent_dim, latent_dim, offset=-1)
         self.register_buffer("_tril_r", tril[0])
@@ -307,6 +325,27 @@ class TwoBunchFlow(L.LightningModule):
         mean, std = self._scaler(k)
         return self.centroid_std(knobs, k) * std + mean
 
+    def curve_shift(self, knobs, k, pz_std):
+        """(B, P, len(curve_dims)) backbone offsets g_d(pz) of bunch k at the particles' standardized pz (B, P)."""
+        hp = self.hparams
+        order, nd = int(hp.get("curve_order", 8)), len(hp.get("curve_dims", (2, 0)))
+        a = self.curve_heads[k](knobs).view(knobs.shape[0], nd, order)           # (B, nd, order)
+        u = torch.tanh(pz_std / float(hp.get("curve_scale", 3.0)))
+        T = [u, 2 * u * u - 1]                                                      # Chebyshev T1, T2, ...
+        while len(T) < order:
+            T.append(2 * u * T[-1] - T[-2])
+        basis = torch.stack(T[:order], -1)                                          # (B, P, order)
+        return torch.einsum("bpo,bdo->bpd", basis, a)
+
+    def _curve(self, parts_std, knobs, k, sign):
+        if not self.hparams.get("curve_head", False):
+            return parts_std
+        dims = list(self.hparams.get("curve_dims", (2, 0)))
+        g = self.curve_shift(knobs, k, parts_std[..., 5])
+        out = parts_std.clone()
+        out[..., dims] = parts_std[..., dims] + sign * g
+        return out
+
     def _scaler(self, k):
         return (self.drive_mean, self.drive_std) if k == 0 else (self.witness_mean, self.witness_std)
 
@@ -334,6 +373,7 @@ class TwoBunchFlow(L.LightningModule):
     def bunch_nll(self, parts_std, knobs, k):
         """parts_std: (M,P,6) standardized; knobs: (M,8). Returns scalar mean NLL."""
         m, p = parts_std.shape[0], parts_std.shape[1]
+        parts_std = self._curve(parts_std, knobs, k, -1.0)   # shear onto the backbone residual (log-det 0)
         h = self._encode(knobs, k)
         mu, Lm = self._whiten(h, k)
         cdims = self._cdims()
@@ -389,6 +429,7 @@ class TwoBunchFlow(L.LightningModule):
             mu = self.centroid_std(knobs, k)
             w = w - w.mean(1, keepdim=True)
         x_std = mu.unsqueeze(1) + torch.einsum("bij,bnj->bni", Lm, w)
+        x_std = self._curve(x_std, knobs, k, +1.0)            # back onto the backbone
         if cdims is not None:                 # partial head: shift the owned coordinates' sample mean onto c_k
             c = self.centroid_std(knobs, k)
             sel = torch.zeros(self.latent_dim, device=x_std.device, dtype=x_std.dtype)
@@ -583,6 +624,9 @@ class TwoBunchFlow(L.LightningModule):
             heads.append((list(self.t_full_head.parameters()), float(t_lr)))
         if self.hparams.get("centroid_head", False) and c_lr:
             heads.append((list(self.centroid_heads.parameters()), float(c_lr)))     # same reason
+        cu_lr = self.hparams.get("curve_head_lr")
+        if self.hparams.get("curve_head", False) and cu_lr:
+            heads.append((list(self.curve_heads.parameters()), float(cu_lr)))
         if heads:
             ids = {id(p) for ps, _ in heads for p in ps}
             groups = [{"params": [p for p in self.parameters() if id(p) not in ids]}] + \

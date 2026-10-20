@@ -208,6 +208,13 @@ def main():
     ap.add_argument("--centroid-head-lr", type=float, default=None,
                     help="own lr for the centroid heads (a warm-started fine-tune's lr is far too small for fresh heads)")
     ap.add_argument("--centroid-buffer", type=int, default=512, help="frozen base sample for the residual mean")
+    ap.add_argument("--curve-head", action="store_true", help="chirp-curve (backbone) shear before the whitening")
+    ap.add_argument("--curve-dims", type=int, nargs="+", default=[2, 0], help="coordinates sheared by g(pz)")
+    ap.add_argument("--curve-order", type=int, default=8)
+    ap.add_argument("--curve-scale", type=float, default=3.0)
+    ap.add_argument("--curve-head-lr", type=float, default=None)
+    ap.add_argument("--init-partial", action="store_true",
+                    help="warm start: load only tensors whose shapes match (architecture changes)")
     ap.add_argument("--centroid-prefit-steps", type=int, default=3000,
                     help="regression steps fitting FRESH centroid heads to the train centroids before training")
     ap.add_argument("--t-sharp", type=float, default=4.0)
@@ -285,13 +292,23 @@ def main():
                         t_two_part=args.t_two_part, t_sharp=args.t_sharp,
                         centroid_head=args.centroid_head, w_centroid=args.w_centroid,
                         centroid_buffer=args.centroid_buffer, centroid_head_lr=args.centroid_head_lr,
+                        curve_head=args.curve_head, curve_dims=tuple(args.curve_dims), curve_order=args.curve_order,
+                        curve_scale=args.curve_scale, curve_head_lr=args.curve_head_lr,
                         t_head_lr=args.t_head_lr if args.t_two_part else None,
                         lr_schedule=args.lr_schedule, t_max=args.epochs)
     if init_state is not None:
         # warm-start weights only (new hparams + fresh optimizer/LR schedule); not a full resume
+        if args.init_partial:
+            own = model.state_dict()
+            skipped = [k for k, v in init_state.items() if k in own and own[k].shape != v.shape]
+            init_state = {k: v for k, v in init_state.items() if k in own and own[k].shape == v.shape}
+            print(f"partial warm start: {len(init_state)} tensors loaded, {len(skipped)} shape-mismatched skipped "
+                  f"(e.g. {skipped[:4]})")
         missing, unexpected = model.load_state_dict(init_state, strict=False)
         new_ok = [k for k in missing if (args.t_two_part and k.startswith("t_full_head."))
-                  or (args.centroid_head and (k.startswith("centroid_heads.") or k == "_z_center"))]
+                  or (args.centroid_head and (k.startswith("centroid_heads.") or k == "_z_center"))
+                  or (args.curve_head and k.startswith("curve_heads."))
+                  or (args.init_partial and k in model.state_dict())]
         missing = [k for k in missing if k not in new_ok]
         if missing or unexpected:
             raise SystemExit(f"warm start from {ck} incomplete: missing={missing} unexpected={unexpected}")
