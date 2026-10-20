@@ -210,3 +210,22 @@ Deployed online analysis (replay v6 settings) on TEST_15668 / E300_15671 / E300_
 | 3 | 6.2 µm / 0.71 / 0.98 | 3.8 µm / 0.75 / 0.96 | 0.29 |
 
 - On an ideal Bmad machine the controller reaches 98% of slew targets and settles at 3–6 µm median spacing error; as good as or better than on its own surrogate. σz is the weak target (17–29% final error).
+
+### No-crop seed-0 results (06:15; `results/3_rl_eval/eval_nocrop_2026-10-19/summary.txt`)
+Timing: 4 concurrent runs took 4.6 h (plain noblen, 900 it), 5.3 h (GC noblen, 1000), 6.1 h (plain bc11loop), 6.9 h (GC bc11loop): the BC11-loop env is slower. Plain slew eval started 06:10 (~11:15); GC slew after the GC bc11loop evals (~07:00 → ~12:00). s1 runs overrun noon.
+Settled spacing µm / within 10 µm (nominal jitter, own flow = spacing head); replay = within 10 µm.
+
+| policy | window | nominal | far1 | local | stress | replay TEST / E300 |
+|---|---|---|---|---|---|---|
+| zs noblen s0 (old, crop-trained) | eval with new window | 11.7 / 0.42 | 14.3 / 0.34 | — | — | **0.92 / 0.42** (v7 readings) |
+| zs bc11loop s1 (old) | eval with new window | 13.7 / 0.35 | 15.5 / 0.31 | — | — | **0.91 / 0.50** |
+| nc plain noblen s0 | trained no-crop | 11.6 / 0.42 | 14.4 / 0.33 | 12.2 / 0.39 | 17.0 / 0.21 | 0.84 / 0.27 |
+| nc plain bc11loop s0 | trained no-crop | 15.2 / 0.29 | 18.7 / 0.23 | 15.5 / 0.28 | 18.5 / 0.18 | 0.81 / 0.34 |
+| nc GC noblen s0 | trained no-crop | 14.8 / 0.31 (mixed) | 15.0 / 0.33 | 13.3 / 0.36 | 20.0 / 0.19 | 0.55 / 0.31 |
+| crop GC 750 (best ckpt), 4 runs | crop | 14.4–15.4 / 0.32–0.34 | 14.9–17.5 / 0.27–0.34 | 12.9–15.5 / 0.31–0.37 | — | — |
+
+- **The old crop-trained policies do better on real data when fed no-crop readings** (TEST 0.84–0.88 → 0.91–0.92, E300 0.34–0.42 → 0.42–0.50), and are unchanged in simulation.
+- Retraining with the new window: noblen unchanged in sim, worse on the replays (one seed); bc11loop worse in sim (one seed).
+- **Goal conditioning (far setpoints + spacing-only) gives no gain** on far setpoints (far1 15.0 / 0.33 vs plain 14.4 / 0.33; σz 0.23 vs 0.23) and costs on local setpoints and on the replays. The far-setpoint penalty is mostly short segments (12–24 steps: 15.6 µm vs 13.3–13.6 µm for longer ones); given 36+ steps, far ≈ local (0.31–0.37 vs 0.34–0.39 within 10 µm). So the limit is the per-step slew budget plus the noise floor, not the goal distribution.
+- Seed-1 runs pending; the conclusions above are one seed per arm.
+- (Cosmetic: the old-policy far1 / replay lines are labelled `*_window_window` in summary.txt — a shell variable clash; the evals themselves are correct.)
