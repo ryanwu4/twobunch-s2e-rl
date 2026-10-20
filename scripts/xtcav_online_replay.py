@@ -36,6 +36,8 @@ def main():
                     help="step_median (default): median of the per-image +V cuts, shared with -V (D2); step: valley "
                          "of the summed +V projection (replay v3); image: per-image valley (v1/v2)")
     ap.add_argument("--qa-steps", default="", help="comma list of steps: save median +V/-V images + cuts")
+    ap.add_argument("--no-auto-crop", action="store_true", help="skip the deployed auto-crop (keep the hand crop)")
+    ap.add_argument("--no-hand-crop", action="store_true", help="skip the fixed hand crop too (full camera frame)")
     a_ = ap.parse_args()
     exp, num = a_.dataset.rsplit("_", 1)
     ds = rf.DATASET(str(rf.XTCAV_ROOT), exp, num)
@@ -45,8 +47,9 @@ def main():
     tier0 = json.loads((rf.XTCAV_ROOT / "sim2real" / "results" / "tier0_real_features" / a_.dataset
                         / "summary.json").read_text())
     cal = tier0["calibration"]["cal_um_per_deg_used"]       # same calibration as Tier 0 (no re-fit)
-    a = rf.xtcav.XTCAVAnalysis(ds, cam="DTOTR2", d_nom=rf.D_NOM, chargeCal=1.0, hand_crop=rf.HAND_CROP,
-                               auto_crop=rf.AUTO_CROP, hot_pix_threshold=rf.HOT_PIX_THRESHOLD,
+    a = rf.xtcav.XTCAVAnalysis(ds, cam="DTOTR2", d_nom=rf.D_NOM, chargeCal=1.0,
+                               hand_crop=None if a_.no_hand_crop else rf.HAND_CROP,
+                               auto_crop=None if a_.no_auto_crop else rf.AUTO_CROP, hot_pix_threshold=rf.HOT_PIX_THRESHOLD,
                                noise_threshold=rf.NOISE_THRESHOLD, median_filter=rf.MEDIAN_FILTER)
     a.set_tcav_calibration(cal)
     S = float(a.cal_scaled)                                 # screen um per um of z (magnitude)
@@ -54,7 +57,8 @@ def main():
     plus = set(int(i) for i in cls["ix_plus"])
     rng = np.random.default_rng(0)
     qa_imgs = {}
-    out = {"dataset": a_.dataset, "cal_um_per_deg": cal, "cal_scaled": S, "M": a_.M, "steps": {}}
+    out = {"dataset": a_.dataset, "cal_um_per_deg": cal, "cal_scaled": S, "M": a_.M, "steps": {},
+           "auto_crop": not a_.no_auto_crop, "hand_crop": not a_.no_hand_crop}
     for step in sorted(set(int(s) for s in np.unique(steps))):
         st = {"plus": [], "minus": []}
         qa = {"plus": [], "minus": []} if str(step) in a_.qa_steps.split(",") else None

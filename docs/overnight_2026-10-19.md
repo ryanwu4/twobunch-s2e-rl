@@ -179,3 +179,15 @@ The env crop (±4.6 × ±2.44 mm) is the deployed auto-crop (150 px); the DAQ ca
 - The surrogate keeps tracking Bmad equally well (validity agreement 0.91 → 0.93; > 250 µm reading agreement 0.79 → 0.86): crop size does not hurt surrogate fidelity.
 - ~~Newly admitted readings less accurate~~ — that was an artifact of the absolute 10 µm threshold at 250+ µm. In **relative** error (|reading − true beam| / true beam, Bmad, valid readings) the > 250 µm band stays at a 3.4% median for every crop, and within 10% rises 0.72 (×1, n = 29) → 0.93 (×1.5, n = 85) → 0.89 (×2, n = 101); surrogate-vs-Bmad within 10% 0.79 → 0.92 at ×1.5. **×1.5 is the sweet spot** (≈ the DAQ camera frame, so an analysis-only change).
 - Relative error is worst at small spacing: 60–100 µm 13.7% (×1) → 17.6% (×1.5) median, 100–150 µm 8.8–9.5%, vs 3.3–3.4% above 150 µm; widening slightly hurts the 60–100 µm band (newly admitted poorer readings).
+
+### Real-data check of "no crop" (`results/4_daq_realism/online_replay_v7_{noauto,fullframe}_2026-10-19/`, `scripts/online_replay_nocrop_2026-10-19.sh`)
+Deployed online analysis (replay v6 settings) on TEST_15668 / E300_15671 / E300_15673 with the auto-crop off (hand crop kept) and with both crops off. No truth on real data: judged by validity, smoothness of spacing vs scan, scatter, cut_sens.
+
+| scan | analysis | valid steps | roughness (median abs 2nd diff of spacing vs scan, µm) | single-image sigma | drive charge frac |
+|---|---|---|---|---|---|
+| TEST_15668 | deployed / no auto-crop / full frame | 17 / 17 / 18 | 4.4 / 4.4 / 4.8 | 15.4 / 15.5 / 15.3 | 0.713 / 0.719 / 0.718 |
+| E300_15673 | deployed / no auto-crop / full frame | 18 / 24 / 24 | 7.0 / 5.6 / 4.7 | 15.8 / 15.9 / 15.2 | 0.682 / 0.718 / 0.720 |
+
+- Holds up: E300_15673's six large-spacing steps (deployed: invalid, edge_frac 0.015–0.031) become valid with 5–50 µm larger spacing (the witness was being clipped); the spacing curve gets smoother (the deployed step-11 outlier 170 µm → 188 µm, in line with its neighbours); single-image scatter unchanged.
+- Systematic shift: with the auto-crop off, unclipped steps read +3–18 µm higher (60–150 µm region on both scans) and the drive charge fraction rises (0.68 → 0.72 on E300_15673). In Bmad the same change moves readings by −0.1 µm, so this is a real-image effect the sim does not have (the auto-crop cuts real image tails / halo).
+- Full frame (hand crop off too) is unstable where the beam is unreadable (E300_15671 steps 10–25 and TEST_15668 steps 26–30 flip sign or jump 10–20 µm: stray light enters). Keep the hand crop: "no crop" = auto-crop off. The hand crop (450 × 300 px) is ≈ ×1.5 of the auto-crop in x, inside the sim's ×1.5–none plateau.
