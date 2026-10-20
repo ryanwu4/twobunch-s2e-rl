@@ -230,3 +230,22 @@ Settled spacing µm / within 10 µm (nominal jitter, own flow = spacing head); r
 - Seed-1 runs pending; the conclusions above are one seed per arm.
 - (Cosmetic: the old-policy far1 / replay lines are labelled `*_window_window` in summary.txt — a shell variable clash; the evals themselves are correct.)
 - nc GC bc11loop s0: nominal 17.6 / 0.26, far1 18.1 / 0.24, local 16.5 / 0.28, stress 21.1 / 0.17, replay TEST 0.55 / E300 0.19 (worst of the night). GC slew eval → gc_nc_zs_screen_noblen_jit_s0 (07:00 → ~12:00); plain slew (nc noblen s0) 10/54 calls at 07:00 (~10:40).
+
+### Morning 10-20 (12:40)
+**Noise-free Bmad slew, no-crop plain noblen s0** (`results/3_rl_eval/slew_ideal_bmad_2026-10-19/nc_zs_screen_noblen_jit_s0_*`, figures `slew_traces_*.png`, `slew_summary.png`; done 12:36 — two Bmad evals sharing the CPUs ran ~2 h slower than planned).
+
+| setpoint | no-crop: final median / within 10 µm / reached | crop baseline | σz final rel, no-crop vs crop |
+|---|---|---|---|
+| 1 | 3.4 µm / 0.90 / 1.00 | 3.4 / 0.90 / 0.98 | 0.16 vs 0.27 |
+| 2 | 6.7 µm / 0.67 / 0.96 | 4.6 / 0.81 / 0.98 | 0.18 vs 0.18 |
+| 3 | 3.9 µm / 0.85 / 0.98 | 6.2 / 0.71 / 0.98 | 0.11 vs 0.29 |
+
+By goal spacing (all setpoints): < 100 µm 0.20 within 10 µm (n = 5; crop 0.46, n = 13), 100–150 0.74 (0.86), 150–250 0.88 (0.88), **250–400 0.82 (n = 49; crop 0.70, n = 20)**. The wider window admits more large-spacing goals and tracks them better; < 100 µm remains the failure region in both.
+
+**Seed 1** (nominal / far1 / replay TEST / E300): plain noblen s1 11.6 / 0.41, 13.3 / 0.36, 0.84 / 0.38; GC noblen s1 13.1 / 0.36, 14.0 / 0.34, 0.77 / 0.30; plain bc11loop s1 12.5 / 0.37, 14.0 / 0.32, 0.84 / 0.44 (s0 was 15.2 / 0.29: seed spread ~3 µm). GC bc11loop s1 still training; GC noblen s0 Bmad slew at 44 / 54 calls (~13:30).
+
+**Conclusions**
+1. On an ideal Bmad machine the controller slews to targets: 96–100% of setpoints reached, final median 3–7 µm, 67–90% within 10 µm; no-crop training also roughly halves the σz error at the end of slews.
+2. Goal conditioning (far setpoints + spacing-only) does not beat the plain arm on far setpoints in either seed (far1 0.33–0.34 vs 0.33–0.36 within 10 µm) and costs on local setpoints and replays. Far-move performance is limited by the per-step slew budget and the noise floor.
+3. No-crop retraining ≈ crop training in simulation (within seed spread); on the real replays the crop-trained policies fed no-crop readings remain best (TEST 0.91–0.92, E300 0.42–0.50 vs 0.81–0.84 / 0.27–0.44 retrained).
+4. Setpoints below ~100 µm fail even noise-free (surrogate's weak L1 response near compression).
