@@ -219,6 +219,12 @@ def main():
     ap.add_argument("--beam-latent-free-bits", type=float, default=0.0)
     ap.add_argument("--beam-latent-lr", type=float, default=None)
     ap.add_argument("--set-hidden", type=int, default=128)
+    ap.add_argument("--backbone", action="store_true", help="per-beam binned backbone shear + knob prior over its PCA")
+    ap.add_argument("--backbone-bins", type=int, default=32)
+    ap.add_argument("--backbone-pca", type=int, default=16)
+    ap.add_argument("--backbone-dims", type=int, nargs="+", default=[2, 0])
+    ap.add_argument("--w-backbone-prior", type=float, default=1.0)
+    ap.add_argument("--backbone-lr", type=float, default=None)
     ap.add_argument("--init-partial", action="store_true",
                     help="warm start: load only tensors whose shapes match (architecture changes)")
     ap.add_argument("--centroid-prefit-steps", type=int, default=3000,
@@ -303,6 +309,9 @@ def main():
                         beam_latent_dim=args.beam_latent_dim, beam_latent_beta=args.beam_latent_beta,
                         beam_latent_free_bits=args.beam_latent_free_bits, beam_latent_lr=args.beam_latent_lr,
                         set_hidden=args.set_hidden,
+                        backbone=args.backbone, backbone_bins=args.backbone_bins, backbone_pca=args.backbone_pca,
+                        backbone_dims=tuple(args.backbone_dims), w_backbone_prior=args.w_backbone_prior,
+                        backbone_lr=args.backbone_lr,
                         t_head_lr=args.t_head_lr if args.t_two_part else None,
                         lr_schedule=args.lr_schedule, t_max=args.epochs)
     if init_state is not None:
@@ -318,11 +327,21 @@ def main():
                   or (args.centroid_head and (k.startswith("centroid_heads.") or k == "_z_center"))
                   or (args.curve_head and k.startswith("curve_heads."))
                   or (args.beam_latent_dim and k.split(".")[0] in ("set_phi", "set_rho", "latent_prior", "latent_in"))
+                  or (args.backbone and (k.startswith("bb_") or k.split(".")[0] in ("backbone_prior", "backbone_in")))
                   or (args.init_partial and k in model.state_dict())]
         missing = [k for k in missing if k not in new_ok]
         if missing or unexpected:
             raise SystemExit(f"warm start from {ck} incomplete: missing={missing} unexpected={unexpected}")
         print(f"warm-started all weights from {ck}" + (f" (fresh: {len(new_ok)} new-head tensors)" if new_ok else ""))
+    if args.backbone:
+        # PCA basis of the per-beam backbones, from the training rows (density-trainable bunches)
+        tr = np.asarray(dm.train.indices)
+        ds_ = dm.full
+        parts = {}
+        for k, (dens, cloud) in enumerate(((ds_.drive_density, ds_.drive), (ds_.witness_density, ds_.witness))):
+            ix = tr[dens.numpy()[tr].astype(bool)]
+            parts[k] = cloud[ix]
+        model.set_backbone_basis(parts)
     fresh_t = args.t_two_part and (init_state is None or not any(k.startswith("t_full_head.") for k in init_state))
     if fresh_t:
         # fresh head starts at the training data's P(T = 1) per bunch (a warm-started trained head keeps its bias)

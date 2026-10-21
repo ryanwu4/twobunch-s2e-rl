@@ -213,6 +213,13 @@ class TwoBunchFlow(L.LightningModule):
         # be sharp while the backbone the knobs cannot pin down varies between draws (the knob -> backbone map is not
         # learnable to the beam's thinness: results/2_surrogate_screen/curve_learnability_2026-10-20).
         beam_latent_dim=0, beam_latent_beta=1.0, beam_latent_free_bits=0.0, beam_latent_lr=None, set_hidden=128,
+        # backbone mode (False = before 2026-10-21): the density path shears each beam by ITS OWN binned backbone (median z
+        # and x in backbone_bins equal-charge pz bins, PCA-truncated to backbone_pca components) so the flow models only the
+        # thin residual; a knob-conditioned heteroscedastic Gaussian prior over the standardized PCA coefficients
+        # (w_backbone_prior) is what sampling draws backbones from; the flow is also conditioned on the coefficients
+        # (zero-init). Sharp by construction; the backbone the knobs cannot pin down varies between draws. The PCA basis is
+        # fitted on the training rows by train.py (set_backbone_basis) and stored as buffers.
+        backbone=False, backbone_bins=32, backbone_pca=16, backbone_dims=(2, 0), w_backbone_prior=1.0, backbone_lr=None,
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
 
@@ -297,6 +304,26 @@ class TwoBunchFlow(L.LightningModule):
                 nn.init.zeros_(lin.bias)                      # no effect at init: identical to the plain flow
                 self.latent_in.append(lin)
             self._kl_log = {}
+
+        if backbone:
+            if 5 in tuple(backbone_dims):
+                raise ValueError("backbone_dims must not include pz (5)")
+            nb, npc = int(backbone_bins), int(backbone_pca)
+            nf = nb + nb * len(backbone_dims)
+            for k in range(2):
+                self.register_buffer(f"bb_mean_{k}", torch.zeros(nf))
+                self.register_buffer(f"bb_comp_{k}", torch.zeros(npc, nf))
+                self.register_buffer(f"bb_sd_{k}", torch.ones(npc))
+            self.backbone_prior = nn.ModuleList([nn.Sequential(
+                nn.Linear(condition_dim, hidden_dim), nn.SiLU(), nn.Linear(hidden_dim, hidden_dim), nn.SiLU(),
+                nn.Linear(hidden_dim, 2 * npc)) for _ in range(2)])
+            self.backbone_in = nn.ModuleList()
+            for _ in range(2):
+                lin = nn.Linear(npc, hidden_dim)
+                nn.init.zeros_(lin.weight)
+                nn.init.zeros_(lin.bias)
+                self.backbone_in.append(lin)
+            self._bb_log = {}
 
         tril = torch.tril_indices(latent_dim, latent_dim, offset=-1)
         self.register_buffer("_tril_r", tril[0])
@@ -401,6 +428,66 @@ class TwoBunchFlow(L.LightningModule):
         out[..., dims] = parts_std[..., dims] + sign * g
         return out
 
+    # ---- backbone mode -----------------------------------------------------
+    def bb_features(self, parts_std):
+        """(M, P, 6) standardized -> (M, F): [pz bin-median of bin 0, log pz increments (nb-1), dim bin-medians (nb * nd)]
+        over nb equal-count pz bins."""
+        nb, dims = int(self.hparams.backbone_bins), list(self.hparams.backbone_dims)
+        M, P, _ = parts_std.shape
+        o = parts_std[..., 5].argsort(1)
+        srt = torch.gather(parts_std, 1, o[..., None].expand_as(parts_std))
+        ch = srt[:, : (P // nb) * nb].reshape(M, nb, P // nb, 6)
+        qp = ch[..., 5].median(2).values
+        qd = torch.stack([ch[..., d].median(2).values for d in dims], -1)              # (M, nb, nd)
+        inc = torch.diff(qp, dim=1).clamp_min(1e-6).log()
+        return torch.cat([qp[:, :1], inc, qd.reshape(M, -1)], 1)
+
+    def bb_unpack(self, f):
+        nb, nd = int(self.hparams.backbone_bins), len(self.hparams.backbone_dims)
+        qp = torch.cat([f[:, :1], f[:, :1] + torch.cumsum(f[:, 1:nb].exp(), 1)], 1)
+        return qp, f[:, nb:].reshape(f.shape[0], nb, nd)
+
+    def bb_encode(self, f, k):
+        return ((f - getattr(self, f"bb_mean_{k}")) @ getattr(self, f"bb_comp_{k}").T) / getattr(self, f"bb_sd_{k}")
+
+    def bb_decode(self, c, k):
+        return getattr(self, f"bb_mean_{k}") + (c * getattr(self, f"bb_sd_{k}")) @ getattr(self, f"bb_comp_{k}")
+
+    def bb_prior_params(self, knobs, k):
+        mu, lv = self.backbone_prior[k](knobs).chunk(2, -1)
+        return mu, lv.clamp(-10.0, 4.0)
+
+    def _bb_shear(self, parts_std, f, sign):
+        """parts[..., dims] += sign * backbone(pz), piecewise-linear through the bin medians (constant beyond the ends)."""
+        qp, qd = self.bb_unpack(f)
+        pz = parts_std[..., 5]
+        nb = qp.shape[1]
+        idx = torch.searchsorted(qp.contiguous(), pz.contiguous()).clamp(1, nb - 1)
+        x0, x1 = torch.gather(qp, 1, idx - 1), torch.gather(qp, 1, idx)
+        t = ((pz - x0) / (x1 - x0).clamp_min(1e-9)).clamp(0, 1)
+        out = parts_std.clone()
+        for j, d in enumerate(self.hparams.backbone_dims):
+            y = qd[..., j]
+            g = torch.gather(y, 1, idx - 1) * (1 - t) + torch.gather(y, 1, idx) * t
+            out[..., d] = parts_std[..., d] + sign * g
+        return out
+
+    @torch.no_grad()
+    def set_backbone_basis(self, parts_by_bunch):
+        """Fit the PCA basis per bunch from training clouds {k: (M, P, 6) standardized}."""
+        npc = int(self.hparams.backbone_pca)
+        for k, parts in parts_by_bunch.items():
+            f = torch.cat([self.bb_features(parts[i:i + 512].float()) for i in range(0, len(parts), 512)]).double()
+            mean = f.mean(0)
+            _, sv, vt = torch.linalg.svd(f - mean, full_matrices=False)
+            comp = vt[:npc]
+            proj = (f - mean) @ comp.T
+            getattr(self, f"bb_mean_{k}").copy_(mean.float())
+            getattr(self, f"bb_comp_{k}").copy_(comp.float())
+            getattr(self, f"bb_sd_{k}").copy_(proj.std(0).clamp_min(1e-6).float())
+            var = (sv ** 2) / (sv ** 2).sum()
+            print(f"backbone PCA bunch {k}: {npc} components explain {float(var[:npc].sum()):.4f} of the feature variance")
+
     def latent_prior_params(self, knobs, k):
         mu, lv = self.latent_prior[k](knobs).chunk(2, -1)
         return mu, lv.clamp(-8.0, 4.0)
@@ -444,6 +531,16 @@ class TwoBunchFlow(L.LightningModule):
         parts_std = self._curve(parts_std, knobs, k, -1.0)   # shear onto the backbone residual (log-det 0)
         h = self._encode(knobs, k)
         kl_term = None
+        if self.hparams.get("backbone", False):
+            with torch.no_grad():
+                c = self.bb_encode(self.bb_features(parts_std), k)
+                f_hat = self.bb_decode(c, k)                   # the PCA-truncated backbone, as sampling produces
+            parts_std = self._bb_shear(parts_std, f_hat, -1.0)
+            mp, lp = self.bb_prior_params(knobs, k)
+            prior_nll = (0.5 * (lp + (c - mp) ** 2 / lp.exp() + _LOG_2PI)).sum(-1).mean()
+            self._bb_log[k] = prior_nll.detach()
+            kl_term = float(self.hparams.get("w_backbone_prior", 1.0)) * prior_nll
+            h = h + self.backbone_in[k](c)
         if self.hparams.get("beam_latent_dim", 0):
             mq, lq = self.latent_posterior_params(parts_std, knobs, k, h)
             s_ = mq + torch.exp(0.5 * lq) * torch.randn_like(mq)
@@ -475,7 +572,7 @@ class TwoBunchFlow(L.LightningModule):
         return nll if kl_term is None else nll + kl_term
 
     # ---- sampling (reparameterized, differentiable wrt knobs) --------------
-    def sample_bunch(self, knobs, k, n, physical=True, generator=None, z=None, s=None):
+    def sample_bunch(self, knobs, k, n, physical=True, generator=None, z=None, s=None, c=None):
         """(B,n,6) cloud for bunch k. Differentiable w.r.t. knobs.
 
         generator: optional torch.Generator for reproducible draws.
@@ -493,6 +590,12 @@ class TwoBunchFlow(L.LightningModule):
                 eps = torch.randn(mp.shape, device=knobs.device, dtype=knobs.dtype, generator=generator)
                 s = mp + torch.exp(0.5 * lp) * eps
             h = self._cond_h(h, k, s)
+        if self.hparams.get("backbone", False):               # one backbone per beam: c ~ prior unless given
+            if c is None:
+                mp, lp = self.bb_prior_params(knobs, k)
+                eps = torch.randn(mp.shape, device=knobs.device, dtype=knobs.dtype, generator=generator)
+                c = mp + torch.exp(0.5 * lp) * eps
+            h = h + self.backbone_in[k](c)
         h_flat = h.unsqueeze(1).expand(b, n, -1).reshape(b * n, -1)
         if z is None:
             z = torch.randn(b * n, self.latent_dim, device=knobs.device,
@@ -516,6 +619,8 @@ class TwoBunchFlow(L.LightningModule):
             w = w - w.mean(1, keepdim=True)
         x_std = mu.unsqueeze(1) + torch.einsum("bij,bnj->bni", Lm, w)
         x_std = self._curve(x_std, knobs, k, +1.0)            # back onto the backbone
+        if self.hparams.get("backbone", False):
+            x_std = self._bb_shear(x_std, self.bb_decode(c, k), +1.0)
         if cdims is not None:                 # partial head: shift the owned coordinates' sample mean onto c_k
             c = self.centroid_std(knobs, k)
             sel = torch.zeros(self.latent_dim, device=x_std.device, dtype=x_std.dtype)
@@ -576,6 +681,9 @@ class TwoBunchFlow(L.LightningModule):
             add(self.bunch_nll(batch["drive"][dd], knobs[dd], 0), 1.0, "nll_drive")
         if 1 in tb and wd.any():
             add(self.bunch_nll(batch["witness"][wd], knobs[wd], 1), 1.0, "nll_witness")
+        if hp.get("backbone", False):
+            for kk, v in getattr(self, "_bb_log", {}).items():
+                logs[f"{prefix}_bbprior_{'drive' if kk == 0 else 'witness'}"] = v
         if hp.get("beam_latent_dim", 0):
             for kk, v in getattr(self, "_kl_log", {}).items():
                 logs[f"{prefix}_kl_{'drive' if kk == 0 else 'witness'}"] = v
@@ -718,6 +826,9 @@ class TwoBunchFlow(L.LightningModule):
             heads.append((list(self.t_full_head.parameters()), float(t_lr)))
         if self.hparams.get("centroid_head", False) and c_lr:
             heads.append((list(self.centroid_heads.parameters()), float(c_lr)))     # same reason
+        bb_lr = self.hparams.get("backbone_lr")
+        if self.hparams.get("backbone", False) and bb_lr:
+            heads.append((list(self.backbone_prior.parameters()) + list(self.backbone_in.parameters()), float(bb_lr)))
         bl_lr = self.hparams.get("beam_latent_lr")
         if self.hparams.get("beam_latent_dim", 0) and bl_lr:
             heads.append((list(self.set_phi.parameters()) + list(self.set_rho.parameters())
