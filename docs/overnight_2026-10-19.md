@@ -251,3 +251,19 @@ By goal spacing (all setpoints): < 100 µm 0.20 within 10 µm (n = 5; crop 0.46,
 4. Setpoints below ~100 µm fail even noise-free (surrogate's weak L1 response near compression).
 - 13:23 chain done. GC bc11loop s1: nominal 13.8 / 0.34, far1 14.6 / 0.31, local 12.6 / 0.39, replay TEST 0.67 / E300 0.23. Noise-free Bmad slew of GC noblen s0: setpoints reached 0.98–1.00, final median 6.3–7.7 µm, within 10 µm 0.65–0.73, σz 0.15–0.27 (vs plain no-crop 3.4–6.7 µm / 0.67–0.90): goal conditioning is worse on the ideal machine too.
 - Replay gap crop-trained vs no-crop-retrained (TEST 0.89–0.94 vs 0.81–0.84, 4 runs each; E300 overlapping): same L2 convergence, spread over all goal bands; training goal mix shifted (> 250 µm 22% → 34%, TEST range 70–200 µm 55% → 47%). Likely cause, untested.
+
+### Flow sharpness arms (10-20, `results/2_surrogate_screen/flow_sharpness_2026-10-20/summary.txt`)
+All from B2-cov, 40 epochs. Thinness = surrogate / Bmad conditional spread (1 = as sharp as Bmad), median of the 12 gradient-check beams.
+
+| arm | val NLL drive / witness | pair Δ rms | drive pz\|z thin (compressed) | slice dE | σz-vs-L1 slope (compressed) | test spacing MAE / σz rel | screen 60–150 µm in 10% |
+|---|---|---|---|---|---|---|---|
+| B2-cov (baseline) | −0.51 / −0.04 | 5.44 µm | 4.9× (26×) | 5.6× | 0.95 (0.15) | 3.3 µm / 5.3% | 0.52 |
+| curve (unsupervised head) | −0.53 / −0.05 | 4.77 | 4.2× (25×) | 5.1× | 1.09 (0.15) | 2.9 / 5.3% | 0.51 |
+| curve2 (head regressed onto per-row LSQ curves, order 12) | −0.15 / +0.35 | 4.83 | 9.0× (39×) | 10.3× | 1.09 (0.04) | 3.7 / 7.8% | 0.40 |
+| rqs32 (tail 4, 32 bins) | −0.01 / +0.36 | 4.42 | 11.9× (70×) | 11.3× | −0.13 (−0.64) | 3.1 / 12.6% | 0.52 |
+| wide (rqs32 + 256 units) | +0.74 / +1.27 | 6.45 | 37× (89×) | 32× | 0.31 (−0.57) | 5.7 / 23% | 0.58 |
+
+- No arm sharpens the LPS. The unsupervised curve head stays at 2–7% of the z spread (the NLL does not move it); it is a mild overall improvement (pair Δ 5.44 → 4.77 µm, test MAE 3.3 → 2.9 µm).
+- The supervised curve head fits each row's curve only to a residual of 0.09 (z variance 0.71) — train = val (0.093 / 0.093), i.e. underfit, not overfit; an order-12 LSQ fit leaves ~0.0004–0.002. A curve wrong by ~0.3 σz is far wider than the beam (~0.02 σz), so shearing by it makes the beam blurrier.
+- rqs32 / wide: fresh spline layers, not converged in 40 epochs; worse everywhere except the pair metric.
+- The blur is the same on training and held-out rows (B2-cov, 1024-particle estimator: 1.69 vs 1.58): not a generalization gap. The bottleneck is how precisely the beam's fine LPS shape can be predicted from the knobs, which the likelihood then hedges by blurring.
