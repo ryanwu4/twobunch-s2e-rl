@@ -32,6 +32,9 @@ CKPTS = {
     "twobunch_combined": "trained/twobunch_combined/checkpoints/best-epoch=298-val_loss=0.9830.ckpt",
     "twobunch_combined_ft": "trained/twobunch_combined_ft/checkpoints/best-epoch=493-val_loss=0.5126.ckpt",
     "xtcav23": "trained/xtcav23/checkpoints/best-epoch=498-val_loss=0.1747.ckpt",
+    # surrogates of the current controller incumbents (added 2026-10-20, before the LPS-sharpness work)
+    "xtcav23e_inj_covB2": "trained/xtcav23e_inj_covB2_2026-10-17/checkpoints/best-epoch=034-val_paired_delta_rms_um=5.4293.ckpt",
+    "xtcav23e_inj_covB2zs": "trained/xtcav23e_inj_covB2zs_2026-10-18/checkpoints/best-step=09500-val_paired_delta_rms_um=4.6991.ckpt",
 }
 
 # policy run -> the flow ckpt it was trained on. cfg.yaml never recorded this; the mapping comes
@@ -47,6 +50,11 @@ POLICY_FLOW = {
     "bptt_gc_matched": "twobunch_combined_ft",
     "bptt_gc_tightbox": "twobunch_combined_ft",
     "bptt_gc_sigmaz": "twobunch_combined_ft",
+    # current controller incumbents (delta controllers on the XTCAV screen; added 2026-10-20)
+    "2026-10-18/realistic/real_covB2_screen_noblen_jit_s0": "xtcav23e_inj_covB2",
+    "2026-10-18/night/zs_screen_noblen_jit_s0": "xtcav23e_inj_covB2zs",
+    "2026-10-18/night/zs_screen_bc11loop_jit_s1": "xtcav23e_inj_covB2zs",
+    "2026-10-19/nocrop/nc_zs_screen_noblen_jit_s0": "xtcav23e_inj_covB2zs",
 }
 
 NORM_JSONS = ["twobunch_flow", "twobunch_flow_v2", "twobunch_flow_v4", "twobunch_combined",
@@ -172,4 +180,4 @@ def sample_probe(name: str, p: int = 64, seed: int = 0) -> dict[str, np.ndarray]
 
 
 def golden_path(kind: str, name: str) -> Path:
-    return GOLDEN / kind / f"{name}.npz"
+    return GOLDEN / kind / f"{name.replace('/', '__')}.npz"
