@@ -214,6 +214,11 @@ def main():
     ap.add_argument("--curve-scale", type=float, default=3.0)
     ap.add_argument("--curve-head-lr", type=float, default=None)
     ap.add_argument("--w-curve", type=float, default=0.0, help="regression of the curve head onto per-row LSQ backbones")
+    ap.add_argument("--beam-latent-dim", type=int, default=0, help="per-beam latent (0 = off)")
+    ap.add_argument("--beam-latent-beta", type=float, default=1.0)
+    ap.add_argument("--beam-latent-free-bits", type=float, default=0.0)
+    ap.add_argument("--beam-latent-lr", type=float, default=None)
+    ap.add_argument("--set-hidden", type=int, default=128)
     ap.add_argument("--init-partial", action="store_true",
                     help="warm start: load only tensors whose shapes match (architecture changes)")
     ap.add_argument("--centroid-prefit-steps", type=int, default=3000,
@@ -295,6 +300,9 @@ def main():
                         centroid_buffer=args.centroid_buffer, centroid_head_lr=args.centroid_head_lr,
                         curve_head=args.curve_head, curve_dims=tuple(args.curve_dims), curve_order=args.curve_order,
                         curve_scale=args.curve_scale, curve_head_lr=args.curve_head_lr, w_curve=args.w_curve,
+                        beam_latent_dim=args.beam_latent_dim, beam_latent_beta=args.beam_latent_beta,
+                        beam_latent_free_bits=args.beam_latent_free_bits, beam_latent_lr=args.beam_latent_lr,
+                        set_hidden=args.set_hidden,
                         t_head_lr=args.t_head_lr if args.t_two_part else None,
                         lr_schedule=args.lr_schedule, t_max=args.epochs)
     if init_state is not None:
@@ -309,6 +317,7 @@ def main():
         new_ok = [k for k in missing if (args.t_two_part and k.startswith("t_full_head."))
                   or (args.centroid_head and (k.startswith("centroid_heads.") or k == "_z_center"))
                   or (args.curve_head and k.startswith("curve_heads."))
+                  or (args.beam_latent_dim and k.split(".")[0] in ("set_phi", "set_rho", "latent_prior", "latent_in"))
                   or (args.init_partial and k in model.state_dict())]
         missing = [k for k in missing if k not in new_ok]
         if missing or unexpected:

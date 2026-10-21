@@ -206,6 +206,13 @@ class TwoBunchFlow(L.LightningModule):
         # to the row's particles), loss = mean squared difference of the two curves at the particles (standardized units);
         # without it the NLL barely moves a zero-initialized head on a pretrained flow (2026-10-20)
         curve_head=False, curve_dims=(2, 0), curve_order=8, curve_scale=3.0, curve_head_lr=None, w_curve=0.0,
+        # beam-level latent (0 = off, all checkpoints before 2026-10-21): each beam (row, bunch) carries a latent s of this
+        # dimension that the flow is conditioned on (h' = h(knobs) + W s, W zero-initialized). Training: an amortized set
+        # encoder over the row's particles gives q(s | cloud, knobs); loss = NLL + beta * KL(q || p(s | knobs)) / (P *
+        # nll_dim_norm) (an ELBO per particle). Sampling: s ~ p(s | knobs), one draw per beam, so each sampled beam can
+        # be sharp while the backbone the knobs cannot pin down varies between draws (the knob -> backbone map is not
+        # learnable to the beam's thinness: results/2_surrogate_screen/curve_learnability_2026-10-20).
+        beam_latent_dim=0, beam_latent_beta=1.0, beam_latent_free_bits=0.0, beam_latent_lr=None, set_hidden=128,
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
 
@@ -272,6 +279,25 @@ class TwoBunchFlow(L.LightningModule):
                 self.curve_heads.append(nn.Sequential(nn.Linear(condition_dim, hidden_dim), nn.SiLU(),
                                                       nn.Linear(hidden_dim, hidden_dim), nn.SiLU(), last))
 
+        if beam_latent_dim:
+            dl, hs = int(beam_latent_dim), int(set_hidden)
+            self.set_phi = nn.ModuleList([nn.Sequential(nn.Linear(latent_dim, hs), nn.SiLU(), nn.Linear(hs, hs), nn.SiLU())
+                                          for _ in range(2)])
+            self.set_rho = nn.ModuleList([nn.Sequential(nn.Linear(2 * hs + hidden_dim, hs), nn.SiLU(), nn.Linear(hs, 2 * dl))
+                                          for _ in range(2)])
+            self.latent_prior = nn.ModuleList()
+            self.latent_in = nn.ModuleList()
+            for _ in range(2):
+                last = nn.Linear(hidden_dim, 2 * dl)
+                nn.init.zeros_(last.weight)
+                nn.init.zeros_(last.bias)                     # prior N(0, 1) at init
+                self.latent_prior.append(nn.Sequential(nn.Linear(condition_dim, hidden_dim), nn.SiLU(), last))
+                lin = nn.Linear(dl, hidden_dim)
+                nn.init.zeros_(lin.weight)
+                nn.init.zeros_(lin.bias)                      # no effect at init: identical to the plain flow
+                self.latent_in.append(lin)
+            self._kl_log = {}
+
         tril = torch.tril_indices(latent_dim, latent_dim, offset=-1)
         self.register_buffer("_tril_r", tril[0])
         self.register_buffer("_tril_c", tril[1])
@@ -333,11 +359,20 @@ class TwoBunchFlow(L.LightningModule):
         hp = self.hparams
         order, nd = int(hp.get("curve_order", 8)), len(hp.get("curve_dims", (2, 0)))
         a = self.curve_heads[k](knobs).view(knobs.shape[0], nd, order)           # (B, nd, order)
-        basis = self.curve_basis(pz_std)                                            # (B, P, order) Chebyshev T1..
+        basis = self.curve_basis(pz_std, knobs, k)                                  # (B, P, order) Chebyshev T1..
         return torch.einsum("bpo,bdo->bpd", basis, a)
 
-    def curve_basis(self, pz_std):
+    def _pz_frame(self, knobs, k):
+        """(B,), (B,) knob-dependent centre and width of the bunch's standardized pz (the whitening's pz mean and marginal
+        std; pz is never sheared, so these are pure functions of the knobs and the shear stays an exact per-particle map)."""
+        mu, Lm = self._whiten(self._encode(knobs, k), k)
+        return mu[:, 5], Lm[:, 5, :].norm(dim=-1).clamp_min(1e-3)
+
+    def curve_basis(self, pz_std, knobs=None, k=0):
         order = int(self.hparams.get("curve_order", 8))
+        if knobs is not None:                    # centred / scaled per row (an unnormalized basis saturates: 2026-10-20)
+            c, w = self._pz_frame(knobs, k)
+            pz_std = (pz_std - c.unsqueeze(-1)) / w.unsqueeze(-1)
         u = torch.tanh(pz_std / float(self.hparams.get("curve_scale", 3.0)))
         T = [u, 2 * u * u - 1]
         while len(T) < order:
@@ -347,11 +382,12 @@ class TwoBunchFlow(L.LightningModule):
     def curve_regression(self, parts_std, knobs, k):
         """Mean squared difference between the head's backbone and each row's least-squares backbone (with a constant)."""
         dims = list(self.hparams.get("curve_dims", (2, 0)))
-        A = self.curve_basis(parts_std[..., 5])                                     # (M, P, order)
-        A1 = torch.cat([torch.ones_like(A[..., :1]), A], -1)
         with torch.no_grad():
-            Y = parts_std[..., dims]                                                # (M, P, nd)
-            coef = torch.linalg.lstsq(A1.double(), Y.double()).solution.to(A.dtype)  # (M, order+1, nd)
+            A = self.curve_basis(parts_std[..., 5], knobs, k)                       # (M, P, order), same frame as the head
+            A1 = torch.cat([torch.ones_like(A[..., :1]), A], -1).double()
+            Y = parts_std[..., dims].double()                                       # (M, P, nd)
+            G = A1.transpose(1, 2) @ A1 + 1e-3 * A1.shape[1] * torch.eye(A1.shape[-1], dtype=A1.dtype, device=A1.device)
+            coef = torch.linalg.solve(G, A1.transpose(1, 2) @ Y).to(A.dtype)        # ridge LSQ (M, order+1, nd)
             target = torch.einsum("mpo,mod->mpd", A, coef[:, 1:])                    # drop the constant
         pred = self.curve_shift(knobs, k, parts_std[..., 5])
         return ((pred - target) ** 2).mean()
@@ -364,6 +400,19 @@ class TwoBunchFlow(L.LightningModule):
         out = parts_std.clone()
         out[..., dims] = parts_std[..., dims] + sign * g
         return out
+
+    def latent_prior_params(self, knobs, k):
+        mu, lv = self.latent_prior[k](knobs).chunk(2, -1)
+        return mu, lv.clamp(-8.0, 4.0)
+
+    def latent_posterior_params(self, parts_std, knobs, k, h):
+        f = self.set_phi[k](parts_std)                                              # (M, P, hs)
+        g = torch.cat([f.mean(1), f.amax(1), h], -1)
+        mu, lv = self.set_rho[k](g).chunk(2, -1)
+        return mu, lv.clamp(-10.0, 4.0)
+
+    def _cond_h(self, h, k, s):
+        return h if s is None else h + self.latent_in[k](s)
 
     def _scaler(self, k):
         return (self.drive_mean, self.drive_std) if k == 0 else (self.witness_mean, self.witness_std)
@@ -394,6 +443,17 @@ class TwoBunchFlow(L.LightningModule):
         m, p = parts_std.shape[0], parts_std.shape[1]
         parts_std = self._curve(parts_std, knobs, k, -1.0)   # shear onto the backbone residual (log-det 0)
         h = self._encode(knobs, k)
+        kl_term = None
+        if self.hparams.get("beam_latent_dim", 0):
+            mq, lq = self.latent_posterior_params(parts_std, knobs, k, h)
+            s_ = mq + torch.exp(0.5 * lq) * torch.randn_like(mq)
+            mp, lp = self.latent_prior_params(knobs, k)
+            kl = 0.5 * (lp - lq + (torch.exp(lq) + (mq - mp) ** 2) / torch.exp(lp) - 1.0)       # (M, d)
+            fb = float(self.hparams.get("beam_latent_free_bits", 0.0))
+            kl_row = (kl.clamp_min(fb) if fb > 0 else kl).sum(-1)
+            self._kl_log[k] = kl.sum(-1).mean().detach()
+            kl_term = float(self.hparams.get("beam_latent_beta", 1.0)) * kl_row.mean() / (p * self.hparams.nll_dim_norm)
+            h = self._cond_h(h, k, s_)
         mu, Lm = self._whiten(h, k)
         cdims = self._cdims()
         if cdims is None:                     # all 6 coordinates owned by the head (or no head)
@@ -411,10 +471,11 @@ class TwoBunchFlow(L.LightningModule):
         logpz = (-0.5 * z ** 2 - 0.5 * _LOG_2PI).sum(dim=1)
         ld_white = -torch.log(torch.diagonal(Lm, dim1=-2, dim2=-1)).sum(dim=1)  # (M,)
         logp = logpz + ld_flow + ld_white.repeat_interleave(p)
-        return -logp.mean() / self.hparams.nll_dim_norm
+        nll = -logp.mean() / self.hparams.nll_dim_norm
+        return nll if kl_term is None else nll + kl_term
 
     # ---- sampling (reparameterized, differentiable wrt knobs) --------------
-    def sample_bunch(self, knobs, k, n, physical=True, generator=None, z=None):
+    def sample_bunch(self, knobs, k, n, physical=True, generator=None, z=None, s=None):
         """(B,n,6) cloud for bunch k. Differentiable w.r.t. knobs.
 
         generator: optional torch.Generator for reproducible draws.
@@ -426,6 +487,12 @@ class TwoBunchFlow(L.LightningModule):
         """
         b = knobs.shape[0]
         h = self._encode(knobs, k)
+        if self.hparams.get("beam_latent_dim", 0):        # one latent per beam: s ~ p(s | knobs) unless given
+            if s is None:
+                mp, lp = self.latent_prior_params(knobs, k)
+                eps = torch.randn(mp.shape, device=knobs.device, dtype=knobs.dtype, generator=generator)
+                s = mp + torch.exp(0.5 * lp) * eps
+            h = self._cond_h(h, k, s)
         h_flat = h.unsqueeze(1).expand(b, n, -1).reshape(b * n, -1)
         if z is None:
             z = torch.randn(b * n, self.latent_dim, device=knobs.device,
@@ -509,6 +576,9 @@ class TwoBunchFlow(L.LightningModule):
             add(self.bunch_nll(batch["drive"][dd], knobs[dd], 0), 1.0, "nll_drive")
         if 1 in tb and wd.any():
             add(self.bunch_nll(batch["witness"][wd], knobs[wd], 1), 1.0, "nll_witness")
+        if hp.get("beam_latent_dim", 0):
+            for kk, v in getattr(self, "_kl_log", {}).items():
+                logs[f"{prefix}_kl_{'drive' if kk == 0 else 'witness'}"] = v
         if hp.get("curve_head", False) and hp.get("w_curve", 0.0) > 0:
             if 0 in tb and dd.any():
                 add(self.curve_regression(batch["drive"][dd], knobs[dd], 0), hp.w_curve, "curve_drive")
@@ -648,6 +718,10 @@ class TwoBunchFlow(L.LightningModule):
             heads.append((list(self.t_full_head.parameters()), float(t_lr)))
         if self.hparams.get("centroid_head", False) and c_lr:
             heads.append((list(self.centroid_heads.parameters()), float(c_lr)))     # same reason
+        bl_lr = self.hparams.get("beam_latent_lr")
+        if self.hparams.get("beam_latent_dim", 0) and bl_lr:
+            heads.append((list(self.set_phi.parameters()) + list(self.set_rho.parameters())
+                          + list(self.latent_prior.parameters()) + list(self.latent_in.parameters()), float(bl_lr)))
         cu_lr = self.hparams.get("curve_head_lr")
         if self.hparams.get("curve_head", False) and cu_lr:
             heads.append((list(self.curve_heads.parameters()), float(cu_lr)))
