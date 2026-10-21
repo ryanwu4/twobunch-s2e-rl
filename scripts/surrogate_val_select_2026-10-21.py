@@ -115,18 +115,58 @@ def main():
         res["sw2_drive_median"] = float(torch.cat(sws).median())
         res["sw_floor_half_subsample"] = float(torch.cat(floor).median())
     if a.sweeps:
-        tdm = TwoBunchFlowDataModule(processed_h5=str(REPO / a.sweeps), split="random", scaler=scaler,
+        # val-role compression sweeps (merged table + its truth): sigma_z(L1) along each L1 scan
+        sdm = TwoBunchFlowDataModule(processed_h5=str(REPO / a.sweeps), split="group", orig_split=roles, scaler=scaler,
                                      truth_h5=str(REPO / a.sweeps).replace(".h5", "_truth.h5"))
-        tdm.setup()
-        tds = tdm.full
+        sdm.setup()
+        sds = sdm.full
         with h5py.File(REPO / a.sweeps) as h:
-            roles_s = None
-        res["sweeps"] = "see sweep evaluation"
+            names = h.attrs["campaigns"].split(",")
+            ci = names.index("compress_sweeps_2026-10-21")
+            camp = h["campaign"][...]
+        okk = (sds.drive_density & sds.witness_density).numpy().astype(bool) & np.isfinite(sds.truth_drive_sigma_z.numpy())
+        srows = np.array([i for i in sdm.val.indices if camp[i] == ci and okk[i]])
+        if len(srows):
+            kn_all = sds.knobs[srows].float()
+            # sweep id: all knobs but L1 equal
+            keys = list(m.hparams.knob_keys)
+            j1 = keys.index("L1PhaseSet")
+            other = np.round(np.delete(kn_all.numpy(), j1, 1), 6)
+            _, sid = np.unique(other, axis=0, return_inverse=True)
+            with torch.no_grad():
+                szp, spp = [], []
+                for b in range(0, len(srows), 32):
+                    g = gen(9000 + b)
+                    d = m.sample_bunch(kn_all[b:b + 32].to(dev), 0, a.n, generator=g)
+                    w = m.sample_bunch(kn_all[b:b + 32].to(dev), 1, a.n, generator=g)
+                    szp.append(per_bunch(d)["sigma_z"].double().cpu()); spp.append(inter_bunch(d, w)["bunch_spacing"].double().cpu())
+            szp, spp = torch.cat(szp).numpy(), torch.cat(spp).numpy()
+            szt, spt = sds.truth_drive_sigma_z[srows].double().numpy(), sds.truth_spacing[srows].numpy()
+            l1 = kn_all[:, j1].numpy()
+            dloc, dmin = [], []
+            for s_ in np.unique(sid):
+                sel = sid == s_
+                if sel.sum() < 5:
+                    continue
+                o = np.argsort(l1[sel])
+                lp, tp, tt = l1[sel][o], szp[sel][o], szt[sel][o]
+                lo_, hi_ = float(m.knob_low[j1]), float(m.knob_high[j1])
+                dloc.append(abs(lp[np.argmin(tp)] - lp[np.argmin(tt)]) * (hi_ - lo_))
+                dmin.append(abs(np.log(tp.min() / tt.min())))
+            res["sweeps"] = {"n_rows": int(len(srows)), "n_scans": len(dloc),
+                             "logsz_median": float(np.median(np.abs(np.log(szp / szt)))),
+                             "logsz_median_lt30": float(np.median(np.abs(np.log(szp / szt))[szt < 30e-6])) if (szt < 30e-6).any() else None,
+                             "sz_min_location_err_deg_median": float(np.median(dloc)) if dloc else None,
+                             "sz_min_value_logerr_median": float(np.median(dmin)) if dmin else None,
+                             "spacing_mae_um": float(np.mean(np.abs(spp - spt)) * 1e6)}
     (OUT / f"{a.tag}.json").write_text(json.dumps(res, indent=1))
     line = (f"{a.tag:22s} val n={res['n_val']}: spacing MAE {res['spacing_mae_um']:.2f} um | pair d rms "
             f"{res.get('pair_delta_rms_um', float('nan')):.2f} um (n={res.get('n_pairs', 0)}) | log sz median {res['logsz_median']:.3f} "
             f"(<30 {res['logsz_median_0_30']}, 30-60 {res['logsz_median_30_60']}, >60 {res['logsz_median_60_inf']}) | "
-            f"SW2 drive (z,pz) {res['sw2_drive_median']:.4f} (floor {res['sw_floor_half_subsample']:.4f})")
+            f"SW2 drive (z,pz) {res['sw2_drive_median']:.4f} (floor {res['sw_floor_half_subsample']:.4f})"
+            + (f" | sweeps: log sz {res['sweeps']['logsz_median']:.3f} (<30 {res['sweeps']['logsz_median_lt30']}), "
+               f"sz-min loc err {res['sweeps']['sz_min_location_err_deg_median']} deg, min value log err {res['sweeps']['sz_min_value_logerr_median']}, "
+               f"spacing MAE {res['sweeps']['spacing_mae_um']:.2f} um" if "sweeps" in res else ""))
     with open(OUT / "summary.txt", "a") as fh:
         fh.write(line + "\n")
     print(line, flush=True)
