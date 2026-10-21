@@ -225,6 +225,7 @@ def main():
     ap.add_argument("--backbone-dims", type=int, nargs="+", default=[2, 0])
     ap.add_argument("--w-backbone-prior", type=float, default=1.0)
     ap.add_argument("--backbone-lr", type=float, default=None)
+    ap.add_argument("--backbone-shear", choices=["pca", "exact"], default="pca")
     ap.add_argument("--init-partial", action="store_true",
                     help="warm start: load only tensors whose shapes match (architecture changes)")
     ap.add_argument("--centroid-prefit-steps", type=int, default=3000,
@@ -311,7 +312,7 @@ def main():
                         set_hidden=args.set_hidden,
                         backbone=args.backbone, backbone_bins=args.backbone_bins, backbone_pca=args.backbone_pca,
                         backbone_dims=tuple(args.backbone_dims), w_backbone_prior=args.w_backbone_prior,
-                        backbone_lr=args.backbone_lr,
+                        backbone_lr=args.backbone_lr, backbone_shear=args.backbone_shear,
                         t_head_lr=args.t_head_lr if args.t_two_part else None,
                         lr_schedule=args.lr_schedule, t_max=args.epochs)
     if init_state is not None:

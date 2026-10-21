@@ -220,6 +220,10 @@ class TwoBunchFlow(L.LightningModule):
         # (zero-init). Sharp by construction; the backbone the knobs cannot pin down varies between draws. The PCA basis is
         # fitted on the training rows by train.py (set_backbone_basis) and stored as buffers.
         backbone=False, backbone_bins=32, backbone_pca=16, backbone_dims=(2, 0), w_backbone_prior=1.0, backbone_lr=None,
+        # backbone_shear: "pca" = the density path shears by the PCA-truncated backbone (as sampling produces it; the 10-21
+        # first arm); "exact" = by the beam's exact binned backbone (a thin residual; sampled beams then carry the smoother
+        # PCA backbone)
+        backbone_shear="pca",
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
 
@@ -534,7 +538,7 @@ class TwoBunchFlow(L.LightningModule):
         if self.hparams.get("backbone", False):
             with torch.no_grad():
                 c = self.bb_encode(self.bb_features(parts_std), k)
-                f_hat = self.bb_decode(c, k)                   # the PCA-truncated backbone, as sampling produces
+                f_hat = self.bb_decode(c, k) if self.hparams.get("backbone_shear", "pca") == "pca" else self.bb_features(parts_std)
             parts_std = self._bb_shear(parts_std, f_hat, -1.0)
             mp, lp = self.bb_prior_params(knobs, k)
             prior_nll = (0.5 * (lp + (c - mp) ** 2 / lp.exp() + _LOG_2PI)).sum(-1).mean()
