@@ -63,6 +63,27 @@ class PairSource:
         return self.kp[i], self.kr[i], self.d[i]
 
 
+class EMAWeights(L.Callback):
+    """Exponential moving average of the trainable parameters (and buffers copied as is), updated every train batch."""
+
+    def __init__(self, decay: float):
+        self.decay, self.shadow = decay, None
+
+    @torch.no_grad()
+    def on_train_batch_end(self, trainer, model, *args):
+        if self.shadow is None:
+            self.shadow = {k: v.detach().clone() for k, v in model.named_parameters()}
+            return
+        for k, v in model.named_parameters():
+            self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1 - self.decay)
+
+    @torch.no_grad()
+    def swap_in(self, model):
+        if self.shadow is not None:
+            for k, v in model.named_parameters():
+                v.copy_(self.shadow[k])
+
+
 def build_pair_source(dm, model, crossed_frac):
     """TRAIN-only, non-holdout pairs with both rows density-valid: nested / top-up rows vs their golden-injector
     partner (same pair_key), and crossed rows vs the golden crossed row of the same (campaign, linac_id)."""
@@ -230,6 +251,7 @@ def main():
     ap.add_argument("--w-backbone-prior", type=float, default=1.0)
     ap.add_argument("--backbone-lr", type=float, default=None)
     ap.add_argument("--backbone-shear", choices=["pca", "exact"], default="pca")
+    ap.add_argument("--ema-decay", type=float, default=None, help="also save an EMA of the weights (final_ema.ckpt)")
     ap.add_argument("--truth-h5", default=None, help="full-particle per-row truths (pair / spacing / centroid targets, val metric)")
     ap.add_argument("--resample-p", type=int, default=None, help="fresh random subset of this many stored particles per visit")
     ap.add_argument("--w-sw", type=float, default=0.0)
@@ -372,6 +394,10 @@ def main():
         prefit_centroids(model, dm, args.centroid_prefit_steps, w_pair=args.w_pair, w_spacing=max(args.w_spacing, 1.0))
 
     callbacks = []
+    ema = None
+    if args.ema_decay:
+        ema = EMAWeights(float(args.ema_decay))
+        callbacks.append(ema)
     if args.split == "group":
         from .selection import PairedDeltaMetrics
         callbacks.append(PairedDeltaMetrics(dm))
@@ -392,6 +418,10 @@ def main():
     # the end-of-training weights, always (save_last=True kept last.ckpt at the best epoch in the
     # 2026-10-15 fine-tunes, so the final weights were lost)
     trainer.save_checkpoint(f"{args.out}/checkpoints/final.ckpt")
+    if ema is not None:                       # the EMA of the weights, as a separate checkpoint (2026-10-21)
+        ema.swap_in(model)
+        trainer.save_checkpoint(f"{args.out}/checkpoints/final_ema.ckpt")
+        print(f"EMA weights (decay {args.ema_decay}): {args.out}/checkpoints/final_ema.ckpt")
     print(f"Best checkpoint: {ckpt.best_model_path} ({metric}={ckpt.best_model_score}); "
           f"final weights: {args.out}/checkpoints/final.ckpt")
 
