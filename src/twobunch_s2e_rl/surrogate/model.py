@@ -202,7 +202,10 @@ class TwoBunchFlow(L.LightningModule):
         # curve_dims; the density path removes them (x_d -> x_d - g_d(pz), an exact shear with log-det 0) BEFORE the
         # whitening, so the flow models the thin residual around the beam's energy-vs-position backbone at unit
         # width; samples add them back. Zero-initialized: identical to the plain flow at init (warm-startable).
-        curve_head=False, curve_dims=(2, 0), curve_order=8, curve_scale=3.0, curve_head_lr=None,
+        # w_curve > 0: the head is also regressed onto each row's least-squares backbone (same basis + a constant, fitted
+        # to the row's particles), loss = mean squared difference of the two curves at the particles (standardized units);
+        # without it the NLL barely moves a zero-initialized head on a pretrained flow (2026-10-20)
+        curve_head=False, curve_dims=(2, 0), curve_order=8, curve_scale=3.0, curve_head_lr=None, w_curve=0.0,
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
 
@@ -330,12 +333,28 @@ class TwoBunchFlow(L.LightningModule):
         hp = self.hparams
         order, nd = int(hp.get("curve_order", 8)), len(hp.get("curve_dims", (2, 0)))
         a = self.curve_heads[k](knobs).view(knobs.shape[0], nd, order)           # (B, nd, order)
-        u = torch.tanh(pz_std / float(hp.get("curve_scale", 3.0)))
-        T = [u, 2 * u * u - 1]                                                      # Chebyshev T1, T2, ...
+        basis = self.curve_basis(pz_std)                                            # (B, P, order) Chebyshev T1..
+        return torch.einsum("bpo,bdo->bpd", basis, a)
+
+    def curve_basis(self, pz_std):
+        order = int(self.hparams.get("curve_order", 8))
+        u = torch.tanh(pz_std / float(self.hparams.get("curve_scale", 3.0)))
+        T = [u, 2 * u * u - 1]
         while len(T) < order:
             T.append(2 * u * T[-1] - T[-2])
-        basis = torch.stack(T[:order], -1)                                          # (B, P, order)
-        return torch.einsum("bpo,bdo->bpd", basis, a)
+        return torch.stack(T[:order], -1)
+
+    def curve_regression(self, parts_std, knobs, k):
+        """Mean squared difference between the head's backbone and each row's least-squares backbone (with a constant)."""
+        dims = list(self.hparams.get("curve_dims", (2, 0)))
+        A = self.curve_basis(parts_std[..., 5])                                     # (M, P, order)
+        A1 = torch.cat([torch.ones_like(A[..., :1]), A], -1)
+        with torch.no_grad():
+            Y = parts_std[..., dims]                                                # (M, P, nd)
+            coef = torch.linalg.lstsq(A1.double(), Y.double()).solution.to(A.dtype)  # (M, order+1, nd)
+            target = torch.einsum("mpo,mod->mpd", A, coef[:, 1:])                    # drop the constant
+        pred = self.curve_shift(knobs, k, parts_std[..., 5])
+        return ((pred - target) ** 2).mean()
 
     def _curve(self, parts_std, knobs, k, sign):
         if not self.hparams.get("curve_head", False):
@@ -490,6 +509,11 @@ class TwoBunchFlow(L.LightningModule):
             add(self.bunch_nll(batch["drive"][dd], knobs[dd], 0), 1.0, "nll_drive")
         if 1 in tb and wd.any():
             add(self.bunch_nll(batch["witness"][wd], knobs[wd], 1), 1.0, "nll_witness")
+        if hp.get("curve_head", False) and hp.get("w_curve", 0.0) > 0:
+            if 0 in tb and dd.any():
+                add(self.curve_regression(batch["drive"][dd], knobs[dd], 0), hp.w_curve, "curve_drive")
+            if 1 in tb and wd.any():
+                add(self.curve_regression(batch["witness"][wd], knobs[wd], 1), hp.w_curve, "curve_witness")
 
         # feasibility heads -- BCE-with-logits is numerically stable and never asserts on an
         # out-of-[0,1] input (a NaN p_surv from upstream divergence used to hard-crash here).
