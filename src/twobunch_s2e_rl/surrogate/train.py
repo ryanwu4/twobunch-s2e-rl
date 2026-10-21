@@ -102,6 +102,10 @@ def build_pair_source(dm, model, crossed_frac):
     sc = lambda k: (getattr(model, f"{k}_mean").cpu().double(), getattr(model, f"{k}_std").cpu().double())
     (dmu, dsd), (wmu, wsd) = sc("drive"), sc("witness")
     sp = lambda rows: inter_bunch(ds.drive[rows].double() * dsd + dmu, ds.witness[rows].double() * wsd + wmu)["bunch_spacing"]
+    if getattr(ds, "has_truth", False):                    # full-particle truth (2026-10-21) where known
+        def sp(rows, _sp=sp):
+            t = ds.truth_spacing[rows].double()
+            return torch.where(torch.isfinite(t), t, _sp(rows))
     dtrue = (sp(p_i) - sp(r_i)).float()
     crossed = np.array(crossed)
     print(f"[pair_source] {len(pairs)} train pairs: {int((~crossed).sum())} nested/top-up, {int(crossed.sum())} crossed "
@@ -226,6 +230,12 @@ def main():
     ap.add_argument("--w-backbone-prior", type=float, default=1.0)
     ap.add_argument("--backbone-lr", type=float, default=None)
     ap.add_argument("--backbone-shear", choices=["pca", "exact"], default="pca")
+    ap.add_argument("--truth-h5", default=None, help="full-particle per-row truths (pair / spacing / centroid targets, val metric)")
+    ap.add_argument("--resample-p", type=int, default=None, help="fresh random subset of this many stored particles per visit")
+    ap.add_argument("--w-sw", type=float, default=0.0)
+    ap.add_argument("--sw-proj", type=int, default=32)
+    ap.add_argument("--w-logsz", type=float, default=0.0)
+    ap.add_argument("--logsz-compressed-boost", type=float, default=2.0)
     ap.add_argument("--init-partial", action="store_true",
                     help="warm start: load only tensors whose shapes match (architecture changes)")
     ap.add_argument("--centroid-prefit-steps", type=int, default=3000,
@@ -287,7 +297,7 @@ def main():
         orig = orig_split_keys(h5, camps.split(","))
     dm = TwoBunchFlowDataModule(processed_h5=args.processed, batch_size=args.batch_size,
                                 num_workers=args.num_workers, scaler=scaler, split=args.split,
-                                orig_split=orig)
+                                orig_split=orig, truth_h5=args.truth_h5, resample_p=args.resample_p)
     dm.setup()
     if init_state is not None:
         hp = torch.load(ck, map_location="cpu", weights_only=False).get("hyper_parameters", {})
@@ -313,6 +323,8 @@ def main():
                         backbone=args.backbone, backbone_bins=args.backbone_bins, backbone_pca=args.backbone_pca,
                         backbone_dims=tuple(args.backbone_dims), w_backbone_prior=args.w_backbone_prior,
                         backbone_lr=args.backbone_lr, backbone_shear=args.backbone_shear,
+                        w_sw=args.w_sw, sw_proj=args.sw_proj, w_logsz=args.w_logsz,
+                        logsz_compressed_boost=args.logsz_compressed_boost,
                         t_head_lr=args.t_head_lr if args.t_two_part else None,
                         lr_schedule=args.lr_schedule, t_max=args.epochs)
     if init_state is not None:

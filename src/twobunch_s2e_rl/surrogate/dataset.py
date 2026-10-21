@@ -72,7 +72,8 @@ class TwoBunchFlowDataset(Dataset):
     from a checkpoint: the model decodes with its own scalers, so the training targets must be
     standardized with exactly those, or the flow learns in one frame and decodes in another."""
 
-    def __init__(self, processed_h5: str, norm_json: str | None = None, scaler: dict | None = None):
+    def __init__(self, processed_h5: str, norm_json: str | None = None, scaler: dict | None = None,
+                 truth_h5: str | None = None, resample_p: int | None = None):
         with h5py.File(processed_h5, "r") as h:
             knobs = _load(h, "knobs").astype(np.float32)              # (N,8)
             drive = _load(h, "drive_parts").astype(np.float32)        # (N,P,6)
@@ -125,14 +126,38 @@ class TwoBunchFlowDataset(Dataset):
         self.witness_frac = torch.tensor(wfrac)
         self.P = int(self.drive.shape[1])
         self.cond_dim = int(self.knobs.shape[1])
+        # resample_p (2026-10-21): each visit returns a fresh random resample_p-particle subset of the stored P (most
+        # of a big table's information at a small table's cost per step)
+        self.resample_p = int(resample_p) if resample_p and int(resample_p) < self.P else None
+        # truth_h5 (2026-10-21): full-particle per-row truths (scripts/build_truth_table_2026-10-21.py) -- centroids in
+        # the standardized frame, spacing and drive sigma_z in physical units; NaN where unknown
+        self.has_truth = truth_h5 is not None
+        if truth_h5 is not None:
+            with h5py.File(truth_h5, "r") as h:
+                dc, wc = h["drive_centroid"][...], h["witness_centroid"][...]
+                self.truth_spacing = torch.tensor(h["bunch_spacing"][...])
+                self.truth_drive_sigma_z = torch.tensor(h["drive_sigma_z"][...]).float()
+            if len(dc) != len(knobs):
+                raise ValueError(f"{truth_h5}: {len(dc)} rows, table has {len(knobs)}")
+            self.truth_drive_c = torch.tensor((dc - dm) / ds).float()
+            self.truth_witness_c = torch.tensor((wc - wm) / ws).float()
 
     def __len__(self):
         return self.knobs.shape[0]
 
     def __getitem__(self, i):
+        d, w = self.drive[i], self.witness[i]
+        if self.resample_p is not None:
+            d = d[torch.randperm(self.P)[:self.resample_p]]
+            w = w[torch.randperm(self.P)[:self.resample_p]]
+        extra = {}
+        if self.has_truth:
+            extra = {"drive_ctrue": self.truth_drive_c[i], "witness_ctrue": self.truth_witness_c[i],
+                     "drive_sztrue": self.truth_drive_sigma_z[i]}
         return {
+            **extra,
             "knobs": self.knobs[i],
-            "drive": self.drive[i], "witness": self.witness[i],
+            "drive": d, "witness": w,
             "drive_present": self.drive_present[i], "witness_viable": self.witness_viable[i],
             "drive_density": self.drive_density[i], "witness_density": self.witness_density[i],
             "drive_frac": self.drive_frac[i], "witness_frac": self.witness_frac[i],
@@ -142,7 +167,7 @@ class TwoBunchFlowDataset(Dataset):
 class TwoBunchFlowDataModule(L.LightningDataModule):
     def __init__(self, processed_h5="processed/twobunch_flow.h5", norm_json=None,
                  batch_size=64, val_fraction=0.1, num_workers=0, split_seed=42, scaler=None,
-                 split="random", orig_split=None):
+                 split="random", orig_split=None, truth_h5=None, resample_p=None):
         super().__init__()
         self.save_hyperparameters()
         self.full = None
@@ -152,7 +177,8 @@ class TwoBunchFlowDataModule(L.LightningDataModule):
     def setup(self, stage=None):
         if self.full is None:
             self.full = TwoBunchFlowDataset(self.hparams.processed_h5, self.hparams.norm_json,
-                                            scaler=self.hparams.scaler)
+                                            scaler=self.hparams.scaler, truth_h5=self.hparams.truth_h5,
+                                            resample_p=self.hparams.resample_p)
         if self.full.holdout.any() and self.hparams.split != "group":
             raise ValueError("table has pre-registered holdout rows: use split='group' (excludes them)")
         if self.hparams.split == "random":

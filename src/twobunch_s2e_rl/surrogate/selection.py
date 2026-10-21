@@ -45,6 +45,10 @@ class PairedDeltaMetrics(L.Callback):
     @torch.no_grad()
     def _true_spacing(self, model, rows):
         ds = self.dm.full
+        if getattr(ds, "has_truth", False):                 # full-particle truth (2026-10-21), table subsample as fallback
+            t = ds.truth_spacing[rows].double().numpy()
+            if np.isfinite(t).all():
+                return t
         dm_, dsd = model.drive_mean.cpu(), model.drive_std.cpu()
         wm_, wsd = model.witness_mean.cpu(), model.witness_std.cpu()
         d = ds.drive[rows] * dsd + dm_

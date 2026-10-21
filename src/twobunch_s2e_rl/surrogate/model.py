@@ -224,6 +224,11 @@ class TwoBunchFlow(L.LightningModule):
         # first arm); "exact" = by the beam's exact binned backbone (a thin residual; sampled beams then carry the smoother
         # PCA backbone)
         backbone_shear="pca",
+        # 2026-10-21 (reviewer): w_sw = sliced-Wasserstein-2 between the sampled and the data cloud in (z, pz) + 1-D W2 on the
+        # z and pz marginals, each row in its own data-standardized frame (NLL hedges an uncertain backbone by blurring;
+        # W2 is minimized by a sharp barycenter); w_logsz = |log sigma_z,pred / sigma_z,true| (full-particle truth if the
+        # batch carries it), x (1 + logsz_compressed_boost) for rows with sigma_z < 30 um
+        w_sw=0.0, sw_proj=32, w_logsz=0.0, logsz_compressed_boost=2.0,
         n_aux_particles=512,
         bunches=(0, 1),  # which bunch density paths to train (0=drive,1=witness); (1,)=witness-only
 
@@ -729,20 +734,42 @@ class TwoBunchFlow(L.LightningModule):
         any_emit = hp.w_emit > 0 or hp.w_emit_z > 0 or hp.w_emit_4d > 0 or hp.w_emit_6d > 0
         w_mean, w_sp = float(hp.get("w_mean", 0.0)), float(hp.get("w_spacing", 0.0))
         zc = {}                                    # k -> (mask, predicted z centroid, true z centroid) [m]
-        if any_emit or hp.w_cov > 0 or w_mean > 0 or w_sp > 0:
+        w_sw, w_lsz = float(hp.get("w_sw", 0.0)), float(hp.get("w_logsz", 0.0))
+        if any_emit or hp.w_cov > 0 or w_mean > 0 or w_sp > 0 or w_sw > 0 or w_lsz > 0:
             eps = 1e-9
             for k, mask, key in ((0, dd, "drive"), (1, wd, "witness")):
                 if k not in tb or not mask.any():
                     continue
                 true = batch[key][mask]
                 pred = self.sample_bunch(knobs[mask], k, true.shape[1], physical=False)
+                tmean = true.mean(1)
+                if f"{key}_ctrue" in batch:                                # full-particle centroids where known
+                    ct = batch[f"{key}_ctrue"][mask]
+                    tmean = torch.where(torch.isfinite(ct), ct, tmean)
                 if w_mean > 0:
-                    dmu = pred.mean(1) - true.mean(1)                     # (M, 6) standardized
+                    dmu = pred.mean(1) - tmean                            # (M, 6) standardized
                     add(F.smooth_l1_loss(dmu, torch.zeros_like(dmu), beta=0.05), w_mean, f"mean_{key}")
                 if w_sp > 0:
                     mean_k, std_k = self._scaler(k)
                     zc[k] = (mask, pred[..., 2].mean(1) * std_k[2] + mean_k[2],
-                             true[..., 2].mean(1) * std_k[2] + mean_k[2])
+                             tmean[:, 2] * std_k[2] + mean_k[2])
+                if w_sw > 0:
+                    tz = true[..., [2, 5]]
+                    mu, sd = tz.mean(1, keepdim=True), tz.std(1, keepdim=True).clamp_min(1e-6)
+                    a_, b_ = (tz - mu) / sd, (pred[..., [2, 5]] - mu) / sd
+                    th = torch.rand(int(hp.get("sw_proj", 32)), device=a_.device) * math.pi
+                    dirs = torch.stack([torch.cos(th), torch.sin(th)], 0)          # (2, K)
+                    pa, pb = (a_ @ dirs).sort(1).values, (b_ @ dirs).sort(1).values
+                    sw = ((pa - pb) ** 2).mean()
+                    marg = ((a_.sort(1).values - b_.sort(1).values) ** 2).mean()
+                    add(sw + marg, w_sw, f"sw_{key}")
+                if w_lsz > 0 and k == 0:
+                    mean_k, std_k = self._scaler(k)
+                    szp = pred[..., 2].std(1) * std_k[2]
+                    szt = batch["drive_sztrue"][mask] if "drive_sztrue" in batch else true[..., 2].std(1) * std_k[2]
+                    szt = torch.where(torch.isfinite(szt), szt, true[..., 2].std(1) * std_k[2])
+                    wgt = 1.0 + float(hp.get("logsz_compressed_boost", 2.0)) * (szt < 30e-6).float()
+                    add((wgt * torch.abs(torch.log(szp.clamp_min(1e-9) / szt.clamp_min(1e-9)))).mean(), w_lsz, "logsz_drive")
                 if any_emit:
                     ep, et = compute_emittance_torch(pred), compute_emittance_torch(true)
                     ldiff = lambda q: torch.abs(torch.log10(ep[q] + eps) - torch.log10(et[q] + eps)).mean()
@@ -766,6 +793,9 @@ class TwoBunchFlow(L.LightningModule):
                     continue
                 c = self.centroid_std(knobs[mask], k)
                 tmean = batch[key][mask].mean(1)
+                if f"{key}_ctrue" in batch:
+                    ct = batch[f"{key}_ctrue"][mask]
+                    tmean = torch.where(torch.isfinite(ct), ct, tmean)
                 if float(hp.get("w_centroid", 0.0)) > 0:
                     add(F.smooth_l1_loss(c, tmean, beta=0.05), float(hp.w_centroid), f"centroid_{key}")
                 mean_k, std_k = self._scaler(k)
