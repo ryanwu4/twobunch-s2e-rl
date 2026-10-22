@@ -271,7 +271,7 @@ All from B2-cov, 40 epochs. Thinness = surrogate / Bmad conditional spread (1 = 
 ### Surrogate push 10-21 (deadline ~21:00; `results/2_surrogate_screen/{val_select,test_open}_2026-10-21/`)
 Protocol: selection on the val rows only, full-particle truth (`scripts/surrogate_val_select_2026-10-21.py`). Test rows opened once for 2 finalists, with a cluster bootstrap over injector points (`scripts/surrogate_test_open_2026-10-21.py`). Phase A/B: 4096-particle table resampled to 1024 per step, truth centroids in the losses, optional beam latent (8-D) and sliced-Wasserstein + log σz losses. Phase C: B2/B3 continued 20 epochs on the merged table with 812 new compression-sweep Bmad rows (`data/compress_sweeps_2026-10-21`), lr 2e-5 cosine, EMA 0.999.
 
-Test (n = 688 rows / pairs with 90% cluster CIs):
+Test (674 rows, 163 pairs over 47 injector points; 90% cluster-bootstrap CIs):
 
 | model | spacing MAE | pair Δ rms | pair slope | log σz median (σz < 30 µm) | drive pz\|z thin (compressed) | σz-vs-L1 slope (compressed) |
 |---|---|---|---|---|---|---|
