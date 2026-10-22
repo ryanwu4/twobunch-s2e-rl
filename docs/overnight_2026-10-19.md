@@ -267,3 +267,21 @@ All from B2-cov, 40 epochs. Thinness = surrogate / Bmad conditional spread (1 = 
 - The supervised curve head fits each row's curve only to a residual of 0.09 (z variance 0.71) — train = val (0.093 / 0.093), i.e. underfit, not overfit; an order-12 LSQ fit leaves ~0.0004–0.002. A curve wrong by ~0.3 σz is far wider than the beam (~0.02 σz), so shearing by it makes the beam blurrier.
 - rqs32 / wide: fresh spline layers, not converged in 40 epochs; worse everywhere except the pair metric.
 - The blur is the same on training and held-out rows (B2-cov, 1024-particle estimator: 1.69 vs 1.58): not a generalization gap. The bottleneck is how precisely the beam's fine LPS shape can be predicted from the knobs, which the likelihood then hedges by blurring.
+
+### Surrogate push 10-21 (deadline ~21:00; `results/2_surrogate_screen/{val_select,test_open}_2026-10-21/`)
+Protocol: selection on the val rows only, full-particle truth (`scripts/surrogate_val_select_2026-10-21.py`). Test rows opened once for 2 finalists, with a cluster bootstrap over injector points (`scripts/surrogate_test_open_2026-10-21.py`). Phase A/B: 4096-particle table resampled to 1024 per step, truth centroids in the losses, optional beam latent (8-D) and sliced-Wasserstein + log σz losses. Phase C: B2/B3 continued 20 epochs on the merged table with 812 new compression-sweep Bmad rows (`data/compress_sweeps_2026-10-21`), lr 2e-5 cosine, EMA 0.999.
+
+Test (n = 688 rows / pairs with 90% cluster CIs):
+
+| model | spacing MAE | pair Δ rms | pair slope | log σz median (σz < 30 µm) | drive pz\|z thin (compressed) | σz-vs-L1 slope (compressed) |
+|---|---|---|---|---|---|---|
+| B2-cov | 3.00 [2.77, 3.23] µm | 4.10 [3.40, 4.79] | 0.89 | 0.052 (0.079) | 4.9× (26×) | 0.95 (0.15) |
+| covB2zs (incumbent controller's) | 3.48 [3.22, 3.75] | 2.46 [1.93, 2.92] | 1.00 | 0.052 (0.079) | 4.9× | 0.95 (0.15) |
+| C_B2_ema (latent) | 2.01 [1.84, 2.19] | 2.19 [1.88, 2.48] | 0.98 | 0.055 (0.073) | 4.2× (24×) | 1.02 (0.10) |
+| **C_B3_ema (latent + SW)** | 2.20 [2.00, 2.40] | 2.21 [1.90, 2.51] | 0.98 | **0.045 (0.040)** | 3.9× (25×) | 1.20 (**0.28**) |
+
+- Acceptance bar ("≥2× sharper, compressed σz slope ≥0.5, no spacing loss"): spacing/pair parts PASS for both; the sharpness (1.25×) and compressed-slope (0.28) parts FAIL. The bar is not met → per plan, no controller retrain triggered automatically.
+- C_B3_ema is the best surrogate available: spacing MAE −27% vs B2-cov, pair Δ halved (= covB2zs level without its separate head), compressed-σz error halved (0.079 → 0.040), SW2 to Bmad halved (val 0.041 → 0.020; floor 0.003).
+- Compression sweeps (val sweeps): σz minimum located to 0.43° (B2-cov 0.35°), minimum value log error 0.048; sweep spacing MAE 3.0 → 0.97 µm.
+- Remaining gap is the fine LPS shape at full compression (pz|z still ~25× Bmad); knob → curve is not learnable at the required precision (held-out 0.20–0.25 of z spread vs ~0.03 needed).
+- Checkpoint: `trained/xtcav23e_inj_covB2_C_B3_2026-10-21/checkpoints/final_ema.ckpt`.
