@@ -285,3 +285,20 @@ Test (674 rows, 163 pairs over 47 injector points; 90% cluster-bootstrap CIs):
 - Compression sweeps (val sweeps): σz minimum located to 0.43° (B2-cov 0.35°), minimum value log error 0.048; sweep spacing MAE 3.0 → 0.97 µm.
 - Remaining gap is the fine LPS shape at full compression (pz|z still ~25× Bmad); knob → curve is not learnable at the required precision (held-out 0.20–0.25 of z spread vs ~0.03 needed).
 - Checkpoint: `trained/xtcav23e_inj_covB2_C_B3_2026-10-21/checkpoints/final_ema.ckpt`.
+
+### Controllers retrained on C_B3_ema (night 10-21 → 22; `scripts/surrC_{night,standard_evals}_2026-10-21.sh`)
+Plain + GC noblen retrained on C_B3_ema (configs/rl/surrC_2026-10-21; only the flow changed), 2 seeds; best by far1: plain s0, GC s1. Incumbents = logs/2026-10-19/nocrop/BEST_{plain,gc}. Closed-loop Bmad k = 24 (within-10 µm ±0.10 binomial); summary `results/3_rl_eval/closed_loop_bmad_2026-10-22/summary.txt`, GPU evals `results/3_rl_eval/eval_std_2026-10-22/summary.txt`.
+
+| eval (spacing median / within 10 µm) | plain inc | plain new | GC inc | GC new |
+|---|---|---|---|---|
+| closed-loop Bmad, held-out injectors | 10.5 / 0.50 | 10.3 / 0.50 | 11.0 / 0.46 | 8.8 / 0.54 |
+| closed-loop Bmad, golden | 9.9 / 0.50 | 14.3 / 0.38 | 14.7 / 0.25 | 15.8 / 0.46 |
+| closed-loop Bmad, inj (DAQ-like points) | 17.0 / 0.38 | 15.7 / 0.42 | 12.6 / 0.38 | 10.6 / 0.46 |
+| ideal Bmad slew, within 10 µm per setpoint | 0.90 / 0.67 / 0.85 | 0.60 / 0.77 / 0.60 | 0.73 / 0.67 / 0.65 | 0.79 / 0.62 / 0.79 |
+| nominal (own surrogate) | 11.6 / 0.42 | 12.2 / 0.38 | 14.8 / 0.31 | 13.8 / 0.34 |
+| big moves x2 / full | 12.8 / 0.38, 14.0 / 0.34 | 13.8 / 0.34, 14.6 / 0.31 | 14.2 / 0.34, 16.1 / 0.33 | 14.4 / 0.33, 14.2 / 0.33 |
+| DAQ replay TEST / E300 (in10) | 0.84 / 0.27 | 0.84 / 0.33 | 0.55 / 0.31 | 0.80 / 0.38 |
+
+- Validity band (k 512, within 10 µm by goal: <100 / 100–150 / 150–250 / 250–500 µm): plain inc 0.29 / 0.46 / 0.46 / 0.36, new 0.33 / 0.48 / 0.41 / 0.32; GC inc 0.32 / 0.37 / 0.35 / 0.26, new 0.29 / 0.41 / 0.41 / 0.24.
+- Verdict: no significant change for plain (all differences within the k = 24 / seed noise; golden Bmad and ideal slew slightly worse, inj slightly better). GC improves modestly and consistently (held-out Bmad 8.8 µm / 0.54, inj, replays, slew), making it roughly equal to plain. Bmad transfer stays clean for both (surrogate ≈ Bmad or better); the sharper, more accurate surrogate does not translate into a better controller — the controller is limited by noise / slew budget, not surrogate error.
+- Caveat: `--ideal` does not zero the hidden per-episode linac knob context (energy offsets, FF quads, sextupoles, movers, correctors, L0B), so the "ideal" slews include those offsets.
