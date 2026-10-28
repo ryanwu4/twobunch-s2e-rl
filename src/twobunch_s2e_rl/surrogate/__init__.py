@@ -1,5 +1,8 @@
 """Conditional normalizing-flow surrogate over the two-bunch PENT beam.
 
+NOTE (2026-10-28): this package is moving to its own repo, facet2-twobunch-cnf (import
+`twobunch_cnf`, /home/rwu4/photoinjector-rl/facet2-twobunch-cnf). Coordinate model changes there.
+
 Generates the drive + witness 6D phase-space at PENT conditioned on the 8 sweep knobs,
 plus per-bunch feasibility (witness viability + per-bunch transmission). One shared
 RealNVP flow selected by a per-bunch index k, with a whitening MLP that places each bunch
