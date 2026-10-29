@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 
 from ..datagen.paths import repo_root
-from .model import TwoBunchFlow
+from .loading import load_flow
 from .dataset import TwoBunchFlowDataModule
 from .properties import per_bunch, inter_bunch
 from .eval import PARITY_KEYS, _destd
@@ -92,7 +92,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     ckpt = resolve_ckpt(args.ckpt)
 
-    model = TwoBunchFlow.load_from_checkpoint(ckpt, map_location=device).eval().to(device)
+    model = load_flow(ckpt, map_location=device).eval().to(device)
     dm = TwoBunchFlowDataModule(processed_h5=args.processed, batch_size=256, num_workers=0)
     dm.setup()
     val = dm.val

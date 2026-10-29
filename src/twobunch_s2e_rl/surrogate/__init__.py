@@ -1,26 +1,21 @@
-"""Conditional normalizing-flow surrogate over the two-bunch PENT beam.
+"""Conditional normalizing-flow surrogate over the two-bunch beam: now facet2-twobunch-cnf.
 
-NOTE (2026-10-28): this package is moving to its own repo, facet2-twobunch-cnf (import
-`twobunch_cnf`, /home/rwu4/photoinjector-rl/facet2-twobunch-cnf). Coordinate model changes there.
+The CNF lives in its own repo, facet2-twobunch-cnf (import `twobunch_cnf`,
+/home/rwu4/photoinjector-rl/facet2-twobunch-cnf); model changes and surrogate experiments happen there
+(experiments on its worktree branches). This package keeps twobunch-s2e-rl working on top of it:
 
-Generates the drive + witness 6D phase-space at PENT conditioned on the 8 sweep knobs,
-plus per-bunch feasibility (witness viability + per-bunch transmission). One shared
-RealNVP flow selected by a per-bunch index k, with a whitening MLP that places each bunch
-(mu_k, Sigma_k) so the flow only models the standardized residual. Sampling is
-reparameterized so observables are differentiable w.r.t. the knobs (for later MBRL).
+  loading.load_flow(ckpt)   any twobunch checkpoint: the twobunch_cnf model when the checkpoint converts
+                            (migrate; bit-identical outputs), else the frozen legacy model (model.py)
+  model.py, widen.py        FROZEN legacy copy of the unpruned TwoBunchFlow (@ 7ac3617) for checkpoints
+                            twobunch_cnf main cannot load (no knob_keys, or removed options in use)
+  properties, selection     are twobunch_cnf's modules (aliases)
+  dataset                   twobunch_cnf's, plus the legacy split helpers
+  train, eval, plot_training  shims onto twobunch_cnf's CLIs with this repo's old defaults
+  preprocess, diagnostics, lps_scraping, eval_r2_diagnostics   this repo's own (campaign / study tools)
 
-Design: lab-notebook 2026-06-09_nf-two-bunch-surrogate.md (v3). Flow/coupling math reused
-from slac-photoinjector-rl surrogates/flow. Runs in the `slac-rl` (torch) env.
+Design: lab-notebook 2026-06-09_nf-two-bunch-surrogate.md (v3).
 """
 
-# 6D phase-space column order; matches compute_emittance_torch and the ParticleGroup read.
-COORD_KEYS = ("x", "y", "z", "px", "py", "pz")
-LATENT_DIM = 6
-# Electron rest energy [eV]: geometric 4D emittance / mc^2^2 = norm_emit_4d.
-ELECTRON_MC2_EV = 0.51099895e6
-# Fixed macroparticles kept per bunch (subsample down; bunches with fewer live particles
-# are excluded from density training but still used for the feasibility heads).
-DEFAULT_P = 1024
-BUNCHES = ("drive", "witness")  # index k: 0=drive, 1=witness
+from twobunch_cnf import BUNCHES, COORD_KEYS, DEFAULT_P, ELECTRON_MC2_EV, LATENT_DIM
 
 __all__ = ["COORD_KEYS", "LATENT_DIM", "ELECTRON_MC2_EV", "DEFAULT_P", "BUNCHES"]

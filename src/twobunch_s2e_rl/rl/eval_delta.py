@@ -55,8 +55,8 @@ def _hifi_true(env, logdir, ctx, goal_ctx, ctrl_final, goal_ctrl, n=8192, device
     The env's own truth uses n_particles fresh samples per call (512: ~3 um rms on the spacing), which
     floors the per-step metric. Cloud mode only (screen features need the screen plant)."""
     from ..artifacts import resolve_ckpt
-    from ..surrogate.model import TwoBunchFlow
-    flow = TwoBunchFlow.load_from_checkpoint(str(resolve_ckpt(flow_ckpt or policy_flow_ckpt(logdir))),
+    from ..surrogate.loading import load_flow
+    flow = load_flow(str(resolve_ckpt(flow_ckpt or policy_flow_ckpt(logdir))),
                                              map_location=device).eval()
     g = torch.Generator().manual_seed(seed)
     zd = torch.randn(n, flow.latent_dim, generator=g).to(device)

@@ -84,8 +84,8 @@ def have(*rels: str) -> bool:
 
 
 def load_flow(name: str):
-    from twobunch_s2e_rl.surrogate.model import TwoBunchFlow
-    return TwoBunchFlow.load_from_checkpoint(str(path(CKPTS[name])), map_location="cpu").eval()
+    from twobunch_s2e_rl.surrogate.loading import load_flow as _load_flow
+    return _load_flow(str(path(CKPTS[name])), map_location="cpu").eval()
 
 
 @torch.no_grad()

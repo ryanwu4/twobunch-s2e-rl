@@ -31,7 +31,7 @@ import torch
 from ..artifacts import resolve_ckpt
 from ..datagen.paths import repo_root
 from ..datagen.sweep_params import BASELINE_KNOBS, BOUNDS_HIGH, BOUNDS_LOW, PARAM_KEYS
-from ..surrogate.model import TwoBunchFlow
+from ..surrogate.loading import load_flow
 
 # reward-relevant, sampling-dependent metrics (T_drive/T_witness are heads -> N-independent)
 METRICS = ("bunch_spacing", "transverse_offset", "angular_misalignment", "energy_difference",
@@ -80,7 +80,7 @@ def _reference(flow, knob_pt, ref_N, device, reps=4):
 def study(ckpt, device="cuda", n_draws=32, grad_draws=16, ref_N=16384,
           n_points=3, out_dir="results/rl/_shared", seed=0):
     device = device if torch.cuda.is_available() else "cpu"
-    flow = TwoBunchFlow.load_from_checkpoint(ckpt, map_location=device).eval().to(device)
+    flow = load_flow(ckpt, map_location=device).eval().to(device)
     for p in flow.parameters():
         p.requires_grad_(False)
 

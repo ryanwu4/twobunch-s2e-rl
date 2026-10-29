@@ -26,7 +26,8 @@ Data generation and the ML stages run in **different conda envs** and cannot sha
 - **`slac-rl`** — surrogate + RL (torch); used once those stages exist.
 
 The package is used via `PYTHONPATH=$PWD/src` (not `pip install`), matching the sibling
-repos.
+repos. The CNF surrogate is its own package, facet2-twobunch-cnf (`twobunch_cnf`), installed
+editable in both envs: `pip install -e ../facet2-twobunch-cnf --no-deps`.
 
 ## FACET2_S2E dependency
 
@@ -61,12 +62,16 @@ PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/dataset_overview/summary_plots
 PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/combined_dataset/dataset_coverage.py
 ```
 
-**Surrogate** (`slac-rl` torch env): conditional RealNVP over the 8 knobs → drive+witness 6D
-beam at PENT + per-bunch feasibility. Reparameterized sampling, so `model.observables(knobs)`
-is differentiable w.r.t. the knobs (for later MBRL). See `docs/surrogate_roadmap.md`.
+**Surrogate** (`slac-rl` torch env): conditional flow over the knobs → drive+witness 6D
+beam at the treaty point + per-bunch feasibility. Reparameterized sampling, so `model.observables(knobs)`
+is differentiable w.r.t. the knobs (for MBRL). See `docs/surrogate_roadmap.md`. The model and its
+training live in facet2-twobunch-cnf (`twobunch-cnf-train`; experiments on its worktree branches);
+`surrogate.loading.load_flow(ckpt)` loads any checkpoint of this repo (the twobunch_cnf model when the
+checkpoint converts, else the frozen legacy model in `surrogate/model.py`), and `surrogate.train` /
+`surrogate.eval` are shims onto twobunch_cnf with this repo's old defaults.
 ```bash
 PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.preprocess --subdir full   # -> processed/twobunch_flow.h5
-PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.train --epochs 150         # -> trained/twobunch_flow/
+PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.train --t-two-part --epochs 150   # -> trained/twobunch_flow/
 PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.eval  --ckpt "trained/twobunch_flow/checkpoints/best-*.ckpt"
 PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.diagnostics --ckpt "trained/twobunch_flow/checkpoints/best-*.ckpt"
 PYTHONPATH=$PWD/src pytest tests/                                                  # 21 tests (data tests auto-skip if absent)

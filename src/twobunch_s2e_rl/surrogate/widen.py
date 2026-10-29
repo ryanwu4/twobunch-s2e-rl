@@ -1,5 +1,7 @@
 """Widen a trained flow's conditioning to a bigger knob space without changing what it predicts.
 
+FROZEN LEGACY COPY (7ac3617) for legacy-model flows; twobunch_cnf flows go to twobunch_cnf.widen.
+
 Only two layers see the knob vector: `encoder[0]` (input = [knobs, one-hot bunch(2)]) and
 `feas_head[0]` (input = knobs). Knobs enter normalized in the model's frame, u = (x - lo) / span.
 For a new frame (lo', span') the old input is u = o + s * u' with s = span' / span and
@@ -42,6 +44,12 @@ def _remap_first_layer(lin: torch.nn.Linear, old: KnobSpace, new: KnobSpace, n_e
 
 
 def widen_conditioning(flow: TwoBunchFlow, new_space: KnobSpace) -> TwoBunchFlow:
+    from twobunch_cnf.model import TwoBunchFlow as CNFFlow
+
+    if isinstance(flow, CNFFlow):   # twobunch_cnf flows: its widen (also remaps the two-part T and latent-prior heads)
+        from twobunch_cnf.widen import widen_conditioning as cnf_widen
+
+        return cnf_widen(flow, new_space)
     old = flow_knob_space(flow)
     missing = [k for k in old.keys if k not in new_space.keys]
     if missing:

@@ -68,13 +68,8 @@ def track(qs, tao, s2e_root, settings: dict, points, *, n_in: int, save_beams_at
     return record
 
 
-def split_bunches(P):
-    """(drive, witness) ParticleGroups split by per-particle weight: drive = higher weight
-    (FACET2_S2E.getDriverAndWitness convention). Witness is None if only one weight survives."""
-    w = np.unique(P.weight)
-    if len(w) < 2:
-        return P, None
-    return P[P.weight == w[-1]], P[P.weight == w[0]]
+# (drive, witness) split by per-particle weight: twobunch_cnf.beam_io (identical code)
+from twobunch_cnf.beam_io import split_bunches  # noqa: E402,F401
 
 
 def cloud_metrics(beam_h5) -> dict[str, float]:

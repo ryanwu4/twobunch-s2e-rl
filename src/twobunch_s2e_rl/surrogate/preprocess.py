@@ -38,6 +38,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 from pmd_beamphysics import ParticleGroup
+from twobunch_cnf.beam_io import stack_coords, subsample
 
 from ..datagen.paths import repo_root
 from ..datagen.sweep_params import resolve_sweep_set
@@ -48,14 +49,9 @@ from . import COORD_KEYS, DEFAULT_P, ELECTRON_MC2_EV
 PENT = "PENT"
 
 
-def _stack(pg: ParticleGroup) -> np.ndarray:
-    """(n, 6) in COORD_KEYS order: (x, y, z, px, py, pz). pos [m], mom [eV/c]."""
-    return np.stack([getattr(pg, k) for k in COORD_KEYS], axis=1).astype(np.float32)
-
-
-def _subsample(coords: np.ndarray, p: int, rng: np.random.Generator) -> np.ndarray:
-    idx = rng.choice(coords.shape[0], p, replace=False)
-    return coords[idx]
+# (n, 6) cloud convention, shared with the beam export: twobunch_cnf.beam_io (identical code)
+_stack = stack_coords
+_subsample = subsample
 
 
 def parse_one(json_path: str, p: int, rng: np.random.Generator, keys: list,

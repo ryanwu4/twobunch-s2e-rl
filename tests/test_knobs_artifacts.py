@@ -7,7 +7,7 @@ import pytest
 from twobunch_s2e_rl.artifacts import (LEGACY_KNOB_KEYS, read_run_json, resolve_ckpt,
                                        write_run_json)
 from twobunch_s2e_rl.datagen.sweep_params import resolve_sweep_set
-from twobunch_s2e_rl.knobs import KnobSpace
+from twobunch_s2e_rl.knobs import KnobSpace, from_sweep_set
 
 KS = KnobSpace.from_lists(["a", "b", "c"], [0.0, -10.0, 5.0], [1.0, 10.0, 5.0], {"a": 0.5})
 
@@ -41,7 +41,7 @@ def test_subset_contains_dict_roundtrip():
 
 def test_from_sweep_set_matches_table():
     keys, lo, hi, base = resolve_sweep_set("xtcav23")
-    ks = KnobSpace.from_sweep_set("xtcav23")
+    ks = from_sweep_set("xtcav23")
     assert list(ks.keys) == keys and list(ks.low) == lo and ks.baseline == base
 
 

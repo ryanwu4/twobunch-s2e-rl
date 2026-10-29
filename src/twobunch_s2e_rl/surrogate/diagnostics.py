@@ -23,7 +23,7 @@ import torch
 
 from ..datagen.paths import repo_root
 from .dataset import TwoBunchFlowDataset
-from .model import TwoBunchFlow
+from .loading import load_flow
 from ..artifacts import resolve_ckpt
 
 # per-coordinate display scaling (cols: x,y,z [m]; px,py,pz [eV/c])
@@ -49,7 +49,7 @@ class Bundle:
 
     def __init__(self, ckpt, processed):
         self.dev = "cuda" if torch.cuda.is_available() else "cpu"
-        self.m = TwoBunchFlow.load_from_checkpoint(ckpt, map_location=self.dev).eval().to(self.dev)
+        self.m = load_flow(ckpt, map_location=self.dev).eval().to(self.dev)
         self.ds = TwoBunchFlowDataset(processed)
         nm = self.ds.norm
         self.mean = {0: np.array(nm["drive_mean"]), 1: np.array(nm["witness_mean"])}

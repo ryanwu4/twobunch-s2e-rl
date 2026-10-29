@@ -1,4 +1,9 @@
-"""Two-bunch conditional normalizing-flow surrogate (Lightning).
+"""Two-bunch conditional normalizing-flow surrogate (Lightning). FROZEN LEGACY COPY.
+
+This is the unpruned TwoBunchFlow as of 7ac3617 (== facet2-twobunch-cnf archive/unpruned-7ac3617), kept so
+checkpoints twobunch_cnf main cannot load (no knob_keys, or removed options in use) still load and reproduce.
+Do not develop here: the model lives in facet2-twobunch-cnf. Load checkpoints with
+`twobunch_s2e_rl.surrogate.loading.load_flow`, which serves the twobunch_cnf model whenever it can.
 
 One shared RealNVP flow selected by a per-bunch index k (0=drive, 1=witness). A whitening
 MLP maps (knobs,k) -> per-bunch (mu_k, L_k); the flow models the standardized residual

@@ -23,7 +23,7 @@ from pathlib import Path
 import torch
 
 from twobunch_s2e_rl.artifacts import flow_knob_space, resolve_ckpt
-from twobunch_s2e_rl.knobs import KnobSpace
+from twobunch_s2e_rl.knobs import KnobSpace, from_sweep_set
 from twobunch_s2e_rl.surrogate.model import TwoBunchFlow
 from twobunch_s2e_rl.surrogate.widen import widen_conditioning
 
@@ -73,13 +73,13 @@ def main():
     torch.set_num_threads(4)
     ck = resolve_ckpt(a.ckpt)
     old = TwoBunchFlow.load_from_checkpoint(ck, map_location="cpu").eval()
-    new = KnobSpace.from_sweep_set(a.sweep_set) if a.sweep_set else KnobSpace.from_norm_json(a.norm)
+    new = from_sweep_set(a.sweep_set) if a.sweep_set else KnobSpace.from_norm_json(a.norm)
     if a.norm:   # baselines for the verification only (golden injector / linac baseline)
         try:
             import json as _json
             sweep = _json.load(open(a.norm)).get("sweep_set", "xtcav23_inj12")
             new = KnobSpace.from_lists(new.keys, new.low, new.high,
-                                       KnobSpace.from_sweep_set(sweep).baseline)
+                                       from_sweep_set(sweep).baseline)
         except KeyError:
             pass
     wide = widen_conditioning(old, new)

@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from ..artifacts import flow_knob_space, resolve_ckpt  # resolve_ckpt re-exported for eval/scripts
-from ..surrogate.model import TwoBunchFlow
+from ..surrogate.loading import load_flow
 from .diff_env import TwoBunchFlowEnv, rf_drift_std_vector
 from .plants import flow_plant, xtcav_screen_plant
 from .reward import reward_spec_from_campaign
@@ -187,7 +187,7 @@ def build_env_fn(cfg: dict, flow_ckpt: str):
     rf = de.get("rf_drift", {})
     if rf.get("enabled", False):
         # in the flow's OWN frame (train-time bounds), not today's knob tables
-        frame = flow_knob_space(TwoBunchFlow.load_from_checkpoint(resolve_ckpt(flow_ckpt),
+        frame = flow_knob_space(load_flow(resolve_ckpt(flow_ckpt),
                                                                   map_location="cpu"))
         drift = rf_drift_std_vector(rf.get("phase_drift_deg", 0.5), rf.get("amp_drift_frac", 0.005),
                                     knob_space=frame)
@@ -232,13 +232,13 @@ def build_delta_env_fn(cfg: dict, flow_ckpt: str):
     plant = de.get("plant", "flow")
     if plant not in ("flow", "xtcav_screen"):
         raise ValueError(f"unknown delta-env plant {plant!r}")
-    frame = flow_knob_space(TwoBunchFlow.load_from_checkpoint(ckpt, map_location="cpu"))
+    frame = flow_knob_space(load_flow(ckpt, map_location="cpu"))
     baseline = dict(resolve_sweep_set(de["baseline_set"])[3])
     baseline.update(de.get("baseline_override", {}))
     n_particles = int(de.get("n_particles", 512))
 
     def make(num_envs, device="cuda:0", seed=0, episode_length=32, no_grad=False, **_):
-        flow = TwoBunchFlow.load_from_checkpoint(ckpt, map_location=device).to(device).eval()
+        flow = load_flow(ckpt, map_location=device).to(device).eval()
         for p in flow.parameters():
             p.requires_grad_(False)
         ms = de.get("measurement", {})

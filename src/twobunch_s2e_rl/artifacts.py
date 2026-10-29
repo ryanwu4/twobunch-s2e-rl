@@ -3,9 +3,7 @@ what older artifacts did not record.
 """
 from __future__ import annotations
 
-import glob
 import json
-import re
 import subprocess
 import time
 from pathlib import Path
@@ -14,35 +12,7 @@ from .datagen.paths import repo_root
 
 # ---- checkpoint / policy resolution ------------------------------------------------------------
 
-_VAL_LOSS = re.compile(r"val_loss=(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)")
-_REWARD = re.compile(r"reward(-?\d+(?:\.\d+)?)")
-
-
-def resolve_ckpt(pattern: str) -> str:
-    """A path, or a glob. For a glob, pick the best match by the number in the file name:
-    lowest `val_loss=` (flow checkpoints; may be negative) or highest `reward` (policy files).
-    Fails loudly when no file matches, when names carry no score, or on a tie."""
-    if not any(c in pattern for c in "*?["):
-        return pattern
-    files = sorted(glob.glob(pattern))
-    if not files:
-        raise FileNotFoundError(f"no file matches {pattern!r}")
-    if len(files) == 1:
-        return files[0]
-    scored = []
-    for f in files:
-        name = Path(f).name
-        m_loss, m_rew = _VAL_LOSS.search(name), _REWARD.search(name)
-        if m_loss:
-            scored.append((float(m_loss.group(1)), f))
-        elif m_rew:
-            scored.append((-float(m_rew.group(1)), f))      # higher reward is better
-        else:
-            raise ValueError(f"cannot rank {name!r} (no val_loss/reward in name); pass a path")
-    scored.sort()
-    if scored[0][0] == scored[1][0]:
-        raise ValueError(f"ambiguous best match for {pattern!r}: {scored[0][1]}, {scored[1][1]}")
-    return scored[0][1]
+from twobunch_cnf.artifacts import read_run_json, resolve_ckpt  # noqa: E402,F401 (identical code)
 
 
 # ---- run.json provenance -----------------------------------------------------------------------
@@ -84,11 +54,6 @@ def write_run_json(out_dir, kind: str, config: dict, parents=(), overwrite: bool
            "parents": [str(p) for p in parents], **extra}
     out.write_text(json.dumps(rec, indent=2, default=str))
     return out
-
-
-def read_run_json(path) -> dict:
-    p = Path(path)
-    return json.loads((p / "run.json" if p.is_dir() else p).read_text())
 
 
 # ---- legacy tables (artifacts made before knob_keys / flow_ckpt were recorded) -------------------

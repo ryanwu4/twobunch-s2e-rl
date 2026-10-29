@@ -51,6 +51,7 @@ from typing import Any
 import torch
 
 from ..surrogate.model import TwoBunchFlow
+from ..surrogate.loading import load_flow
 from .reward import TwoBunchRewardSpec
 
 N_KNOB = 8
@@ -86,8 +87,8 @@ def rf_drift_std_vector(phase_drift_deg: float = 0.5,
     See the module docstring for the worked default values (0.5 deg / 0.5% on the train-time
     8-knob frame -> L1Phase 0.100, L2Phase 0.125, each energy ~0.250)."""
     if knob_space is None:
-        from ..knobs import KnobSpace
-        knob_space = KnobSpace.from_sweep_set("original8")
+        from ..knobs import from_sweep_set
+        knob_space = from_sweep_set("original8")
     std = []
     for k in knob_space.keys:
         width = float(knob_space.width(k))
@@ -143,7 +144,7 @@ class TwoBunchFlowEnv:
         if flow is None:
             if flow_ckpt is None:
                 raise ValueError("pass `flow` (instance) or `flow_ckpt` (path)")
-            flow = TwoBunchFlow.load_from_checkpoint(str(flow_ckpt), map_location=self.device)
+            flow = load_flow(str(flow_ckpt), map_location=self.device)
         flow = flow.to(self.device).eval()
         for p in flow.parameters():
             p.requires_grad_(False)

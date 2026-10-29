@@ -23,9 +23,10 @@ analysis = [
     "matplotlib",
     "h5py",
 ]
-# Conditional-NF surrogate (run in the slac-rl env, which already provides these).
-# RealNVP coupling is hand-rolled (reused from the photoinjector flow), so no flow library.
+# Conditional-NF surrogate (run in the slac-rl env, which already provides these). The CNF itself is
+# facet2-twobunch-cnf (`twobunch_cnf`); install it editable: pip install -e ../facet2-twobunch-cnf --no-deps
 surrogate = [
+    "facet2-twobunch-cnf",
     "torch>=2.0",
     "lightning>=2.0",
     "pmd-beamphysics",

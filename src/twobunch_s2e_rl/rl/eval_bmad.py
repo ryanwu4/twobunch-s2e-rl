@@ -46,7 +46,7 @@ from .bmad_env import BmadTwoBunchEnv
 from .diff_env import N_KNOB, TwoBunchFlowEnv
 from .eval import _assert_obs_dim, _load_policy
 from .reward import EMIT_KEYS
-from ..surrogate.model import TwoBunchFlow
+from ..surrogate.loading import load_flow
 
 REPORT = ("bunch_spacing", "T_drive", "T_witness") + EMIT_KEYS
 _BASELINE_CFG = "setLattice_configs/2024-10-14_twoBunch_baseline.yml"
@@ -314,7 +314,7 @@ def _run_one_goal(args, de, spec, flow_ckpt, actor, rms, bridge, artdir, device,
                 print(f"  wrote {png}")
     else:
         ep = args.episode_len or int(de["episode_length"])
-        frame = TwoBunchFlow.load_from_checkpoint(flow_ckpt, map_location="cpu")
+        frame = load_flow(flow_ckpt, map_location="cpu")
         benv = BmadTwoBunchEnv(bridge, spec, num_envs=1, device=device, seed=args.seed,
                                episode_length=ep, action_scale=float(de["action_scale"]),
                                stochastic_init=True, min_particles=64, spacing_goal=bmad_goal,
