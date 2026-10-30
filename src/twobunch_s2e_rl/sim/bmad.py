@@ -30,8 +30,77 @@ def make_tao(qs, s2e_root, baseline: dict, *, csr: bool, wakes: bool, n_particle
     return tao
 
 
+def l2_machine_solve(v_fixed, v_scan, v_pair, phi_m_deg, spec) -> dict:
+    """L2 as the machine's L2_PHASE multiknob scans it (E300/E331 DAQs): the LI12-14 sub-boosters
+    move together by `delta_deg`, LI11 (11-4..11-8) stays put, and the BC14 energy feedback opens or
+    closes the 14-4 / 14-6 pair (psi -/+ theta about the LI14 sub-booster phase psi) to hold the
+    energy. v_*: on-crest voltages of the fixed / scanned / pair groups (pair = (14-4, 14-6)) at the
+    model's uniform setting phi_m_deg, whose vector sum Z is the operating point at the scan centre.
+
+    spec: theta0_deg (pair half-angle at the centre), phi11_deg (LI11 phase; None = in phase with
+    LI12-14 at the centre), delta_deg (this step's multiknob offset). A common gradient scale and
+    the centre sub-booster phase are solved so the centre reproduces Z; at delta the pair angle is
+    re-solved so Re (the energy gain) stays at Re Z."""
+    p4, p6 = v_pair
+    Z = (v_fixed + v_scan + p4 + p6) * np.exp(1j * np.deg2rad(phi_m_deg))
+    th0 = np.deg2rad(spec["theta0_deg"])
+    Q = lambda th: v_scan + p4 * np.exp(-1j * th) + p6 * np.exp(1j * th)
+    if spec.get("phi11_deg") is None:
+        W = v_fixed + Q(th0)
+        scale, phis = abs(Z) / abs(W), np.angle(Z) - np.angle(W)
+        phi11 = phis
+    else:
+        phi11 = np.deg2rad(spec["phi11_deg"])
+        F = v_fixed * np.exp(1j * phi11)
+        # |Z/scale - F| = |Q(th0)|, positive root in u = 1/scale
+        b, q = (Z * np.conj(F)).real, abs(Q(th0))
+        u = (b + np.sqrt(b * b - abs(Z) ** 2 * (abs(F) ** 2 - q * q))) / abs(Z) ** 2
+        scale = 1.0 / u
+        phis = np.angle((Z * u - F) / Q(th0))
+    psi = phis + np.deg2rad(spec["delta_deg"])
+    fixed = scale * v_fixed * np.exp(1j * phi11)
+    # Re[scale e^{i psi} Q(th)] = scale [v_scan cos psi + A cos th + B sin th]
+    A, B = (p4 + p6) * np.cos(psi), (p4 - p6) * np.sin(psi)
+    c = (Z.real - fixed.real) / scale - v_scan * np.cos(psi)
+    R, beta = np.hypot(A, B), np.arctan2(B, A)
+    saturated = abs(c) > R
+    roots = [beta + s * np.arccos(np.clip(c / R, -1, 1)) for s in (1, -1)]
+    th = min(roots, key=lambda r: abs(np.angle(np.exp(1j * (r - th0)))))
+    M = fixed + scale * np.exp(1j * psi) * Q(th)
+    deg = lambda r: float(np.rad2deg(r))
+    return {"scale": float(scale), "phi11_deg": deg(phi11), "psi_deg": deg(psi), "theta_deg": deg(th),
+            "phi_eff_deg": deg(np.angle(M)), "energy_ratio": float(M.real / Z.real),
+            "amp_ratio": float(abs(M) / abs(Z)), "saturated": bool(saturated)}
+
+
+def apply_l2_machine(tao, spec) -> dict:
+    """After setLattice (every L2 cavity at the row's L2PhaseSet = the scan centre, uniform gradient
+    on the energy target): re-phase and rescale L2 per l2_machine_solve. Returns its solution plus
+    the L2 energy gain Tao reports before and after (equal when the solve held the energy)."""
+    from FACET2_S2E.simulators.bmad.lattice.linac import getLinacMatchStrings
+    names = [str(n) for n in getLinacMatchStrings(tao)[1]]
+    get = lambda n, a: float(tao.lat_list(n, f"ele.{a}", flags="-no_slaves -array_out")[0])
+    V = {n: get(n, "VOLTAGE") for n in names}
+    phi0 = {n: get(n, "PHI0") for n in names}
+    phi_m = 360.0 * phi0[names[0]]
+    assert all(abs(360.0 * p - phi_m) < 1e-9 for p in phi0.values()), "L2 not at one phase"
+    group = lambda n: ("fixed" if n.startswith("K11_") else "p4" if n.startswith("K14_4")
+                       else "p6" if n.startswith("K14_6") else "scan")
+    tot = {g: sum(v for n, v in V.items() if group(n) == g) for g in ("fixed", "scan", "p4", "p6")}
+    sol = l2_machine_solve(tot["fixed"], tot["scan"], (tot["p4"], tot["p6"]), phi_m, spec)
+    energy = lambda: sum(get(n, "VOLTAGE") * np.cos(2 * np.pi * get(n, "PHI0")) for n in names)
+    sol["energy_before_eV"] = energy()
+    phase = {"fixed": sol["phi11_deg"], "scan": sol["psi_deg"],
+             "p4": sol["psi_deg"] - sol["theta_deg"], "p6": sol["psi_deg"] + sol["theta_deg"]}
+    for n in names:
+        tao.cmd(f"set ele {n} PHI0 = {phase[group(n)] / 360.0}")
+        tao.cmd(f"set ele {n} GRADIENT = {get(n, 'GRADIENT') * sol['scale']}")
+    sol["energy_after_eV"] = energy()
+    return sol
+
+
 def track(qs, tao, s2e_root, settings: dict, points, *, n_in: int, save_beams_at=(),
-          out_prefix=None, laser_heater: dict | None = None) -> dict:
+          out_prefix=None, laser_heater: dict | None = None, l2_machine: dict | None = None) -> dict:
     """setLattice + trackBeam with the full merged `settings`, then per treaty point: optionally save
     the beam (`<out_prefix>_<ELE>.h5`), and record live counts + getBeamSpecs. Returns
     {"specs": {ele: {...}}} — the same structure as the campaign sample jsons.
@@ -39,8 +108,12 @@ def track(qs, tao, s2e_root, settings: dict, points, *, n_in: int, save_beams_at
     laser_heater: optional FACET2-S2E addLHmodulation kwargs (laserHeater_laserEnergy [J],
     laserHeater_sigma_t [s], laserHeater_offset [laser sigmas from the beam's mean t]) to turn the
     heater on at HTRUNDF. trackBeam forwards ALL its extra kwargs (here: every lattice setting) to
-    addLHmodulation, so the heater call is wrapped to receive only these."""
+    addLHmodulation, so the heater call is wrapped to receive only these.
+
+    l2_machine: optional apply_l2_machine spec (machine-like L2 scan step; settings' L2PhaseSet must
+    be the scan centre). Its solution is returned under "l2_machine"."""
     qs.setLattice(tao, **settings)
+    l2 = apply_l2_machine(tao, l2_machine) if l2_machine else None
     if not laser_heater:
         qs.trackBeam(tao, str(s2e_root), **settings)
     else:
@@ -51,7 +124,7 @@ def track(qs, tao, s2e_root, settings: dict, points, *, n_in: int, save_beams_at
             qs.trackBeam(tao, str(s2e_root), laserHeater=True, **settings)
         finally:
             core.addLHmodulation = orig
-    record = {"specs": {}}
+    record = {"specs": {}, **({"l2_machine": l2} if l2 else {})}
     for ele in points:
         P = qs.getBeamAtElement(tao, ele)
         # save before specs: degenerate (fully scraped) beams can crash getBeamSpecs
