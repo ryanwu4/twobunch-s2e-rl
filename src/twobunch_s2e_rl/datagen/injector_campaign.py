@@ -530,6 +530,7 @@ def bmad_task(args):
               "injector_point": row["injector_point"], "linac_id": row["linac_id"],
               "linac_region": row.get("linac_region", "full"), "holdout": bool(row.get("holdout", False)),
               **({"jacobian_delta": row["jacobian_delta"]} if "jacobian_delta" in row else {}),
+              **({"laser_heater": row["laser_heater"]} if row.get("laser_heater") else {}),
               "knobs": {**row["knobs"], **row["injector"]},
               "linac_knobs": row["knobs"], "injector_settings": row["injector"],
               "fixed_overrides": _CFG.get("fixed_overrides", {}),
@@ -585,7 +586,7 @@ def bmad_task(args):
             stem = jpath.with_suffix("")
             rec = track(qs, tao, facet2_root(), merged, _CFG.get("treaty_points", TREATY_POINTS),
                         n_in=n_in, save_beams_at=_CFG.get("save_beams_at", ["XTCAVF"]),
-                        out_prefix=str(stem))
+                        out_prefix=str(stem), laser_heater=row.get("laser_heater"))
             result["wall_s"] = time.perf_counter() - t0
             result.update(rec)
             result["success"] = True

@@ -31,12 +31,26 @@ def make_tao(qs, s2e_root, baseline: dict, *, csr: bool, wakes: bool, n_particle
 
 
 def track(qs, tao, s2e_root, settings: dict, points, *, n_in: int, save_beams_at=(),
-          out_prefix=None) -> dict:
+          out_prefix=None, laser_heater: dict | None = None) -> dict:
     """setLattice + trackBeam with the full merged `settings`, then per treaty point: optionally save
     the beam (`<out_prefix>_<ELE>.h5`), and record live counts + getBeamSpecs. Returns
-    {"specs": {ele: {...}}} — the same structure as the campaign sample jsons."""
+    {"specs": {ele: {...}}} — the same structure as the campaign sample jsons.
+
+    laser_heater: optional FACET2-S2E addLHmodulation kwargs (laserHeater_laserEnergy [J],
+    laserHeater_sigma_t [s], laserHeater_offset [laser sigmas from the beam's mean t]) to turn the
+    heater on at HTRUNDF. trackBeam forwards ALL its extra kwargs (here: every lattice setting) to
+    addLHmodulation, so the heater call is wrapped to receive only these."""
     qs.setLattice(tao, **settings)
-    qs.trackBeam(tao, str(s2e_root), **settings)
+    if not laser_heater:
+        qs.trackBeam(tao, str(s2e_root), **settings)
+    else:
+        from FACET2_S2E.simulators.bmad import core
+        orig = core.addLHmodulation
+        core.addLHmodulation = lambda P, **_: orig(P, **laser_heater)
+        try:
+            qs.trackBeam(tao, str(s2e_root), laserHeater=True, **settings)
+        finally:
+            core.addLHmodulation = orig
     record = {"specs": {}}
     for ele in points:
         P = qs.getBeamAtElement(tao, ele)
