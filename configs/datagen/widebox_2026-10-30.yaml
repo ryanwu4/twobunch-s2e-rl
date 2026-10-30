@@ -1,0 +1,51 @@
+# Stage D2 WIDE-BOX campaign (xtcav-gpsr-tuning interview 2026-10-29): put the real E300 / E331
+# runs inside the training data so the sim2real fit and a C_B3 fine-tune can use them.
+# Nested design like injector_cov_2026-10-16 (same physics, fidelity and treaty points); the box
+# is the union-bounds frame xtcav23w_l0b2_inj12w (sweep_params: charge 1350-2150 pC, d2 delay
+# 7.5-10.5 ps, L1 to -16.5 deg, L2 to -27.5 deg; laser / gun / drive fraction unchanged on the
+# reachability fit + S2E probe evidence, see the sweep_params comment).
+#   250 LHS injector points x 8 nested linac draws (50% in the E300/E331 operating region)
+#   + 25% of nested rows re-run at injector = golden (exact pairs) + 1 crossed baseline each
+#   ~ 250 Impact-T + 2751 Bmad rows (~12 h at 64 workers, as injector_cov)
+name: widebox_2026-10-30
+output_dir: data/widebox_2026-10-30
+sweep_set: xtcav23w_l0b2_inj12w
+linac_sweep_set: xtcav23w_l0b2
+injector_sweep_set: inj12w
+n_workers: 64
+
+injector:
+  n_particles: 50000
+  grid: 64
+  arrival: absolute
+  hammersley_burnin: -1
+
+design:
+  seed: 20261030
+  injector:
+    golden: true
+    lhs: 250
+    box_scale: 1.0
+    test_points: 25
+  linac:
+    shared: {baseline: true, lhs: 0}
+    per_injector_lhs: 8
+    controller_frac: 0.5
+    # the real runs' operating region: E300 L1 -26..-20 nominal (-22.35 sigma_z-anchored),
+    # E331 -21..-18; L2: the E300 scans + fitted shift reach -29.2 deg
+    controller_box: {L1PhaseSet: [-27.0, -17.0], L2PhaseSet: [-41.0, -28.0]}
+    controller_l1_energy: {k_max: 0.9, dphi_max_deg: 2.5, gain_eV: 210.0e6}
+  pair_golden_frac: 0.25
+  pair_golden_frac_test: 0.25
+  bridge: false
+
+# = injector_cov_2026-10-16 physics
+csrTF: true
+transverseWakes: true
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+treaty_points: [ENDDL10, BL11356, BL14888, BEGBC20, IM2452, BL20_4, MFFF, XTCAVF, PENT]
+save_beams_at: [BL11356, BL14888, BL20_4, XTCAVF]
+fixed_overrides:
+  Q19851kG: -63.76368742523523
+  Q19871kG: 42.49972197426665
+  trackEnd: PENT

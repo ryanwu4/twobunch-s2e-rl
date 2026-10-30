@@ -333,12 +333,32 @@ L0B_PARAMS = {
 # xtcav23 with L1EnergyOffset widened to +-3.5 MeV (round-2 physics review M2: the machine's
 # correlated L1 (phase, energy) states; old xtcav23 data (+-2.1 MeV) embed inside it)
 XTCAV23E_PARAMS = {**XTCAV23_PARAMS, "L1EnergyOffset": (-3.5e6, 3.5e6, 0.0)}
-INJECTOR_SWEEP_SETS = {"inj12": INJECTOR_PARAMS, "l0b2": L0B_PARAMS, "xtcav23e": XTCAV23E_PARAMS}
+# Stage D2 wide box (xtcav-gpsr-tuning, 2026-10-29): the sim2real fit needs the real runs inside the
+# data. Widened (evidence in xtcav-gpsr-tuning/docs/stageD2_log.md):
+#   total charge 1350-2150 pC, d2 avg_t 7.5-10.5 ps  (E331: a genuine ~1.9 nC on the S20 toroid,
+#       ~2.0 nC injected; PSDL steps of +-1 ps, stage ps = pulse-separation ps)
+#   L1 high edge -16.5 deg                           (E331 at -18 deg nominal)
+#   L2 high edge -27.5 deg                           (E300_15673: the reachability fits push the last
+#       scan steps to the -29.5 deg box top, L2 shift +0.6-0.7 deg)
+# NOT widened: laser timing, gun amplitude / phase, drive fraction and the passive knobs. The 15673
+# fits sit at 75-87% of their half-box but no wall, the residual is not injector-shaped (Jacobian
+# alignment <=7%), and in a direct Impact-T+Bmad probe doubling the fitted injector excursion made
+# the S2E images worse (1.07 -> 1.19 TV). Golden values unchanged, so injector = golden rows embed
+# in the old campaigns.
+XTCAV23W_PARAMS = {**XTCAV23E_PARAMS, "L1PhaseSet": (-27.5, -16.5, -20.2889213421),
+                   "L2PhaseSet": (-41.5, -27.5, -35.5447801603)}
+INJECTOR_WIDE_PARAMS = {**INJECTOR_PARAMS,
+                        "distgen:t_dist:dists:d2:avg_t:value": (7.5, 10.5, 9.0),
+                        "distgen:total_charge:value": (1350.0, 2150.0, 1600.0)}
+INJECTOR_SWEEP_SETS = {"inj12": INJECTOR_PARAMS, "l0b2": L0B_PARAMS, "xtcav23e": XTCAV23E_PARAMS,
+                       "inj12w": INJECTOR_WIDE_PARAMS, "xtcav23w": XTCAV23W_PARAMS}
 CONCAT_SWEEP_SETS = {"xtcav23_inj12": ("xtcav23", "inj12"),
                      "xtcav23_l0b2": ("xtcav23", "l0b2"),                       # campaign linac knobs
                      "xtcav23_l0b2_inj12": ("xtcav23", "l0b2", "inj12"),
                      "xtcav23e_l0b2": ("xtcav23e", "l0b2"),                     # campaign linac knobs
-                     "xtcav23e_l0b2_inj12": ("xtcav23e", "l0b2", "inj12")}      # campaign frame
+                     "xtcav23e_l0b2_inj12": ("xtcav23e", "l0b2", "inj12"),      # campaign frame
+                     "xtcav23w_l0b2": ("xtcav23w", "l0b2"),                     # Stage D2 wide box
+                     "xtcav23w_l0b2_inj12w": ("xtcav23w", "l0b2", "inj12w")}
 
 
 # Readback-error-scale 1-sigma per knob (physical units): the hidden per-episode context jitter of
