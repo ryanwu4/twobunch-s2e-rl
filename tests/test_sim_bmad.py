@@ -65,3 +65,16 @@ def test_split_bunches_drive_is_higher_weight():
     assert len(d.x) == 2 and len(w.x) == 1
     d, w = split_bunches(_P(2, [1.0, 1.0]))
     assert w is None
+
+
+def test_l2_machine_solve_holds_energy_and_reproduces_the_centre():
+    from twobunch_s2e_rl.sim.bmad import l2_machine_solve
+    v = (1.0e9, 3.0e9, (0.2e9, 0.2e9))
+    for phi11 in (None, 0.0):
+        spec = {"theta0_deg": 88.0, "phi11_deg": phi11}
+        c = l2_machine_solve(*v, -33.9, {**spec, "delta_deg": 0.0})
+        assert abs(c["phi_eff_deg"] + 33.9) < 1e-9 and abs(c["amp_ratio"] - 1) < 1e-12
+        for d in (-4.0, 4.0):
+            s = l2_machine_solve(*v, -33.9, {**spec, "delta_deg": d})
+            assert not s["saturated"] and abs(s["energy_ratio"] - 1) < 1e-12
+            assert np.sign(s["phi_eff_deg"] + 33.9) == np.sign(d)     # vector sum moves with the knob
