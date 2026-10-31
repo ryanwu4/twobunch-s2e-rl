@@ -497,7 +497,7 @@ def _get_tao():
                         n_particles=int(_CFG["injector"]["n_particles"]),
                         scratch=Path(_CFG["output_dir"]) / "scratch" / f"pid{os.getpid()}",
                         saved_at=_CFG.get("treaty_points", TREATY_POINTS),
-                        n_bin=_CFG.get("csr_n_bin"))
+                        n_bin=_CFG.get("csr_n_bin"), lsc_range=_CFG.get("lsc_range"))
     return _TAO
 
 

@@ -17,11 +17,13 @@ def merged_settings(baseline: dict, fixed_overrides: dict | None, knobs: dict) -
 
 
 def make_tao(qs, s2e_root, baseline: dict, *, csr: bool, wakes: bool, n_particles: int, scratch,
-             saved_at=(), n_bin: int | None = None):
+             saved_at=(), n_bin: int | None = None, lsc_range: str | None = None):
     """`saved_at`: extra elements whose beam Tao must keep in RAM so `track` can read them (Tao
     saves every MARKER plus FACET2-S2E's own list; e.g. the BLEN monitors BL11356 / BL14888 are not
     markers). `n_bin`: longitudinal bins of the 1D CSR calculation; None keeps Activate_CSR.tao's 40
-    (initializeTao's own n_bin argument only reaches Tao when autoLoadActiveFile=False)."""
+    (initializeTao's own n_bin argument only reaches Tao when autoLoadActiveFile=False).
+    `lsc_range`: Bmad element range (e.g. "L0AFEND:ENDBC14_2") with 1D slice longitudinal space
+    charge on; None keeps Activate_CSR.tao's space_charge_method = off everywhere."""
     # initializeTao down-samples the GOLDEN input beam to numMacroParticles and fails if that beam
     # is smaller (500k for the 2024-10-14 baseline); each row's own beam replaces it before tracking
     from pmd_beamphysics import ParticleGroup
@@ -32,6 +34,8 @@ def make_tao(qs, s2e_root, baseline: dict, *, csr: bool, wakes: bool, n_particle
         scratchPath=str(scratch), randomizeFileNames=True)
     if n_bin is not None:
         tao.cmd(f"set space_charge_com n_bin = {int(n_bin)}")
+    if lsc_range:
+        tao.cmd(f"set ele {lsc_range} space_charge_method = slice")
     if saved_at:
         tao.cmd(f"set beam add_saved_at = {', '.join(saved_at)}")
     return tao
