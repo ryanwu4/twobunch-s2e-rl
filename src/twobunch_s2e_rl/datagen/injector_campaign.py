@@ -494,7 +494,8 @@ def _get_tao():
         _TAO = make_tao(qs, root, _BASELINE, csr=_CFG["csrTF"], wakes=_CFG.get("transverseWakes", False),
                         n_particles=int(_CFG["injector"]["n_particles"]),
                         scratch=Path(_CFG["output_dir"]) / "scratch" / f"pid{os.getpid()}",
-                        saved_at=_CFG.get("treaty_points", TREATY_POINTS))
+                        saved_at=_CFG.get("treaty_points", TREATY_POINTS),
+                        n_bin=int(_CFG.get("csr_n_bin", 32)))
     return _TAO
 
 

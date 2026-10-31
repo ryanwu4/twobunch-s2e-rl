@@ -17,14 +17,14 @@ def merged_settings(baseline: dict, fixed_overrides: dict | None, knobs: dict) -
 
 
 def make_tao(qs, s2e_root, baseline: dict, *, csr: bool, wakes: bool, n_particles: int, scratch,
-             saved_at=()):
+             saved_at=(), n_bin: int = 32):
     """`saved_at`: extra elements whose beam Tao must keep in RAM so `track` can read them (Tao
     saves every MARKER plus FACET2-S2E's own list; e.g. the BLEN monitors BL11356 / BL14888 are not
-    markers)."""
+    markers). `n_bin`: longitudinal bins of the 1D CSR calculation (FACET2-S2E's default 32)."""
     tao = qs.initializeTao(
         filePath=str(s2e_root), inputBeamFilePathSuffix=baseline["inputBeamFilePathSuffix"],
         csrTF=csr, transverseWakes=wakes, numMacroParticles=n_particles,
-        scratchPath=str(scratch), randomizeFileNames=True)
+        scratchPath=str(scratch), randomizeFileNames=True, n_bin=n_bin)
     if saved_at:
         tao.cmd(f"set beam add_saved_at = {', '.join(saved_at)}")
     return tao
