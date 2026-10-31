@@ -772,6 +772,8 @@ def main():
                     help=f"rerun rows whose json records a failure (up to {MAX_ATTEMPTS} attempts)")
     ap.add_argument("--force-resume", action="store_true",
                     help="resume although the data-defining config changed (mixes fidelities!)")
+    ap.add_argument("--idle-timeout-h", type=float, default=3.0,
+                    help="exit when no row finishes for this long (raise for high-N rows)")
     a = ap.parse_args()
     cfg = load_cfg(a.config)
     workers = min(int(a.workers or cfg["n_workers"]), MAX_WORKERS)
@@ -781,7 +783,8 @@ def main():
         print(f"{len(rows)} rows; blocks {dict(Counter(r['block'] for r in rows))}; "
               f"{len(injector_points(rows))} Impact-T beams")
         return
-    run(cfg, workers, retry_failed=a.retry_failed, force_resume=a.force_resume)
+    run(cfg, workers, retry_failed=a.retry_failed, force_resume=a.force_resume,
+        idle_timeout_s=a.idle_timeout_h * 3600)
 
 
 if __name__ == "__main__":
