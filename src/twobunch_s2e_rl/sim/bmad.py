@@ -22,9 +22,13 @@ def make_tao(qs, s2e_root, baseline: dict, *, csr: bool, wakes: bool, n_particle
     saves every MARKER plus FACET2-S2E's own list; e.g. the BLEN monitors BL11356 / BL14888 are not
     markers). `n_bin`: longitudinal bins of the 1D CSR calculation; None keeps Activate_CSR.tao's 40
     (initializeTao's own n_bin argument only reaches Tao when autoLoadActiveFile=False)."""
+    # initializeTao down-samples the GOLDEN input beam to numMacroParticles and fails if that beam
+    # is smaller (500k for the 2024-10-14 baseline); each row's own beam replaces it before tracking
+    from pmd_beamphysics import ParticleGroup
+    n_golden = len(ParticleGroup(str(s2e_root) + baseline["inputBeamFilePathSuffix"]).x)
     tao = qs.initializeTao(
         filePath=str(s2e_root), inputBeamFilePathSuffix=baseline["inputBeamFilePathSuffix"],
-        csrTF=csr, transverseWakes=wakes, numMacroParticles=n_particles,
+        csrTF=csr, transverseWakes=wakes, numMacroParticles=min(n_particles, n_golden),
         scratchPath=str(scratch), randomizeFileNames=True)
     if n_bin is not None:
         tao.cmd(f"set space_charge_com n_bin = {int(n_bin)}")
