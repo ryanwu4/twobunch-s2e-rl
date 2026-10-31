@@ -36,7 +36,9 @@ from __future__ import annotations
 
 import os
 
-os.environ["OMP_NUM_THREADS"] = "1"          # Bmad: one thread per worker (Phase-0 result)
+# Bmad: one thread per worker (Phase-0 result); TWOBUNCH_BMAD_THREADS raises it for a few
+# high-N rows, where a row would otherwise run for hours on one core
+os.environ["OMP_NUM_THREADS"] = os.environ.get("TWOBUNCH_BMAD_THREADS", "1")
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 
