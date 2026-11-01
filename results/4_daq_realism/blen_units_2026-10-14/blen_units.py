@@ -2,7 +2,7 @@
 Per-step medians vs the L2 scan, across the 3 E300 (2026-04-15) and 14 E331 (2026-05-01) runs, and
 against the XTCAV spacing (E300, energy-gated re-extraction from the harness audit). Read-only.
 
-  /home/rwu4/miniconda3/envs/slac-rl/bin/python results/blen_units_2026-10-14/blen_units.py
+  /home/rwu4/miniconda3/envs/slac-rl/bin/python results/4_daq_realism/blen_units_2026-10-14/blen_units.py
 """
 import json, sys
 from pathlib import Path
@@ -11,7 +11,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-AUD = Path("/home/rwu4/photoinjector-rl/twobunch-s2e-rl/results/harness_audit_2026-10-14")
+AUD = Path("/home/rwu4/photoinjector-rl/twobunch-s2e-rl/results/4_daq_realism/harness_audit_2026-10-14")
 OUT = Path(__file__).resolve().parent
 sys.path.insert(0, str(AUD / "scripts"))
 import common as c  # noqa: E402

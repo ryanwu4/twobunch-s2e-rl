@@ -28,7 +28,7 @@ z, px and py. The per-metric surrogate-vs-truth table is written to JSON, not dr
 
 Run (GPU 0 is the free A100; flow sampling is ~ms):
   cd twobunch-s2e-rl && CUDA_VISIBLE_DEVICES=0 PYTHONPATH=$PWD/src MPLBACKEND=Agg \
-    python results/presentation_figures/make_corner_surrogate_vs_bmad.py
+    python results/5_reports/presentation_figures/shared/make_corner_surrogate_vs_bmad.py
 
 Outputs (next to this script):
   corner_surrogate_vs_bmad_baseline_dark.png

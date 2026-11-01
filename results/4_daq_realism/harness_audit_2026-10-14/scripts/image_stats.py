@@ -1,7 +1,7 @@
 """Per-image raw statistics (max pixel, count of pixels at max, total counts) for DTOTR2 (read-only)."""
 import h5py, numpy as np, sys, glob, json, os
 BASE='/home/rwu4/photoinjector-rl/XTCAV_analysis'
-OUT='/home/rwu4/photoinjector-rl/twobunch-s2e-rl/results/harness_audit_2026-10-14/data'
+OUT='/home/rwu4/photoinjector-rl/twobunch-s2e-rl/results/4_daq_realism/harness_audit_2026-10-14/data'
 r=sys.argv[1]
 rows=[]
 for fn in sorted(glob.glob(f'{BASE}/{r}/images/DTOTR2/*_step*.h5')):

@@ -8,7 +8,7 @@ target beta* (from the manifest) using the slice-beta tools, and checks:
   - is the witness matched to its target (slice BMAG vs beta* ~ 1)?
   - is the offset controlled (anchor vs wide tail)?
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/expanded_anchored_pilot/anchored_validation.py
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/1_datagen/expanded_anchored_pilot/anchored_validation.py
 """
 import glob
 import json

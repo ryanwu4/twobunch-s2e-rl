@@ -13,7 +13,7 @@ jitter, clip to EPICS bounds. Movers: narrowed box about their golden tuned valu
 
 Figures -> lab-notebook/images/2026-06-21_manifold_coverage_{knobs,bmag}.png
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/beam_matching/manifold_coverage.py \
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/1_datagen/beam_matching/manifold_coverage.py \
          [--n 400] [--jitter 0.06] [--no-tao]
 """
 import argparse

@@ -7,7 +7,7 @@ import numpy as np
 import scipy.io
 
 BASE = Path("/home/rwu4/photoinjector-rl/XTCAV_analysis")
-AUD = Path("/home/rwu4/photoinjector-rl/twobunch-s2e-rl/results/harness_audit_2026-10-14")
+AUD = Path("/home/rwu4/photoinjector-rl/twobunch-s2e-rl/results/4_daq_realism/harness_audit_2026-10-14")
 E300 = ["TEST_15668", "E300_15671", "E300_15673"]
 E331 = ["E331_%d" % i for i in range(16019, 16036) if i not in (16020, 16026, 16031)]
 D_NOM_MM = 59.31

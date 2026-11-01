@@ -56,10 +56,10 @@ manifest is seeded and written once, so indices are stable. Output → `data/<co
 tools live in `src/.../analysis_tools/`; one-off study reports live beside their figures in
 `results/<study>/` and write there (run by file path):
 ```bash
-PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.analysis_tools.build_dataset                    # -> results/tables/dataset.pkl
-PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis_tools.achievable_targets tightbox_v2_full  # -> results/tightbox_v2_full/
-PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/dataset_overview/summary_plots.py
-PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/combined_dataset/dataset_coverage.py
+PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.analysis_tools.build_dataset                    # -> results/1_datagen/tables/dataset.pkl
+PYTHONPATH=$PWD/src MPLBACKEND=Agg python -m twobunch_s2e_rl.analysis_tools.achievable_targets tightbox_v2_full  # -> results/1_datagen/tightbox_v2_full/
+PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/1_datagen/dataset_overview/summary_plots.py
+PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/1_datagen/combined_dataset/dataset_coverage.py
 ```
 
 **Surrogate** (`slac-rl` torch env): conditional flow over the knobs → drive+witness 6D
@@ -74,7 +74,7 @@ PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.preprocess --subdir full
 PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.train --t-two-part --epochs 150   # -> trained/twobunch_flow/
 PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.eval  --ckpt "trained/twobunch_flow/checkpoints/best-*.ckpt"
 PYTHONPATH=$PWD/src python -m twobunch_s2e_rl.surrogate.diagnostics --ckpt "trained/twobunch_flow/checkpoints/best-*.ckpt"
-PYTHONPATH=$PWD/src pytest tests/                                                  # 21 tests (data tests auto-skip if absent)
+PYTHONPATH=$PWD/src pytest tests/                                                  # data tests auto-skip if absent
 ```
 `eval` writes parity / phase-space / metrics to `results/surrogate/<model>/` (via `--out`);
 `diagnostics` adds a `diagnostics/` subfolder there (full 6D corner plots per bunch, phase-space slices +

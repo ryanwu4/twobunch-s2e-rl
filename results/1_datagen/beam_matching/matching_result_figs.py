@@ -8,7 +8,7 @@ curve, which commanded 12-35% FF moves to the wrong place. Three figures:
   2. knob displacement: beam-match (tiny FF, sextupole-led) vs the design-curve FF prescription
   3. Tao validation: per-slice beta profile at PENT, golden vs matched-15cm (witness flattened)
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/beam_matching/matching_result_figs.py
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/1_datagen/beam_matching/matching_result_figs.py
 """
 import os
 import numpy as np

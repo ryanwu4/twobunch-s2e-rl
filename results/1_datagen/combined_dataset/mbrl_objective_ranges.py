@@ -15,8 +15,8 @@ Objectives (reward semantics):
   spacing         bunch_spacing                            goal-conditioned target
 
 Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg \
-    python results/combined_dataset/mbrl_objective_ranges.py [good_subdir] [wide_subdir]
-Outputs: written beside this script in results/combined_dataset/
+    python results/1_datagen/combined_dataset/mbrl_objective_ranges.py [good_subdir] [wide_subdir]
+Outputs: written beside this script in results/1_datagen/combined_dataset/
          ({mbrl_objective_ranges,mbrl_reachability}.png + combined_mbrl_ranges.csv)
 """
 import argparse

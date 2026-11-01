@@ -14,7 +14,7 @@ Writes particle_loss.png beside this script:
 and prints the threshold table + the suggested "aim for zero loss" config (clean-subset physical
 medians) to stdout.
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/dataset_overview/particle_loss_dist.py
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/1_datagen/dataset_overview/particle_loss_dist.py
        [--h5 processed/twobunch_flow_v4.h5] [--clean-thr 0.99]
 """
 from __future__ import annotations

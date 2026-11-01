@@ -1,6 +1,6 @@
 """Drive<->witness relative ('collision quality') quantities for the two-bunch sweep.
 
-Reads results/tables/dataset.pkl. All four are defined only where the witness is viable
+Reads results/1_datagen/tables/dataset.pkl. All four are defined only where the witness is viable
 (bunchCount==2). Definitions match UTILITY_quickstart.getBeamSpecs:
   bunch spacing        = PWitness_zCentroid - PDrive_zCentroid           (signed, m)
   transverse offset    = |median (x,y)_drive - median (x,y)_witness|     (>=0, m)
@@ -10,7 +10,7 @@ Reads results/tables/dataset.pkl. All four are defined only where the witness is
 Produces, beside this script, fig5_twobunch_quality_PENT.png and fig6_..._evolution.png,
 and prints per-point summary stats.
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/dataset_overview/twobunch_quality_plots.py
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/1_datagen/dataset_overview/twobunch_quality_plots.py
 """
 import os
 

@@ -3,7 +3,7 @@
   - spacing_tracking.png  : achieved spacing (surrogate & Bmad) vs commanded, with y=x + golden band
   - knob_ranges.png       : per-knob policy median (denormalized) vs target for ALL 26 knobs, with the
                             tightbox clamp band, the full sweep range, the baseline (2024-10-14), and
-                            the 200 um set-point star  (cf. results/presentation_figures/gc_knob_setpoints.png)
+                            the 200 um set-point star  (cf. results/5_reports/presentation_figures/v1_bptt_gc_spacing/gc_knob_setpoints.png)
 
 Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/rl/bptt_gc_tightbox/sweep_analysis/plot_sweep_analysis.py
 """

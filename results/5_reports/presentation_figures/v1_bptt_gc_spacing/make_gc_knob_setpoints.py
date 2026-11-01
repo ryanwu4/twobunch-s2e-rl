@@ -5,7 +5,7 @@ Data: logs/bptt_gc/eval_best_goal{100..300}um.json  ("knob_median", normalized [
 in PARAM_KEYS order). Physical set-point = lo + knob * (hi - lo); energy offsets eV->MeV.
 Sweep bounds + 2024-10-14 baseline are the SWEEP_PARAMS table (datagen/sweep_params.py).
 
-Run from the repo root:  python results/presentation_figures/make_gc_knob_setpoints.py
+Run from the repo root:  python results/5_reports/presentation_figures/v1_bptt_gc_spacing/make_gc_knob_setpoints.py
 """
 import json
 from pathlib import Path

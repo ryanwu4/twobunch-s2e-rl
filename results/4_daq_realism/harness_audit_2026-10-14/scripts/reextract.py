@@ -26,7 +26,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 import xtcav_real_features as t0  # noqa: E402  (Tier 0 driver, imported read-only)
 
 xtcav, DATASET = t0.xtcav, t0.DATASET
-OUT = REPO / "results" / "harness_audit_2026-10-14" / "data"
+OUT = REPO / "results" / "4_daq_realism" / "harness_audit_2026-10-14" / "data"
 T0 = Path("/home/rwu4/photoinjector-rl/XTCAV_analysis/sim2real/results/tier0_real_features")
 
 

@@ -13,7 +13,7 @@ three candidate causes with discriminating figures + correlations:
 
 Writes a per-sample CSV (beside this script) and figures to lab-notebook/images/.
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/expanded_anchored_pilot/anchored_failure_analysis.py
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/1_datagen/expanded_anchored_pilot/anchored_failure_analysis.py
 """
 import glob
 import json

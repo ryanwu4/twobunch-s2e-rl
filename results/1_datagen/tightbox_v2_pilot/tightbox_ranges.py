@@ -16,9 +16,9 @@ Two honesty points baked in:
 Reads data/<subdir>/sample_*.json via achievable_targets.{load,derived}. No new tracking.
 
 Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg \
-    python results/tightbox_v2_pilot/tightbox_ranges.py [v2_subdir] [v1_subdir]
+    python results/1_datagen/tightbox_v2_pilot/tightbox_ranges.py [v2_subdir] [v1_subdir]
     (defaults: tightbox_v2_pilot tightbox_pilot)
-Outputs: written beside this script in results/tightbox_v2_pilot/
+Outputs: written beside this script in results/1_datagen/tightbox_v2_pilot/
          (range_comparison.png, fraction_vs_golden.png, <v2_subdir>_range_comparison.csv)
 """
 import argparse

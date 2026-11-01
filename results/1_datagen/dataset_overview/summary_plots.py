@@ -1,6 +1,6 @@
 """Summary plots for the two-bunch LHS sweep.
 
-Reads results/tables/dataset.pkl (built by analysis_tools/build_dataset.py). Produces, beside this script:
+Reads results/1_datagen/tables/dataset.pkl (built by analysis_tools/build_dataset.py). Produces, beside this script:
   fig1_inputs.png        - 8 sweep-knob input distributions (bounds + baseline)
   fig2_feasibility.png   - witness-survival taxonomy per treaty point + transmission
   fig3_outputs_PENT.png  - key output distributions at PENT (drive vs witness)
@@ -8,7 +8,7 @@ Reads results/tables/dataset.pkl (built by analysis_tools/build_dataset.py). Pro
 
 Also prints a feasibility table and output summary stats to stdout.
 
-Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/dataset_overview/summary_plots.py
+Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg python results/1_datagen/dataset_overview/summary_plots.py
 """
 import os
 

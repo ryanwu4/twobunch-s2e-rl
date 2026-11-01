@@ -43,4 +43,4 @@ for r, i in enumerate((160, 91)):
     a.axhspan(17, 21, color="gray", alpha=0.3, label="real σ_eff (sim2real, 17–21 µm)")
     a.set_xticks(range(6), lab, fontsize=7); a.set_ylabel("µm (z-equivalent)"); a.legend(fontsize=7)
     a.set_title("bunch length vs screen resolution")
-fig.tight_layout(); fig.savefig("results/xtcav_split_2026-10-14/screen_blur_budget.png", dpi=120)
+fig.tight_layout(); fig.savefig("results/2_surrogate_screen/xtcav_split_2026-10-14/screen_blur_budget.png", dpi=120)

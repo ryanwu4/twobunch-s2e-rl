@@ -15,7 +15,7 @@ maps BoldFont=Lato-Regular).
 
 Usage (repo root):
   CUDA_VISIBLE_DEVICES=0 PYTHONPATH=$PWD/src MPLBACKEND=Agg conda run -n slac-rl \
-    python results/presentation_figures/make_lps_goals_poster.py
+    python results/5_reports/presentation_figures/v2_bptt_gc_sigmaz/make_lps_goals_poster.py
 """
 from __future__ import annotations
 

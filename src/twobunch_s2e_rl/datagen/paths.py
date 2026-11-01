@@ -40,7 +40,7 @@ def results_dir() -> Path:
 
 def campaign_dir(name: str) -> Path:
     """Per-campaign output folder, e.g. results/1_datagen/tightbox_v2_full/."""
-    d = results_dir() / name
+    d = results_dir() / "1_datagen" / name
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -67,7 +67,7 @@ def rl_shared_dir() -> Path:
 
 
 def tables_dir() -> Path:
-    """Non-figure data outputs (dataset.pkl/csv, etc.)."""
-    d = results_dir() / "tables"
+    """Non-figure data outputs (dataset.pkl/csv, etc.): results/1_datagen/tables/."""
+    d = results_dir() / "1_datagen" / "tables"
     d.mkdir(parents=True, exist_ok=True)
     return d

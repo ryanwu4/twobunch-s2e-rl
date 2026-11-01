@@ -21,7 +21,7 @@ figure); drive is de-emphasized in Stanford coolgray, identity carried by direct
 
 Usage (repo root):
   PYTHONPATH=$PWD/src MPLBACKEND=Agg conda run -n slac-rl \
-    python results/presentation_figures/make_transverse_goals_poster.py
+    python results/5_reports/presentation_figures/v2_bptt_gc_sigmaz/make_transverse_goals_poster.py
 """
 from __future__ import annotations
 

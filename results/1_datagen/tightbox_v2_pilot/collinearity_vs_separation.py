@@ -8,9 +8,9 @@ Bins the witness-viable draws by bunch spacing and plots offset/angle vs spacing
 test), then vs L3EnergyOffset (the dominant dispersion lever) to show the real dependence.
 
 Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg \
-    python results/tightbox_v2_pilot/collinearity_vs_separation.py [subdir]
+    python results/1_datagen/tightbox_v2_pilot/collinearity_vs_separation.py [subdir]
     (default: tightbox_v2_pilot)
-Outputs: collinearity_vs_separation.png beside this script (results/tightbox_v2_pilot/)
+Outputs: collinearity_vs_separation.png beside this script (results/1_datagen/tightbox_v2_pilot/)
 """
 import argparse
 import os

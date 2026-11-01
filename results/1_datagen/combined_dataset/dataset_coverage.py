@@ -13,9 +13,9 @@ The training set is two campaigns: a dense "good" tight box (tightbox_v2_full) a
 Reads data/<good>/ and data/<wide>/ via achievable_targets.{load,derived}.
 
 Usage: PYTHONPATH=$PWD/src MPLBACKEND=Agg \
-    python results/combined_dataset/dataset_coverage.py [good_subdir] [wide_subdir]
+    python results/1_datagen/combined_dataset/dataset_coverage.py [good_subdir] [wide_subdir]
     (defaults: tightbox_v2_full expanded_full)
-Outputs: written beside this script in results/combined_dataset/ (*.png + combined_dataset_summary.csv)
+Outputs: written beside this script in results/1_datagen/combined_dataset/ (*.png + combined_dataset_summary.csv)
 """
 import argparse
 import os

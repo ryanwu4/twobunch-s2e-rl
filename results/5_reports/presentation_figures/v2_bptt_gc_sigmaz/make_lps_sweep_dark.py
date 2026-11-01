@@ -23,7 +23,7 @@ with the presentation palette (drive = blue, witness = rose-red).
 
 Run (no GPU needed -- Bmad clouds only):
   cd twobunch-s2e-rl && MPLBACKEND=Agg \
-    python results/presentation_figures/v2_bptt_gc_sigmaz/make_lps_sweep_dark.py
+    python results/5_reports/presentation_figures/v2_bptt_gc_sigmaz/make_lps_sweep_dark.py
 
 Output: lps_sweep_dark_v2.gif + per-goal lps_goal<g>um_dark_v2.png (beside this script).
 """

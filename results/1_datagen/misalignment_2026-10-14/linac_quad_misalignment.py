@@ -4,7 +4,7 @@ Jacobian beyond what the existing hidden context jitter already spans?
 
 Random x/y offsets N(0, sigma) on every quadrupole upstream of BEGBC20 (L1/L2/L3 + BC11/BC14 chicane quads) (uncorrected orbit -> an upper
 bound for the post-steering residual), 3 seeds, at 3 valgate operating points, at L2 and L2 + 0.5 deg.
-bmad-qpad-dev env:  PYTHONPATH=$PWD/src python results/misalignment_2026-10-14/linac_quad_misalignment.py
+bmad-qpad-dev env:  PYTHONPATH=$PWD/src python results/1_datagen/misalignment_2026-10-14/linac_quad_misalignment.py
 """
 import json, multiprocessing, os, sys
 from pathlib import Path
