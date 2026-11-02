@@ -336,7 +336,9 @@ XTCAV23E_PARAMS = {**XTCAV23_PARAMS, "L1EnergyOffset": (-3.5e6, 3.5e6, 0.0)}
 # Stage D2 wide box (xtcav-gpsr-tuning, 2026-10-29): the sim2real fit needs the real runs inside the
 # data. Widened (evidence in xtcav-gpsr-tuning/docs/stageD2_log.md):
 #   total charge 1350-2150 pC, d2 avg_t 7.5-10.5 ps  (E331: a genuine ~1.9 nC on the S20 toroid,
-#       ~2.0 nC injected; PSDL steps of +-1 ps, stage ps = pulse-separation ps)
+#       ~2.0 nC injected; d2 avg_t IS the pulse separation. CORRECTED 2026-11-02 from the E331
+#       logbook: PSDL 126.2 ps -> 8.8 ps separation, 127.2 -> 7.9, 125.2 -> 10.3, i.e. a larger
+#       PSDL gives LESS separation and the steps are -0.9 / +1.5 ps, not 1:1)
 #   L1 high edge -16.5 deg                           (E331 at -18 deg nominal)
 #   L2 high edge -27.5 deg                           (E300_15673: the reachability fits push the last
 #       scan steps to the -29.5 deg box top, L2 shift +0.6-0.7 deg)
