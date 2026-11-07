@@ -1,0 +1,31 @@
+# Calibration set for conformal prediction on the deployed two-bunch CNF (c_b3_ema): 1000 independent rows,
+# iid uniform over its 37-knob box, one Impact-T beam each. The physics is that of the deployed model's
+# injector campaigns (configs/datagen/injector_cov_2026-10-16.yaml; conformal/scripts/check_design.py checks
+# it key by key). Only the design, the saved planes, the worker count and `purpose` differ.
+name: narrow_uniform_2026-11-06
+purpose: calibration
+output_dir: /home/rwu4/photoinjector-rl/twobunch-s2e-rl/conformal/data/narrow_uniform_2026-11-06
+sweep_set: xtcav23e_l0b2_inj12
+linac_sweep_set: xtcav23e_l0b2
+injector_sweep_set: inj12
+n_workers: 100
+
+injector:
+  n_particles: 50000
+  grid: 64
+  arrival: absolute
+  hammersley_burnin: -1
+
+design:
+  seed: 20261106
+  calibration: {n: 1000, sampler: iid, stratum: uniform}
+
+csrTF: true
+transverseWakes: true
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+treaty_points: [ENDDL10, BL11356, BL14888, BEGBC20, IM2452, BL20_4, MFFF, XTCAVF, PENT]
+save_beams_at: [MFFF, XTCAVF, PENT]
+fixed_overrides:
+  Q19851kG: -63.76368742523523
+  Q19871kG: 42.49972197426665
+  trackEnd: PENT

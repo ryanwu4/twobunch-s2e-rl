@@ -244,6 +244,17 @@ def check_mergeable(camps: list[dict], treaty_point: str, allow_mismatch=()) -> 
                                  f"{k} = {fo_a.get(k)} vs {fo_b.get(k)}")
 
 
+def campaign_purpose(data_dir: Path, first_sample: str) -> str:
+    """The campaign config's `purpose` ('calibration' for conformal calibration data), as recorded in
+    campaign.json, manifest_meta.json or the sample jsons; 'training' when none records one."""
+    for p in (data_dir / "campaign.json", data_dir / "manifest_meta.json"):
+        if p.exists():
+            purpose = json.loads(p.read_text()).get("config", {}).get("purpose")
+            if purpose:
+                return purpose
+    return json.loads(Path(first_sample).read_text()).get("purpose", "training")
+
+
 def split_groups(records) -> np.ndarray:
     """Group id per row for a leak-free train/val split: rows of the same (campaign, injector
     point) form one group, and a paired_golden row joins the group of the nested row it pairs with
@@ -279,7 +290,7 @@ def split_groups(records) -> np.ndarray:
 def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
                scaler="intrabunch", sweep_set="original8", treaty_point=PENT,
                verbose=True, data_root=None, campaign_jsons=None, allow_drop=(),
-               transmission="max", transmission_ref="BEGBC20", allow_fixed_mismatch=()):
+               transmission="max", transmission_ref="BEGBC20", allow_fixed_mismatch=(), calibration=False):
     # transmission: "max" (v1-v3 tables): T = charge / max charge over records -- carries the
     #   +-0.9% downsampling noise of the golden-beam campaigns, so T ~0.986 with no loss.
     #   "per_sample": T = charge / that row's injected charge (recorded by injector campaigns; else
@@ -299,6 +310,12 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
             fs = fs[:max_samples]
         if not fs:
             raise SystemExit(f"No sample_*.json under data/{sd}")
+        is_cal = campaign_purpose(data_root / sd, fs[0]) == "calibration"
+        if is_cal and not calibration:
+            raise SystemExit(f"{sd} is a calibration campaign: it never enters a training table "
+                             f"(--calibration builds a calibration table)")
+        if calibration and not is_cal:
+            raise SystemExit(f"{sd} is not a calibration campaign; a calibration table holds only those")
         files.extend(fs)
         file_campaign.extend([ci] * len(fs))
         # campaigns that recorded campaign.json can be embedded into a bigger knob space; older
@@ -425,6 +442,7 @@ def preprocess(subdir="full", p=DEFAULT_P, max_samples=None, seed=0, out=None,
         # source campaign of every row (idx collides across merged campaigns)
         h.create_dataset("campaign", data=np.array([r["campaign"] for r in records], np.int16))
         h.attrs["campaigns"] = ",".join(subdirs)
+        h.attrs["purpose"] = "calibration" if calibration else "training"
         if allow_fixed_mismatch:
             h.attrs["allowed_fixed_mismatch"] = ",".join(allow_fixed_mismatch)
         h.attrs["P"] = p
@@ -486,6 +504,12 @@ def main():
     ap.add_argument("--allow-fixed-mismatch", default="",
                     help="comma-separated fixed campaign keys allowed to differ between merged "
                          "campaigns (opt-in; recorded in the table attrs), e.g. num_macro_particles")
+    ap.add_argument("--data-root", default=None,
+                    help="directory holding the campaign dirs (default: <repo>/data; calibration "
+                         "campaigns live in conformal/data)")
+    ap.add_argument("--calibration", action="store_true",
+                    help="build a calibration table (conformal prediction) from calibration campaigns "
+                         "only; without it, calibration campaigns are refused")
     args = ap.parse_args()
     cjs = dict(s.split("=", 1) for s in args.campaign_json)
     preprocess(subdir=args.subdir, p=args.P, max_samples=args.max_samples,
@@ -493,7 +517,8 @@ def main():
                treaty_point=args.treaty_point, campaign_jsons=cjs,
                allow_drop=[k for k in args.allow_drop.split(",") if k],
                transmission=args.transmission, transmission_ref=args.transmission_ref,
-               allow_fixed_mismatch=[k for k in args.allow_fixed_mismatch.split(",") if k])
+               allow_fixed_mismatch=[k for k in args.allow_fixed_mismatch.split(",") if k],
+               data_root=args.data_root, calibration=args.calibration)
 
 
 if __name__ == "__main__":

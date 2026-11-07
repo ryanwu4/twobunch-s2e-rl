@@ -1,0 +1,31 @@
+# Reproduction check for narrow_uniform_2026-11-06: 4 rows of injector_cov_2026-10-16 (one of the deployed
+# model's training campaigns) re-run with the calibration code; they must match bit for bit. Identical to
+# configs/datagen/injector_cov_2026-10-16.yaml except name, output_dir, purpose, n_workers and save_beams_at.
+# The design seed is kept so each row gets its source row's Tao seed. The manifest is written by
+# conformal/scripts/repro_check.py prepare, so the design block is not used.
+name: repro_check_2026-11-06
+purpose: reproduction_check
+output_dir: /home/rwu4/photoinjector-rl/twobunch-s2e-rl/conformal/data/repro_check_2026-11-06
+sweep_set: xtcav23e_l0b2_inj12
+linac_sweep_set: xtcav23e_l0b2
+injector_sweep_set: inj12
+n_workers: 6
+
+injector:
+  n_particles: 50000
+  grid: 64
+  arrival: absolute
+  hammersley_burnin: -1
+
+design:
+  seed: 20261016
+
+csrTF: true
+transverseWakes: true
+baseline_config: setLattice_configs/2024-10-14_twoBunch_baseline.yml
+treaty_points: [ENDDL10, BL11356, BL14888, BEGBC20, IM2452, BL20_4, MFFF, XTCAVF, PENT]
+save_beams_at: [MFFF, XTCAVF, PENT]
+fixed_overrides:
+  Q19851kG: -63.76368742523523
+  Q19871kG: 42.49972197426665
+  trackEnd: PENT

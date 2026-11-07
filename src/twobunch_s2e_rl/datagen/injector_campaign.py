@@ -61,7 +61,7 @@ from .sweep_params import INJECTOR_KEYS, injector_golden, readback_sigma, resolv
 
 GOLDEN_BEAM_SUFFIX = "/beams/2024-10-14_Impact_TwoBunch/2024-10-14_TwoBunch.h5"
 TREATY_POINTS = ["BEGBC20", "MFFF", "XTCAVF", "PENT"]
-MAX_WORKERS = 64
+MAX_WORKERS = 120                 # the full 128-thread box (Ryan 11-04; was 64 = half the box)
 
 
 # ---------------------------------------------------------------------------------------
@@ -185,11 +185,34 @@ def _local_injector_draws(n, dist, keys, low, high, golden, seed) -> list[dict]:
     return out
 
 
+def calibration_rows(cal: dict, seed: int, lkeys, llo, lhi, ikeys, ilo, ihi) -> list[dict]:
+    """Calibration design (conformal prediction; conformal/README.md): n independent rows, each with its own
+    injector point (one Impact-T beam per row) and its own linac knobs, drawn iid uniform over the box. No LHS
+    and no shared beams, so the rows are exchangeable with any later point drawn the same way."""
+    if cal.get("sampler", "iid") != "iid" or cal.get("stratum", "uniform") != "uniform":
+        raise ValueError("calibration design: only sampler 'iid' and stratum 'uniform' exist")
+    n = int(cal["n"])
+    rng = np.random.default_rng(seed)
+    low, high = np.array(llo + ilo, float), np.array(lhi + ihi, float)
+    x = low + rng.random((n, len(low))) * (high - low)
+    nl = len(lkeys)
+    return [{"idx": j, "block": "calibration", "beam": "impact", "injector_point": f"cal{j}",
+             "injector": dict(zip(ikeys, map(float, x[j, nl:]))),
+             "knobs": dict(zip(lkeys, map(float, x[j, :nl]))),
+             "linac_id": j, "linac_region": "uniform", "holdout": False, "stratum": "uniform"}
+            for j in range(n)]
+
+
 def make_rows(cfg) -> list[dict]:
     des = cfg["design"]
     seed = int(des["seed"])
     lkeys, llo, lhi, lbase = resolve_sweep_set(cfg["linac_sweep_set"])
     ikeys, ilo, ihi, _ = resolve_sweep_set(cfg["injector_sweep_set"])
+    if "calibration" in des:
+        other = set(des) - {"seed", "calibration"}
+        if other:
+            raise ValueError(f"a calibration design has no other blocks (found {sorted(other)})")
+        return calibration_rows(des["calibration"], seed, lkeys, llo, lhi, ikeys, ilo, ihi)
     golden = injector_golden(ikeys)
     scale = float(des["injector"].get("box_scale", 1.0))
     ilo_s = [g - scale * (g - lo) for g, lo in zip(golden.values(), ilo)]
@@ -540,6 +563,8 @@ def bmad_task(args):
               "fixed_overrides": _CFG.get("fixed_overrides", {}),
               "num_macro_particles": n, "csrTF": _CFG["csrTF"],
               "transverseWakes": _CFG.get("transverseWakes", False),
+              **({"purpose": _CFG["purpose"]} if _CFG.get("purpose") else {}),
+              **({"stratum": row["stratum"]} if "stratum" in row else {}),
               "pid": os.getpid(), "timestamp": time.time(),
               "bmad_random_seed": bmad_seed(_CFG, row), "git_hash": _CFG.get("_git_hash")}
     try:
@@ -678,8 +703,8 @@ def _run(cfg, workers, out, retry_failed, idle_timeout_s, sim_inj):
     golden_key = json.dumps(injector_golden(resolve_sweep_set(cfg["injector_sweep_set"])[0]),
                             sort_keys=True)
     todo = [r for r in rows if not _is_done(row_json_path(out, r), retry_failed)]
-    points = injector_points(rows)
-    points.setdefault(golden_key, json.loads(golden_key))     # reference beam always needed
+    # the reference beam is always needed and goes first: every row's Bmad task waits for it
+    points = {golden_key: json.loads(golden_key), **injector_points(rows)}
     _init_worker(cfg)                                          # parent uses _beam_dir too
     need = {k: p for k, p in points.items()
             if not (_beam_dir(p, ref) / "injector_info.json").exists()}
