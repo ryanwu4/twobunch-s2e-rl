@@ -1,0 +1,34 @@
+{
+ "dataset": "narrow_uniform_2026-11-06",
+ "campaign_yaml_sha256": "2c0fbaa4887f4c944a2d5abf96a52d52c7aa707acb40be76d9746e1a8e9de70a",
+ "generator": {
+  "git_hash": "92e4cf305e087d69275e775ac881021e4842c824",
+  "git_dirty": false
+ },
+ "reference_config": "configs/datagen/injector_cov_2026-10-16.yaml",
+ "reference_config_sha256": "70bc66ec9f109b112b6d584e94b09013d948469b1280119aa7d1f2b1cb51870f",
+ "physics_matches_reference": true,
+ "physics_diff": {},
+ "bundle": "c_b3_ema",
+ "bundle_checkpoint_sha256": "836ec15fcf264c0dbb84b184fd65689e31e546ae30127e4d8a935851945607af",
+ "bundle_checkpoint_sha256_ok": true,
+ "twobunch_cnf_version": "0.1.0",
+ "box_matches_bundle": true,
+ "n_knobs": 37,
+ "rows": 1000,
+ "blocks": {
+  "calibration": 1000
+ },
+ "impact_beams": 1000,
+ "linac_ids_unique": true,
+ "normalized_inputs": {
+  "min": 1.2287990565544792e-05,
+  "max": 0.9999812189594329,
+  "mean_per_knob_range": [
+   0.4763015219202064,
+   0.5173762053150889
+  ]
+ },
+ "rows_outside_bundle_box": 0,
+ "manifest_sha256": "aade9a1538ead2a8bf9f7fa15bd4ceec38bcc124015c72f15ce97f9052081e36"
+}
