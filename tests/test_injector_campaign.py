@@ -329,3 +329,45 @@ def test_local_injector_stratum(tmp_path):
         ic.make_rows(_cfg(tmp_path, injector={"lhs": 2, "local": {"n": 2, "dist": {"nope": {"width": 1}}}}))
     old = ic.make_rows(_cfg(tmp_path))                                  # no local block: no new field
     assert all("injector_region" not in r for r in old)
+
+
+# ---------------------------------------------------------------- calibration campaigns (conformal/README.md)
+# Kept in this file: importing injector_campaign pins OMP/BLAS threads to 1, and a module that sorts before
+# test_compat.py would then run the compat goldens single-threaded (they drift past rtol 1e-5).
+
+CAL_CFG = {"linac_sweep_set": "xtcav23e_l0b2", "injector_sweep_set": "inj12",
+           "design": {"seed": 7, "calibration": {"n": 200, "sampler": "iid", "stratum": "uniform"}}}
+
+
+def test_calibration_rows_are_independent_draws_inside_the_box():
+    rows = ic.make_rows(CAL_CFG)
+    keys, low, high, _ = resolve_sweep_set("xtcav23e_l0b2_inj12")
+    x = np.array([[{**r["knobs"], **r["injector"]}[k] for k in keys] for r in rows])
+    assert len(rows) == 200 and {r["block"] for r in rows} == {"calibration"}
+    assert np.all(x >= low) and np.all(x <= high)
+    assert len(ic.injector_points(rows)) == 200                  # one Impact-T beam per row
+    assert len({r["linac_id"] for r in rows}) == 200             # one Tao seed per row
+    assert ic.make_rows(CAL_CFG) == rows                         # deterministic by seed
+
+
+def test_calibration_design_takes_no_other_blocks():
+    cfg = {**CAL_CFG, "design": {**CAL_CFG["design"], "pair_golden_frac": 0.25}}
+    with pytest.raises(ValueError):
+        ic.make_rows(cfg)
+
+
+def _cal_campaign(root, name, purpose):
+    d = root / name
+    d.mkdir()
+    (d / "manifest_meta.json").write_text(json.dumps({"config": {"purpose": purpose} if purpose else {}}))
+    (d / "sample_00000.json").write_text(json.dumps({"idx": 0, **({"purpose": purpose} if purpose else {})}))
+
+
+def test_preprocess_refuses_calibration_campaigns_in_training_tables(tmp_path):
+    _cal_campaign(tmp_path, "cal", "calibration")
+    _cal_campaign(tmp_path, "train", None)
+    with pytest.raises(SystemExit, match="never enters a training table"):
+        preprocess(subdir="train,cal", data_root=tmp_path, sweep_set="xtcav23e_l0b2_inj12", verbose=False)
+    with pytest.raises(SystemExit, match="not a calibration campaign"):
+        preprocess(subdir="cal,train", data_root=tmp_path, sweep_set="xtcav23e_l0b2_inj12", verbose=False,
+                   calibration=True)
