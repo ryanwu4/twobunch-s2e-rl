@@ -1,0 +1,97 @@
+{
+ "pass": true,
+ "source": "/home/rwu4/photoinjector-rl/twobunch-s2e-rl/data/injector_cov_2026-10-16",
+ "planes_compared": [
+  "XTCAVF"
+ ],
+ "rows": [
+  {
+   "gate_idx": 0,
+   "source_idx": 2251,
+   "kind": "paired_golden",
+   "gate_success": true,
+   "seed_equal": true,
+   "knobs_equal": true,
+   "injector_record_equal": true,
+   "specs_equal": {
+    "ENDDL10": true,
+    "BL11356": true,
+    "BL14888": true,
+    "BEGBC20": true,
+    "IM2452": true,
+    "BL20_4": true,
+    "MFFF": true,
+    "XTCAVF": true,
+    "PENT": true
+   },
+   "beam_XTCAVF_identical": true,
+   "pass": true
+  },
+  {
+   "gate_idx": 1,
+   "source_idx": 255,
+   "kind": "nested",
+   "gate_success": true,
+   "seed_equal": true,
+   "knobs_equal": true,
+   "injector_record_equal": true,
+   "specs_equal": {
+    "ENDDL10": true,
+    "BL11356": true,
+    "BL14888": true,
+    "BEGBC20": true,
+    "IM2452": true,
+    "BL20_4": true,
+    "MFFF": true,
+    "XTCAVF": true,
+    "PENT": true
+   },
+   "beam_XTCAVF_identical": true,
+   "pass": true
+  },
+  {
+   "gate_idx": 2,
+   "source_idx": 1251,
+   "kind": "nested",
+   "gate_success": true,
+   "seed_equal": true,
+   "knobs_equal": true,
+   "injector_record_equal": true,
+   "specs_equal": {
+    "ENDDL10": true,
+    "BL11356": true,
+    "BL14888": true,
+    "BEGBC20": true,
+    "IM2452": true,
+    "BL20_4": true,
+    "MFFF": true,
+    "XTCAVF": true,
+    "PENT": true
+   },
+   "beam_XTCAVF_identical": true,
+   "pass": true
+  },
+  {
+   "gate_idx": 3,
+   "source_idx": 126,
+   "kind": "crossed",
+   "gate_success": true,
+   "seed_equal": true,
+   "knobs_equal": true,
+   "injector_record_equal": true,
+   "specs_equal": {
+    "ENDDL10": true,
+    "BL11356": true,
+    "BL14888": true,
+    "BEGBC20": true,
+    "IM2452": true,
+    "BL20_4": true,
+    "MFFF": true,
+    "XTCAVF": true,
+    "PENT": true
+   },
+   "beam_XTCAVF_identical": true,
+   "pass": true
+  }
+ ]
+}

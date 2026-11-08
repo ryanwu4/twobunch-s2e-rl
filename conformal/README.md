@@ -43,4 +43,6 @@ Calibration datasets for conformal prediction on the two-bunch CNF surrogates: t
 
 | Name | Box | Rows | Planes saved | Status |
 |---|---|---|---|---|
-| `narrow_uniform_2026-11-06` | deployed model, `c_b3_ema` (37 knobs), iid uniform | 1000 | MFFF, XTCAVF, PENT | generating |
+| `narrow_uniform_2026-11-06` | deployed model, `c_b3_ema` (37 knobs), iid uniform | 1000 | MFFF, XTCAVF, PENT | done 11-08 04:37, frozen: 1000 succeeded, 0 failed; witness reaches XTCAVF in 994 |
+
+`narrow_uniform_2026-11-06` ran in three launches, all from commit 1418d2e. The server crashed on 11-06 at ~21:20, and on 11-07 a reboot at ~22:18 stopped the campaign again. Before each resume, every injector beam with `injector_info.json` was checked: it loads, has more than 90 % of its particles and all values finite. Beams cut off mid-run were deleted and generated again. After the crash, one finished beam was re-run and matched bit for bit, apart from timings. The launch records are in `datasheet.json`. They differ only in pid and start time, except for `versions.ImpactTexe.path`: the first launch records the slac-rl copy and the later two the bmad-qpad-dev copy. The two paths are hard links to the same file (same sha256), and every launch ran the bmad-qpad-dev one. The path differs only because the record comes from `PATH`, while the run uses the copy beside `sys.executable`.

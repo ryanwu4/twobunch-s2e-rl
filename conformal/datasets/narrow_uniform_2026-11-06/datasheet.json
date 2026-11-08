@@ -1,0 +1,102 @@
+{
+ "rows": 1000,
+ "succeeded": 1000,
+ "failed": {},
+ "missing": [],
+ "attempts": {
+  "1": 1000
+ },
+ "witness_reaches_xtcavf": 994,
+ "bmad_wall_s_median": 1175.1002112365004,
+ "impact_wall_s_median": 3112.638593301499,
+ "manifest_sha256": "aade9a1538ead2a8bf9f7fa15bd4ceec38bcc124015c72f15ce97f9052081e36",
+ "manifest_matches_design_check": true,
+ "generator_git_hashes": [
+  "1418d2ea4883fbc0130d79ce16e2c7fd7013decb"
+ ],
+ "campaign": {
+  "facet2_s2e_hash": "361671f17c2bd63c6258797225565a0690e7d91a",
+  "git_hash": "1418d2ea4883fbc0130d79ce16e2c7fd7013decb",
+  "git_dirty": false,
+  "baseline_config_sha256": "669aca8602af87d2475b0db53a128efbba4bc595ee33e917c53b5d1287974fbb",
+  "defaults_yml_sha256": "e0b0b76b3e68af295e01e7af13f474d74e126306ac3dded451aba0df4330b962",
+  "injector_code_version": "injector-v1"
+ },
+ "launches": [
+  {
+   "start": 1794014917.3432438,
+   "pid": 278331,
+   "workers": 100,
+   "retry_failed": false,
+   "git_hash": "1418d2ea4883fbc0130d79ce16e2c7fd7013decb",
+   "git_dirty": false,
+   "facet2_s2e": {
+    "hash": "361671f17c2bd63c6258797225565a0690e7d91a",
+    "dirty": false
+   },
+   "versions": {
+    "pytao": "0.5.3",
+    "lume-impact": "0.10.1",
+    "distgen": "0.0.0",
+    "openpmd-beamphysics": "0.0.0",
+    "numpy": "2.4.6",
+    "torch": "2.10.0",
+    "ImpactTexe": {
+     "path": "/home/rwu4/miniconda3/envs/slac-rl/bin/ImpactTexe",
+     "sha256": "1960eff6772a310550edf7a8931879827457c9d1e08e66b1b08d3db9e04164f9"
+    },
+    "python_prefix": "/home/rwu4/miniconda3/envs/bmad-qpad-dev"
+   }
+  },
+  {
+   "start": 1794109174.4399889,
+   "pid": 83233,
+   "workers": 100,
+   "retry_failed": false,
+   "git_hash": "1418d2ea4883fbc0130d79ce16e2c7fd7013decb",
+   "git_dirty": false,
+   "facet2_s2e": {
+    "hash": "361671f17c2bd63c6258797225565a0690e7d91a",
+    "dirty": false
+   },
+   "versions": {
+    "pytao": "0.5.3",
+    "lume-impact": "0.10.1",
+    "distgen": "0.0.0",
+    "openpmd-beamphysics": "0.0.0",
+    "numpy": "2.4.6",
+    "torch": "2.10.0",
+    "ImpactTexe": {
+     "path": "/home/rwu4/miniconda3/envs/bmad-qpad-dev/bin/ImpactTexe",
+     "sha256": "1960eff6772a310550edf7a8931879827457c9d1e08e66b1b08d3db9e04164f9"
+    },
+    "python_prefix": "/home/rwu4/miniconda3/envs/bmad-qpad-dev"
+   }
+  },
+  {
+   "start": 1794120125.221047,
+   "pid": 44717,
+   "workers": 100,
+   "retry_failed": false,
+   "git_hash": "1418d2ea4883fbc0130d79ce16e2c7fd7013decb",
+   "git_dirty": false,
+   "facet2_s2e": {
+    "hash": "361671f17c2bd63c6258797225565a0690e7d91a",
+    "dirty": false
+   },
+   "versions": {
+    "pytao": "0.5.3",
+    "lume-impact": "0.10.1",
+    "distgen": "0.0.0",
+    "openpmd-beamphysics": "0.0.0",
+    "numpy": "2.4.6",
+    "torch": "2.10.0",
+    "ImpactTexe": {
+     "path": "/home/rwu4/miniconda3/envs/bmad-qpad-dev/bin/ImpactTexe",
+     "sha256": "1960eff6772a310550edf7a8931879827457c9d1e08e66b1b08d3db9e04164f9"
+    },
+    "python_prefix": "/home/rwu4/miniconda3/envs/bmad-qpad-dev"
+   }
+  }
+ ]
+}
